@@ -128,6 +128,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
 
   private recorder: MediaRecorderLike | null = null;
   private recordedChunks: Blob[] = [];
+  private recordedChunkCount = 0;
   private recordedBytes = 0;
   private lastRecordedBytes = 0;
   private lastRecordedAt = 0;
@@ -386,6 +387,10 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       this.failOutput(session, 'CONFIG_INVALID', 'WebRTC is not available in this browser');
       return;
     }
+    if (!this.previewStreamValue) {
+      this.failOutput(session, 'ENCODER_FAILED', 'No composited stream to publish - start the preview first');
+      return;
+    }
     const format = this.formatFor(output.aspectRatio);
     const client = new WhipClient({
       endpoint: output.ingest.url,
@@ -432,6 +437,10 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
 
     if (!this.deps.RTCPeerConnectionCtor || !this.deps.fetch) {
       this.failOutput(session, 'CONFIG_INVALID', 'WebRTC is not available in this browser');
+      return;
+    }
+    if (!this.previewStreamValue) {
+      this.failOutput(session, 'ENCODER_FAILED', 'No composited stream to publish - start the preview first');
       return;
     }
 
@@ -650,6 +659,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       this.recorder = recorder;
       this.recorderMime = mime === '' ? (recorder.mimeType ?? 'video/webm') : mime;
       this.recordedChunks = [];
+      this.recordedChunkCount = 0;
       this.recordedBytes = 0;
       this.lastRecordedBytes = 0;
       this.lastRecordedAt = this.deps.now();
@@ -657,7 +667,8 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
         const data = event?.data;
         if (!data || typeof data.size !== 'number' || data.size === 0) return;
         this.recordedBytes += data.size;
-        const index = this.recordedChunks.length;
+        const index = this.recordedChunkCount;
+        this.recordedChunkCount += 1;
         if (this.onChunk) this.onChunk(data, index);
         else this.recordedChunks.push(data);
       };

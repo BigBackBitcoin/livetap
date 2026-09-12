@@ -81,7 +81,7 @@ export function computeTransitionFrame(
       return {
         progress: p,
         eased: e,
-        from: { alpha: 1, translateX: -e * width, translateY: 0, scale: 1 },
+        from: { alpha: 1, translateX: -e * width || 0, translateY: 0, scale: 1 },
         to: { alpha: 1, translateX: (1 - e) * width, translateY: 0, scale: 1 },
         done: false,
       };
