@@ -2384,3 +2384,17 @@ body {
     stroke: CanvasText;
   }
 }
+
+/*
+ * Pre-script height for pinned acts.
+ * The engine sets `el.style.height = span * 100vh` on every pinned act (pin, pan, scrub) when it
+ * initialises. Declaring the identical height here means the document is laid out at its final
+ * size before the script runs, so script start causes no layout shift (measured 0.30 CLS before
+ * this rule on the deployed page; the shift was every act below the first pinned one moving down).
+ * Values must mirror the `data-sc-span` attributes in index.html and the engine's unit (vh).
+ */
+:is([data-sc-act="pin"], [data-sc-act="pan"], [data-sc-act="scrub"])[data-sc-span="1.2"] { height: 120vh; }
+:is([data-sc-act="pin"], [data-sc-act="pan"], [data-sc-act="scrub"])[data-sc-span="1.3"] { height: 130vh; }
+:is([data-sc-act="pin"], [data-sc-act="pan"], [data-sc-act="scrub"])[data-sc-span="1.4"] { height: 140vh; }
+:is([data-sc-act="pin"], [data-sc-act="pan"], [data-sc-act="scrub"])[data-sc-span="1.6"] { height: 160vh; }
+:is([data-sc-act="pin"], [data-sc-act="pan"], [data-sc-act="scrub"])[data-sc-span="2.8"] { height: 280vh; }
