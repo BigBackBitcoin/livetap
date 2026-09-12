@@ -197,7 +197,7 @@ The PRNG is a 20-line mulberry32, so a demo recorded with `seed: 99` replays mes
 | `profiles/` | 9 honest `PlatformProfile`s, `PLATFORM_PROFILES`, `getProfile`, `mockProfile` | none |
 | `mock/` | `MockDestinationAdapter`, `createMockAdapters`, `MOCK_BANNER`, mulberry32, chat corpus | none |
 | `custom/` | `CustomRtmpAdapter` — real, validates via core's `validateIngest` | none |
-| `real/` | `YouTubeAdapter`, `TwitchAdapter`, `KickAdapter`, `FacebookAdapter`, shared `http.ts` | injected `fetch` |
+| `real/` | `YouTubeAdapter`, `TwitchAdapter`, `KickAdapter`, `FacebookAdapter`, shared `http.ts`, `twitchIngest.ts` | injected `fetch` |
 | `oauth/` | `generatePkce`, `buildAuthorizeUrl`, `parseCallback`, per-platform endpoint table | none |
 | `testing/` | `createFakeFetch` — recorded fake for adapter tests | none |
 
@@ -212,6 +212,11 @@ registry.register(new CustomRtmpAdapter(getProfile('tiktok')));
 
 That is why `CustomRtmpAdapter` takes a profile instead of hard-coding `customProfile`. An
 approved LinkedIn partner can use the same path with an ingest URL they registered themselves.
+ Twitch picks its ingest PoP from the official, unauthenticated
+`GET https://ingest.twitch.tv/ingests` list (`real/twitchIngest.ts`): the `default: true` entry
+else the lowest `priority` with `availability >= 1`, `url_template_secure` (RTMPS) preferred,
+cached an hour per adapter, falling back to the secondary-sourced `rtmp://live.twitch.tv/app` with
+a non-secret note on `lastIngestNote` — an explicit `ingestUrl` pins the PoP and skips the list.
  Kick has no `subscribeChat` because Kick chat read does not exist
 outside a public webhook. YouTube `publishThumbnail` throws rather than pretending: it needs the
 multipart media-upload host, which is not wired up yet.

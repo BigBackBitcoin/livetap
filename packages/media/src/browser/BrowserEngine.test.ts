@@ -11,7 +11,7 @@ import type {
 } from '@livetap/core';
 import { DEFAULT_AUDIO, formatForPreset } from '@livetap/core';
 import { BrowserEngine, readOutboundSample, relayEndpoint } from './BrowserEngine.js';
-import { pickRecordingMime } from './deps.js';
+import { pickRecordingMime, probablySupportsDisplayAudio } from './deps.js';
 import type { BrowserEngineOptions, MediaDevicesLike } from './deps.js';
 import {
   FAKE_ANSWER_SDP,
@@ -270,6 +270,38 @@ describe('BrowserEngine.capabilities', () => {
   it('reports no recording without MediaRecorder', async () => {
     const caps = await harness({ MediaRecorderCtor: null }).engine.capabilities();
     expect(caps.recording).toBe(false);
+  });
+
+  // A user-agent guess is not a capability: browsers may ignore the getDisplayMedia audio hint
+  // and hand back a video-only stream. So systemAudio is false until proven otherwise.
+  it('reports systemAudio:false until a display capture actually yields an audio track', async () => {
+    const h = harness();
+    expect((await h.engine.capabilities()).systemAudio).toBe(false);
+
+    await h.engine.startPreview(screenMoment(), '16:9');
+    expect(h.display.calls).toEqual([{ video: true, audio: true }]);
+    expect((await h.engine.capabilities()).systemAudio).toBe(true);
+
+    // Remembered for the life of the engine: the environment has proven it can do this once.
+    await h.engine.stopPreview();
+    expect((await h.engine.capabilities()).systemAudio).toBe(true);
+  });
+
+  it('stays false when the display capture hands back a video-only stream', async () => {
+    const videoOnly = createFakeMediaStream([createFakeTrack('video')]);
+    const h = harness({ getDisplayMedia: async () => asMediaStream(videoOnly) });
+    await h.engine.startPreview(screenMoment(), '16:9');
+    expect((await h.engine.capabilities()).systemAudio).toBe(false);
+  });
+
+  it('keeps the user-agent heuristic separate as describeEnvironment().systemAudioLikely', async () => {
+    const h = harness();
+    expect(h.engine.describeEnvironment().systemAudioLikely).toBe(probablySupportsDisplayAudio());
+    expect(harness({ getDisplayMedia: null }).engine.describeEnvironment().systemAudioLikely).toBe(
+      false,
+    );
+    // The prediction never raises the capability on its own.
+    expect((await h.engine.capabilities()).systemAudio).toBe(false);
   });
 });
 

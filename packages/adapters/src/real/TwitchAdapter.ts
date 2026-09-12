@@ -30,25 +30,34 @@ import {
   type Timers,
   type WebSocketCtor,
 } from './websocket.js';
+import {
+  createIngestCache,
+  resolveIngest,
+  TWITCH_FALLBACK_INGEST_URL,
+  type IngestCache,
+  type ResolvedIngest,
+} from './twitchIngest.js';
 
 const DEFAULT_API_BASE = 'https://api.twitch.tv/helix';
 const DEFAULT_EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
-/**
- * UNVERIFIED: the official docs give the URL form `rtmp://<ingest-server>/app/<key>` and point
- * at GET https://ingest.twitch.tv/ingests for the server list. `rtmps://live.twitch.tv/app`
- * is widely used but only secondary-sourced, so it stays overridable.
- */
-const DEFAULT_INGEST_URL = 'rtmp://live.twitch.tv/app';
 
 export interface TwitchAdapterOptions extends RealAdapterOptions {
   /** Required on every Helix request alongside the bearer token. */
   clientId: string;
+  /**
+   * Pin the ingest URL. When set, the official ingest list is not consulted at all -- this is
+   * for tests, proxies, and a future "let the user choose the PoP" setting.
+   */
   ingestUrl?: string;
+  /** Override the ingest-list endpoint (tests, proxies). */
+  ingestListUrl?: string;
   eventSubUrl?: string;
   webSocketCtor?: WebSocketCtor;
   timers?: Timers;
   /** EventSub keepalive window in seconds (10–600 per the docs). */
   keepaliveTimeoutSeconds?: number;
+  /** Injectable clock, so the one-hour ingest cache is testable. */
+  now?: () => number;
 }
 
 interface HelixList<T> {
@@ -88,7 +97,11 @@ export class TwitchAdapter implements DestinationAdapter {
   private readonly tokenProvider: TokenProvider;
   private readonly apiBase: string;
   private readonly clientId: string;
-  private readonly ingestUrl: string;
+  private readonly ingestUrl: string | undefined;
+  private readonly ingestListUrl: string | undefined;
+  private readonly ingestCache: IngestCache = createIngestCache();
+  private readonly now: () => number;
+  private ingestNote: string | undefined;
   private readonly eventSubUrl: string;
   private readonly webSocketCtor: WebSocketCtor | undefined;
   private readonly timers: Timers;
@@ -99,7 +112,9 @@ export class TwitchAdapter implements DestinationAdapter {
     this.tokenProvider = options.tokenProvider;
     this.apiBase = options.apiBase ?? DEFAULT_API_BASE;
     this.clientId = options.clientId;
-    this.ingestUrl = options.ingestUrl ?? DEFAULT_INGEST_URL;
+    this.ingestUrl = options.ingestUrl;
+    this.ingestListUrl = options.ingestListUrl;
+    this.now = options.now ?? Date.now;
     this.eventSubUrl = options.eventSubUrl ?? DEFAULT_EVENTSUB_URL;
     this.webSocketCtor = options.webSocketCtor;
     this.timers = options.timers ?? realTimers;
@@ -108,6 +123,15 @@ export class TwitchAdapter implements DestinationAdapter {
 
   supports(capability: CapabilityKey): boolean {
     return supportsFromProfile(this.profile, capability);
+  }
+
+  /**
+   * Why the last ingest resolution fell back to the secondary-sourced default, or `undefined`
+   * when the official list was used. Non-secret by construction (PoP selection never sees the
+   * stream key), so it is safe for the diagnostics panel and for a log line.
+   */
+  get lastIngestNote(): string | undefined {
+    return this.ingestNote;
   }
 
   async disconnect(_credential: CredentialRef | undefined): Promise<void> {
@@ -332,11 +356,29 @@ export class TwitchAdapter implements DestinationAdapter {
     });
     const streamKey = body?.data?.[0]?.stream_key;
     if (!streamKey) throw new Error('Twitch did not return a stream key.');
-    return {
-      protocol: this.ingestUrl.startsWith('rtmps://') ? 'rtmps' : 'rtmp',
-      url: this.ingestUrl,
-      streamKey,
-    };
+    // Key first, PoP second: an auth failure should not cost a pointless unauthenticated request.
+    const target = await this.ingestTarget();
+    return { protocol: target.protocol, url: target.url, streamKey };
+  }
+
+  /**
+   * Which Twitch PoP to push to. An explicit `ingestUrl` wins outright; otherwise the official
+   * `GET https://ingest.twitch.tv/ingests` list decides, cached for an hour on this instance and
+   * degrading to the old default (with a note) if it cannot be read.
+   */
+  private async ingestTarget(): Promise<ResolvedIngest> {
+    const pinned = this.ingestUrl;
+    if (pinned !== undefined) {
+      return { protocol: pinned.startsWith('rtmps://') ? 'rtmps' : 'rtmp', url: pinned };
+    }
+    const resolved = await resolveIngest(this.fetch, {
+      cache: this.ingestCache,
+      now: this.now,
+      listUrl: this.ingestListUrl,
+      fallback: { protocol: 'rtmp', url: TWITCH_FALLBACK_INGEST_URL },
+    });
+    this.ingestNote = resolved.technical;
+    return { protocol: resolved.protocol, url: resolved.url };
   }
 
   private async patchChannel(

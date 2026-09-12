@@ -136,6 +136,17 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
   private recordingStopResolvers: Array<() => void> = [];
 
   private liveCaptureSucceeded = false;
+  /**
+   * Set only once a getDisplayMedia stream has actually handed us an audio track.
+   *
+   * `capabilities().systemAudio` used to be a user-agent guess, which is exactly the kind of
+   * claim this project refuses to make: MDN says browsers MAY ignore the audio hint and "the
+   * returned stream might contain no audio track even when `audio` is true", and on macOS
+   * screen capture historically returns none at all. So the capability starts `false` and is
+   * only ever raised by evidence. The guess still exists, honestly labelled, as
+   * `describeEnvironment().systemAudioLikely`.
+   */
+  private systemAudioObserved = false;
   private running = false;
 
   constructor(options: BrowserEngineOptions = {}) {
@@ -162,7 +173,9 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       screen: hasDisplay,
       // getDisplayMedia lets the user pick a window, so window capture rides on the same API.
       window: hasDisplay,
-      systemAudio: hasDisplay && probablySupportsDisplayAudio(),
+      // Evidence, not a user-agent guess: false until a display capture actually produced an
+      // audio track. `describeEnvironment().systemAudioLikely` carries the prediction.
+      systemAudio: this.systemAudioObserved,
       // Browsers have no RTMP/SRT socket. Only the desktop engine (or the relay) provides these.
       rtmp: false,
       srt: false,
@@ -181,12 +194,16 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
     relayConfigured: boolean;
     hasAudioMixing: boolean;
     hasCanvasCapture: boolean;
+    systemAudioLikely: boolean;
   } {
     return {
       recordingMimeType: pickRecordingMime(this.deps.MediaRecorderCtor),
       relayConfigured: this.relay !== undefined,
       hasAudioMixing: this.deps.AudioContextCtor !== null,
       hasCanvasCapture: typeof this.canvas?.captureStream === 'function',
+      // A prediction, not a capability: Chromium-only in practice, and even there the audio
+      // constraint is a hint. Use it to word the UI ("we will try"), never to promise.
+      systemAudioLikely: this.deps.getDisplayMedia !== null && probablySupportsDisplayAudio(),
     };
   }
 
@@ -852,6 +869,8 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       this.registerSource(layerId, kind, sourceId, stream);
       this.watchTracks(stream, 'screen', layerId, sourceId);
       const audio = stream.getAudioTracks?.() ?? [];
+      // The only honest proof that this environment can capture system audio.
+      if (audio.length > 0) this.systemAudioObserved = true;
       if (captureSystemAudio && audio.length > 0) this.systemAudioStream = stream;
       this.liveCaptureSucceeded = true;
     } catch (err) {

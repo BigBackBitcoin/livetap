@@ -198,8 +198,10 @@ in mobile browsers, and inside a worker.
   only when a Moment actually contains a visible screen/window layer, so tapping "Main Camera" never
   triggers a share dialog.
 - **System audio** is Chromium-only in practice (Firefox and Safari ignore the audio constraint).
-  `capabilities().systemAudio` uses a user-agent heuristic and is reported as best-effort, not as a
-  guarantee.
+  `capabilities().systemAudio` starts **`false`** and turns `true` only once a `getDisplayMedia`
+  stream has actually delivered an audio track (remembered for the life of the engine). The
+  user-agent guess is still available, honestly labelled, as
+  `describeEnvironment().systemAudioLikely` — use it to word the UI, never to promise the feature.
 - **Audio mixing**: an `AudioContext` with one `GainNode` per source feeding a
   `MediaStreamAudioDestinationNode`, so `micGain`, `systemGain` and mute are instantaneous. Without
   WebAudio the engine degrades to the raw mic track (no gain, no system mix) instead of failing.
@@ -243,7 +245,8 @@ The build host has no camera, no microphone, no capture device and no GPU. What 
 | One relay session per aspect ratio | **PASS** | unit test asserts 2 POSTs for 3 destinations across 2 ratios |
 | Camera loss keeps the preview alive | **PASS** | unit test ends the track and asserts the stream, loop and notice |
 | Real camera / microphone capture | **UNVERIFIED** | no device on this host |
-| Real screen and system-audio capture | **UNVERIFIED** | no display session on this host |
+| Real screen capture | **UNVERIFIED** | no display session on this host |
+| Real system-audio capture | **UNVERIFIED**, and now reported as such at runtime | `capabilities().systemAudio` is `false` until a display capture yields an audio track, then `true`; the user-agent guess is quarantined in `describeEnvironment().systemAudioLikely` (unit-tested both ways with a fake `getDisplayMedia`) |
 | `canvas.captureStream()` frame pacing at 1080p30/60 | **UNVERIFIED** | needs a real browser |
 | WebCodecs hardware encoder (`hardwareAcceleration: 'prefer-hardware'`) | **UNVERIFIED** | probed at runtime via `VideoEncoder.isConfigSupported`; no GPU here, so the probe reports nothing and `hardwareEncoders` stays empty |
 | A real WHIP handshake against MediaMTX / a platform ingest | **UNVERIFIED** | no network ingest available |
