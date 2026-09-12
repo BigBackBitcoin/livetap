@@ -1,6 +1,6 @@
 # HANDOFF — LIVETAP release candidate
 
-Status: DRAFT (being finalized during Phase 11). Everything below is verified on the build host
+Status: FINAL for the autonomous portion (2026-09-12). Release audit: docs/release/RELEASE_AUDIT.md. Everything below is verified on the build host
 unless labelled otherwise; see IMPLEMENTATION_STATUS.md for per-area labels and BLOCKERS.md for the
 human dependency queue.
 
@@ -38,6 +38,18 @@ human dependency queue.
 5. Destinations → Add → Custom RTMP: a malformed server address is refused inline; a valid one reaches READY.
 
 Local: `npm install && npm run dev:web` (http://localhost:5173); `npm test`; `npm run e2e -w @livetap/web`.
+
+## Review outcomes
+
+- Security (docs/qa/SECURITY_REVIEW.md): 4 release-blocking findings fixed with regression tests — stream keys were written to the desktop log on every go-live; relay hook quoting allowed a backslash escape; a trailing-space URL bypassed validation; relay destinations could reach internal addresses (SSRF). Open: `style-src 'unsafe-inline'`, relay cleartext default behind a proxy.
+- Product (docs/qa/PRODUCT_REVIEW.md): verdict was NOT-YET on first look; 7 P0 + 15 P1 fixed (END was dead while live, error cards rendered off-screen, GO LIVE below the fold, over-claiming landing, developer vocabulary, reload honesty, hidden mobile nav). 15 P2 polish items open.
+- Desktop smoke (Playwright Electron): the packaged shell opens in onboarding under hash routing.
+
+## Desktop test instructions
+
+1. `npm run build -w @livetap/desktop` then `node apps/desktop/e2e/smoke.mjs` (needs the Electron binary; on Node < 20.19 run `node node_modules/electron/install.js` with Node 22 first).
+2. Unsigned installer: `npm run package:win -w @livetap/desktop` (Node ≥ 20.19) → `apps/desktop/release/LIVETAP-0.1.0-win-x64.exe`; drop an FFmpeg binary at `apps/desktop/resources/ffmpeg/win/ffmpeg.exe` before packaging to enable streaming.
+3. Engine verification on a machine with FFmpeg: `npm run verify:engine -w @livetap/desktop`.
 
 ## Known limitations (honest)
 
