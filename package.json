@@ -1,0 +1,36 @@
+{
+  "name": "livetap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LIVETAP — Connect your accounts. Pick where you want to go live. Tap GO LIVE.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build -w @livetap/web",
+    "dev:web": "npm run dev -w @livetap/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -b tsconfig.json",
+    "lint": "eslint .",
+    "e2e": "npm run e2e -w @livetap/web",
+    "audit:deps": "npm audit --audit-level=high",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build:web"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "^3.2.7",
+    "eslint": "^9.39.0",
+    "happy-dom": "^20.14.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.7"
+  }
+}

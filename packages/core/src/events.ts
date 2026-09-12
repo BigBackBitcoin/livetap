@@ -1,0 +1,52 @@
+/**
+ * Minimal typed event emitter with no external dependencies.
+ * Works identically in browser, Electron renderer/main, and Node test environments.
+ */
+export type Listener<T> = (payload: T) => void;
+
+export class TypedEmitter<Events extends Record<string, unknown>> {
+  private listeners = new Map<keyof Events, Set<Listener<never>>>();
+
+  on<K extends keyof Events>(event: K, listener: Listener<Events[K]>): () => void {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
+    }
+    set.add(listener as Listener<never>);
+    return () => this.off(event, listener);
+  }
+
+  once<K extends keyof Events>(event: K, listener: Listener<Events[K]>): () => void {
+    const off = this.on(event, (payload) => {
+      off();
+      listener(payload);
+    });
+    return off;
+  }
+
+  off<K extends keyof Events>(event: K, listener: Listener<Events[K]>): void {
+    this.listeners.get(event)?.delete(listener as Listener<never>);
+  }
+
+  emit<K extends keyof Events>(event: K, payload: Events[K]): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    for (const listener of Array.from(set)) {
+      try {
+        (listener as Listener<Events[K]>)(payload);
+      } catch (err) {
+        // A misbehaving listener must never break the emitter or sibling listeners.
+        console.error(`[livetap] listener for "${String(event)}" threw`, err);
+      }
+    }
+  }
+
+  listenerCount<K extends keyof Events>(event: K): number {
+    return this.listeners.get(event)?.size ?? 0;
+  }
+
+  removeAllListeners(): void {
+    this.listeners.clear();
+  }
+}

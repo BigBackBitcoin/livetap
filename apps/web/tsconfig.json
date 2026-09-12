@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "composite": true, "rootDir": ".", "outDir": "dist-types", "emitDeclarationOnly": true, "declaration": true, "types": ["vite/client", "node"] },
+  "include": ["src", "api", "vite.config.ts", "e2e"],
+  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/adapters" }, { "path": "../../packages/media" }, { "path": "../../packages/ui" }]
+}
