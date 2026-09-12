@@ -58,8 +58,8 @@ npm audit                       → 0 high / 0 critical
 - No camera/mic/GPU on the host; capture and hardware encoders are UNVERIFIED (software path PASS).
 - Desktop builds are unsigned; the guarded update check fails closed until certificates exist.
 - Mobile native code has never been compiled; projects are CI-ready (workflows parked, B-001).
-- Landing JS ≈ 90 KB gzipped vs the 60 KB target (React DOM alone is 69 KB).
-- 15 P2 polish items remain open in docs/qa/PRODUCT_REVIEW.md; `style-src 'unsafe-inline'` remains in the CSP; relay defaults to cleartext behind a reverse proxy.
+- Public page JS 46 KB gzipped (was 90 KB before the redesign; budget 60 KB).
+- All P2 polish items are fixed; the CSP allows inline style ATTRIBUTES only (`style-src-attr`) for two packages/ui components; the relay ships a Caddy TLS profile (opt-in).
 - Vertical-as-intent vs orientation control, and Kick launch timing, are owner decisions (HANDOFF.md).
 
 ## 5. Verdict
