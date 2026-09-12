@@ -23,8 +23,10 @@ The security model is documented in `docs/security/THREAT_MODEL.md` and
   arrays; user input never reaches a shell.
 - **Network** — HTTPS/RTMPS/WSS by default. Plain RTMP is allowed only for custom destinations the
   user explicitly configures.
-- **Updates** — desktop updates are signed and verified (electron-updater) once signing
-  certificates are configured; see `docs/release/DESKTOP_RELEASE.md`.
+- **Updates** — packaged desktop builds run a guarded electron-updater check (no auto-download,
+  no downgrade, no prerelease). Updates are only ever applied when the publisher signature verifies,
+  which requires the signing certificates in `docs/release/DESKTOP_RELEASE.md`; until then the check
+  fails closed and nothing is applied.
 
 ## Supported versions
 
