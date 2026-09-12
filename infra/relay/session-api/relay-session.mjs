@@ -20,12 +20,20 @@
  * ---------------------------------------------------------------------
  * 1. Stream keys are NEVER logged. `redactIngest()` is the only way a
  *    destination may reach a log line. There is no debug flag that disables it.
- * 2. `validateIngest()` rejects shell metacharacters in URLs and stream keys.
- *    This is not cosmetic: MediaMTX executes `runOnAvailable` through `sh -c`,
- *    so an unfiltered quote or semicolon in a stream key would be remote code
- *    execution on the relay. The character whitelist IS the sandbox.
- * 3. Bearer auth is compared in constant time to blunt timing oracles.
- * 4. The MediaMTX Control API credential is separate from the publisher
+ * 2. `validateIngest()` admits only an ALLOW-LIST of characters in URLs and
+ *    stream keys, and validates the RAW value (never a trimmed copy). This is
+ *    not cosmetic: MediaMTX executes `runOnAvailable` through `sh -c`, so an
+ *    unfiltered quote, backslash or semicolon in a stream key is a candidate
+ *    for remote code execution on the relay.
+ * 3. `buildHookCommand()` POSIX-quotes every interpolated value with
+ *    `shQuote()`, so the command's STRUCTURE does not depend on caller input
+ *    even if (2) is ever relaxed. Both layers are required; neither is enough.
+ * 4. Destinations on private/loopback/link-local hosts are refused unless
+ *    LIVETAP_RELAY_ALLOW_PRIVATE_DESTINATIONS=1, because the relay opens the
+ *    outbound connection and would otherwise be an SSRF pivot into the compose
+ *    network (mediamtx:9997 holds every user's keys) and cloud metadata.
+ * 5. Bearer auth is compared in constant time to blunt timing oracles.
+ * 6. The MediaMTX Control API credential is separate from the publisher
  *    credential, so a leaked browser token cannot reconfigure the relay.
  *
  * The validation rules are a deliberate, self-contained REIMPLEMENTATION of
@@ -70,6 +78,9 @@ export function loadConfig(env = process.env) {
     // (~30% of a core per session at 1080x1920, measured — see
     // docs/qa/RELAY_VERIFICATION.md T9) and must be a deliberate choice.
     verticalTranscode: env.LIVETAP_ENABLE_VERTICAL_TRANSCODE === '1',
+    // SEC-R3: opt-in escape hatch for a relay deliberately forwarding to its
+    // own LAN. Off by default; see isPrivateDestinationHost().
+    allowPrivateDestinations: env.LIVETAP_RELAY_ALLOW_PRIVATE_DESTINATIONS === '1',
     audioBitrate: env.LIVETAP_RELAY_AUDIO_BITRATE ?? '128k',
     verticalVideoBitrate: env.LIVETAP_RELAY_VERTICAL_BITRATE ?? '3000k',
   };
@@ -82,29 +93,98 @@ export function loadConfig(env = process.env) {
 const RTMP_RE = /^rtmps?:\/\/[^\s/]+(\/[^\s]*)?$/i;
 const SRT_RE = /^srt:\/\/[^\s/]+:\d{1,5}(\?[^\s]*)?$/i;
 const WHIP_RE = /^https:\/\/[^\s]+$/i;
-/** Characters that would break out of the `sh -c` hook command. */
-const UNSAFE_RE = /[\s"'`$;|&<>]/;
+/**
+ * ALLOW-LIST, not a deny-list.
+ *
+ * SEC-R1 (2026-09, security review): the previous rule was a deny-list,
+ * `/[\s"'`$;|&<>]/`, and it let a backslash through. A stream key ending in
+ * `\` lands immediately before the closing double quote of the tee argument in
+ * the generated hook command, escapes it, and desynchronises the quoting of the
+ * whole `sh -c` string — proven with `sh -n`, which reports
+ * "unexpected EOF while looking for matching `"'" and refuses to run the hook.
+ * No command injection was reachable with today's command layout (the only
+ * text that fell outside quotes was our own literal fifo options), but the sole
+ * thing standing between that bug and RCE was the accident of that layout.
+ *
+ * Two independent fixes, both load-bearing:
+ *   1. this allow-list, which admits only characters that appear in real RTMP
+ *      URLs and stream keys, and
+ *   2. `shQuote()` in buildHookCommand, which POSIX-quotes every interpolated
+ *      value so the command's structure no longer depends on the input at all.
+ *
+ * Keep both. Either one alone is one bug away from remote code execution on the
+ * relay host.
+ */
+// Everything a real RTMP/RTMPS/SRT/WHIP URL needs and nothing else. `?`, `=`
+// and `&` are here because SRT carries streamid/passphrase as query parameters.
+const URL_ALLOWED_RE = /^[A-Za-z0-9._~:/?#=&%@+-]+$/;
+// Stream keys are appended to the URL, so `&`, `?` and `#` are excluded: they
+// would let a key grow a query parameter or truncate the URL at a fragment.
+const KEY_ALLOWED_RE = /^[A-Za-z0-9._~:/=%@+-]+$/;
+/**
+ * Characters that may never appear in either field, in any position: a superset
+ * of the shell's metacharacters plus the glob characters, so the value stays
+ * inert even in a future code path that forgets to quote it.
+ */
+const UNSAFE_RE = /[\s"'`$;|<>\\(){}^*[\]]/;
 
 const ASPECT_RATIOS = new Set(['16:9', '9:16', '1:1']);
 
+/**
+ * Reject a value that is not a plain string, or that carries leading/trailing
+ * whitespace.
+ *
+ * SEC-R2: the old code validated `(ingest.url ?? '').trim()` but
+ * `composeRtmpPublishUrl` used the RAW `ingest.url`, so `"rtmp://host/app "`
+ * passed the "no whitespace" rule and still reached FFmpeg with the space
+ * attached — exactly the separator librtmp uses to start parsing
+ * `tcUrl=`/`playpath=`/`conn=` options. Validate what we will actually use.
+ */
+function checkString(value, what, errors) {
+  if (typeof value !== 'string') {
+    errors.push(`${what} must be text.`);
+    return null;
+  }
+  if (value !== value.trim()) {
+    errors.push(`${what} must not start or end with whitespace.`);
+    return null;
+  }
+  if (value.length > 2048) {
+    errors.push(`${what} is too long.`);
+    return null;
+  }
+  return value;
+}
+
 export function validateIngest(ingest) {
   const errors = [];
-  if (!ingest) return { ok: false, errors: ['No stream settings provided.'] };
-  const url = (ingest.url ?? '').trim();
+  if (!ingest || typeof ingest !== 'object') return { ok: false, errors: ['No stream settings provided.'] };
+  // NOTE: the raw value, never a trimmed copy — see checkString().
+  const url = ingest.url === undefined ? '' : checkString(ingest.url, 'Stream URL', errors);
+  if (url === null) return { ok: false, errors };
   if (!url) errors.push('Stream URL is required.');
-  if (UNSAFE_RE.test(url)) errors.push('Stream URL contains characters that are not allowed.');
+  if (url && (UNSAFE_RE.test(url) || !URL_ALLOWED_RE.test(url))) {
+    errors.push('Stream URL contains characters that are not allowed.');
+  }
   switch (ingest.protocol) {
     case 'rtmp':
-    case 'rtmps':
+    case 'rtmps': {
       if (url && !RTMP_RE.test(url)) errors.push('Stream URL must start with rtmp:// or rtmps://.');
       if (ingest.protocol === 'rtmps' && url && !/^rtmps:\/\//i.test(url)) {
         errors.push('RTMPS destinations must use rtmps://.');
       }
-      if (!ingest.streamKey || !ingest.streamKey.trim()) errors.push('Stream key is required.');
-      if (ingest.streamKey && UNSAFE_RE.test(ingest.streamKey)) {
+      if (ingest.streamKey === undefined || ingest.streamKey === null || ingest.streamKey === '') {
+        errors.push('Stream key is required.');
+        break;
+      }
+      const key = checkString(ingest.streamKey, 'Stream key', errors);
+      if (key === null) break;
+      if (!key) errors.push('Stream key is required.');
+      if (key && (UNSAFE_RE.test(key) || !KEY_ALLOWED_RE.test(key))) {
         errors.push('Stream key contains characters that are not allowed.');
       }
       break;
+    }
     case 'srt':
       if (url && !SRT_RE.test(url)) errors.push('SRT URL must look like srt://host:port.');
       break;
@@ -115,6 +195,36 @@ export function validateIngest(ingest) {
       errors.push('Unknown protocol.');
   }
   return { ok: errors.length === 0, errors };
+}
+
+/**
+ * Hosts the relay refuses to forward to unless explicitly told otherwise.
+ *
+ * SEC-R3: the relay is a server that opens an outbound TCP connection to a host
+ * the *caller* chose. Without this it is a general-purpose SSRF pivot into the
+ * compose network (`mediamtx:9997`, whose Control API holds every user's stream
+ * keys), into the host's loopback, and into cloud metadata at 169.254.169.254.
+ * Set LIVETAP_RELAY_ALLOW_PRIVATE_DESTINATIONS=1 only on a relay that is
+ * deliberately forwarding to something on its own LAN.
+ */
+const PRIVATE_HOST_RE =
+  /^(localhost|.*\.local|.*\.internal|0\.0\.0\.0|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|\[?::1\]?|\[?f[cd][0-9a-f]{2}:.*)$/i;
+
+export function isPrivateDestinationHost(host) {
+  if (typeof host !== 'string' || host === '') return true;
+  // A bare hostname with no dot is a container/service name on a private network.
+  const bare = host.replace(/:\d+$/, '').toLowerCase();
+  if (!bare.includes('.') && !bare.includes(':')) return true;
+  return PRIVATE_HOST_RE.test(bare);
+}
+
+/** Host[:port] portion of an already-validated rtmp/rtmps/srt/https URL. */
+export function destinationHost(url) {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)$|^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)[/?#]/i.exec(String(url));
+  const authority = m ? (m[1] ?? m[2] ?? '') : '';
+  // Strip userinfo if any survived validation.
+  const at = authority.lastIndexOf('@');
+  return at === -1 ? authority : authority.slice(at + 1);
 }
 
 /** Redact secrets from a destination before it is allowed anywhere near a log. */
@@ -167,6 +277,13 @@ export function validateRequest(body, cfg) {
           'Set LIVETAP_ENABLE_VERTICAL_TRANSCODE=1 on the relay to enable it.',
       );
     }
+    if (res.ok && !cfg.allowPrivateDestinations && isPrivateDestinationHost(destinationHost(d.url))) {
+      // Never echo the host back: it is caller input and the message reaches a log.
+      errors.push(
+        `destinations[${i}]: this relay refuses to forward to a private, loopback or ` +
+          'link-local address. Set LIVETAP_RELAY_ALLOW_PRIVATE_DESTINATIONS=1 if that is intended.',
+      );
+    }
     if (d.protocol === 'srt' || d.protocol === 'whip') {
       errors.push(
         `destinations[${i}]: the relay forwards to RTMP/RTMPS only. ` +
@@ -217,9 +334,27 @@ export function validateRequest(body, cfg) {
 /** Per-output reconnect + backpressure. Verified: MEDIA_ENGINE_EVALUATION 9.6. */
 const FIFO_OPTIONS =
   'attempt_recovery=1:recovery_wait_time=1:recover_any_error=1:drop_pkts_on_overflow=1:queue_size=120';
+/**
+ * POSIX single-quote one shell word.
+ *
+ * SEC-R1: the hook command is executed by MediaMTX through `sh -c`, so every
+ * interpolated value must be quoted in a way whose result cannot depend on the
+ * value. Single quotes are literal in `sh` for every byte except `'` itself,
+ * which is closed, escaped and reopened. The allow-list in validateIngest()
+ * already rejects quotes and backslashes; this makes the command's STRUCTURE
+ * independent of the input regardless, so a future relaxation of the
+ * allow-list cannot turn into command injection.
+ */
+export function shQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 export function buildHookCommand(sessionId, destinations, cfg) {
+  // `$RTSP_PORT` / `$MTX_PATH` are MediaMTX's own environment variables and must
+  // stay expandable, so this one value is double-quoted rather than shQuote'd.
+  // Everything inside it is operator configuration, never caller input.
   const rtspUrl =
-    `rtsp://${cfg.hookUser}:${cfg.hookPassword}@127.0.0.1:$RTSP_PORT/$MTX_PATH`;
+    `"rtsp://${cfg.hookUser}:${cfg.hookPassword}@127.0.0.1:$RTSP_PORT/$MTX_PATH"`;
 
   const teeTarget = (d) => `[f=flv:onfail=ignore]${composeRtmpPublishUrl(d)}`;
 
@@ -250,8 +385,8 @@ export function buildHookCommand(sessionId, destinations, cfg) {
       '-max_interleave_delta', '0',
       '-f', 'tee',
       '-use_fifo', '1',
-      '-fifo_options', `"${FIFO_OPTIONS}"`,
-      `"${flat.map(teeTarget).join('|')}"`,
+      '-fifo_options', shQuote(FIFO_OPTIONS),
+      shQuote(flat.map(teeTarget).join('|')),
     );
   }
 
@@ -276,8 +411,8 @@ export function buildHookCommand(sessionId, destinations, cfg) {
       '-max_interleave_delta', '0',
       '-f', 'tee',
       '-use_fifo', '1',
-      '-fifo_options', `"${FIFO_OPTIONS}"`,
-      `"${vertical.map(teeTarget).join('|')}"`,
+      '-fifo_options', shQuote(FIFO_OPTIONS),
+      shQuote(vertical.map(teeTarget).join('|')),
     );
   }
 

@@ -36,7 +36,7 @@ import path from 'node:path';
 
 import type { AspectRatio, ErrorCode, IngestTarget } from '@livetap/core';
 import type { EngineCapabilities, EngineMetrics, OutputFormat, RecordingSettings } from '@livetap/core';
-import { redactIngest, validateIngest } from '@livetap/core';
+import { redactArgv, redactIngest, redactSecrets, validateIngest } from '@livetap/core';
 
 import type { DesktopEngineEvent, DesktopEngineOutput, DesktopStartRequest } from '../../shared/ipc.js';
 import { ArgvRefusedError, buildEncoderArgv, buildRecordingArgv, buildSenderArgv, recordingExtension } from './argv.js';
@@ -567,9 +567,11 @@ export class FfmpegEngine {
     for (const line of logs) {
       const code = classifyStderrLine(line);
       if (code === null) continue;
-      this.log.warn('encoder stderr', { aspect: state.aspectRatio, line });
+      // SEC-D3: FFmpeg echoes the full publish URL in most connection errors.
+      const safe = redactSecrets(line);
+      this.log.warn('encoder stderr', { aspect: state.aspectRatio, line: safe });
       // An encoder-level failure affects every destination on this format, so it is an engineError.
-      this.emit({ type: 'engineError', code: code === 'UNKNOWN' ? 'ENCODER_FAILED' : code, technical: line });
+      this.emit({ type: 'engineError', code: code === 'UNKNOWN' ? 'ENCODER_FAILED' : code, technical: safe });
     }
   }
 
@@ -601,8 +603,11 @@ export class FfmpegEngine {
       const code = classifyStderrLine(line);
       if (code === null) continue;
       state.lastErrorCode = code;
-      state.lastErrorText = line;
-      this.log.warn('sender stderr', { destinationId: state.destinationId, line });
+      // SEC-D3: `lastErrorText` reaches error toasts and the diagnostics export,
+      // and an RTMP failure line carries the whole publish URL. Redact once,
+      // here, so no downstream consumer has to remember to.
+      state.lastErrorText = redactSecrets(line);
+      this.log.warn('sender stderr', { destinationId: state.destinationId, line: state.lastErrorText });
     }
   }
 
@@ -611,7 +616,7 @@ export class FfmpegEngine {
     for (const line of logs) {
       const code = classifyStderrLine(line);
       if (code === null) continue;
-      this.log.warn('recorder stderr', { line });
+      this.log.warn('recorder stderr', { line: redactSecrets(line) });
       if (code === 'DISK_FULL') this.emit({ type: 'recording', state: 'failed', code: 'DISK_FULL' });
     }
   }
@@ -750,7 +755,10 @@ export class FfmpegEngine {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     }) as ChildProcessWithoutNullStreams;
-    this.log.info(`${role} spawn`, { argv: argv.join(' '), pid: child.pid });
+    // SEC-D3: NEVER log a raw argv. A sender's last element is
+    // `rtmp://host/app/<STREAM KEY>`, and this line runs at `info`, which the
+    // electron-log FILE transport writes to disk on every broadcast.
+    this.log.info(`${role} spawn`, { argv: redactArgv(argv).join(' '), pid: child.pid });
     return child;
   }
 

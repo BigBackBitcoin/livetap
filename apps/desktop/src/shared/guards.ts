@@ -82,6 +82,12 @@ export function isSafeRelativePath(value: unknown): value is string {
   if (value.includes('\0')) return false;
   if (value.startsWith('/') || value.startsWith('\\')) return false;
   if (/^[A-Za-z]:/.test(value)) return false;
+  // SEC-D5: a colon ANYWHERE, not just as a drive letter. On Windows
+  // `recording.mp4:payload.exe` names an NTFS alternate data stream, which
+  // `path.resolve` happily keeps "inside" the recordings directory and
+  // `shell.openPath` would then execute. LIVETAP's own recording filenames
+  // replace `:` (see FfmpegEngine.startRecording), so nothing legitimate needs it.
+  if (value.includes(':')) return false;
   // Split WITHOUT collapsing runs of separators, so `a//b` is rejected for its empty segment.
   const segments = value.split(/[\\/]/);
   for (const segment of segments) {

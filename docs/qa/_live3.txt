@@ -1,0 +1,81 @@
+Skip to the main screen
+Studio
+Moments
+Destinations
+Recordings
+Settings
+Pro mode
+Pro mode adds encoder, layer and diagnostic controls. Nothing is hidden.
+Demo mode — every destination here is simulated. LIVETAP is not broadcasting anywhere.
+Manage demo destinations
+Live
+
+Conversation: a plain background, with your camera inset, with a web page.
+
+16:9
+Locked while you are live — platforms cannot change format mid-stream.
+9:16
+Locked while you are live — platforms cannot change format mid-stream.
+1:1
+Locked while you are live — platforms cannot change format mid-stream.
+Waiting for stream data
+Rec off
+Moments
+⏳
+Starting Soon
+🎥
+Main Camera
+🖥️
+Screen Share
+👥
+Conversation
+Viewers see this
+☕
+Break
+👋
+Ending
+Camera, microphone and screen
+Camera
+No camera
+Microphone
+No microphone
+Mute
+
+Say something — the level should move
+
+Share my screen
+
+Not sharing · switching now shows a brief cut to viewers
+
+YouTube · Starting
+Telling YouTube you're live…
+Demo
+Twitch · Live
+Sending to this destination
+Demo
+TikTok · Starting
+Telling TikTok you're live…
+Demo
+Waiting for stream data — Health appears once the encoder starts sending.
+END
+00:00
+No destination is ready — that is the one thing LIVETAP cannot do for you.
+
+Live on 1
+
+Chat
+Destinations
+Health
+This stream
+YouTube · Starting
+Telling YouTube you're live…
+Demo
+Twitch · Live
+Sending to this destination
+Demo
+Stop this destination
+TikTok · Starting
+Telling TikTok you're live…
+Demo
+Manage destinations
+You are live on 1 destination.

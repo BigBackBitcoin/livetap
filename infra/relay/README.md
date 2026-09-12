@@ -213,10 +213,47 @@ password on its own cannot push media anywhere.
 ### Shell-injection surface
 
 `runOnAvailable` is executed through `sh -c`, and it contains user-supplied
-URLs and stream keys. The character whitelist in `validateIngest()`
-(rejecting ``[\s"'`$;|&<>]``) is therefore a **security control, not input
-polish**. Do not relax it. `relay-session.test.mjs` pins it with explicit
-injection payloads.
+URLs and stream keys. **Two independent controls** stand between that and
+remote code execution on the relay host, and both are security controls, not
+input polish:
+
+1. **An allow-list in `validateIngest()`** (`URL_ALLOWED_RE` / `KEY_ALLOWED_RE`
+   plus `UNSAFE_RE`), applied to the RAW value — never to a trimmed copy.
+2. **`shQuote()` in `buildHookCommand()`**, which POSIX single-quotes every
+   interpolated value so the command's structure cannot depend on the input.
+
+Keep both. The security review of 2026-09 found that the previous deny-list
+let a backslash through: a stream key ending in a backslash sat immediately
+before the closing double quote of the tee argument, escaped it, and
+desynchronised the quoting of the whole command. `sh -n` reported
+"unexpected EOF while looking for matching quote" and the hook simply never ran
+— a silent broadcast failure. Command injection was not reachable with the
+command layout of the day, but nothing except that layout prevented it.
+
+The same review found that `validateIngest()` checked `url.trim()` while
+`composeRtmpPublishUrl()` used the raw `url`, so `rtmp://host/app ` (trailing
+space) validated "ok" and reached FFmpeg with the space still attached — which
+is exactly where librtmp begins parsing `tcUrl=` / `playpath=` / `conn=`
+options.
+
+`relay-session.test.mjs` pins all of this with explicit `SEC-R1` / `SEC-R2`
+payloads, including a shell round-trip assertion that a hostile value survives
+as one literal argv element.
+
+### Server-side request forgery (SSRF)
+
+The relay opens the outbound connection, to a host **the caller chose**.
+Without a gate it is a general-purpose pivot: `rtmp://mediamtx:9997/...` reaches
+the Control API that holds every connected user's stream keys,
+`rtmp://169.254.169.254/...` reaches cloud instance metadata, and
+`rtmp://10.x.x.x/...` reaches the operator's LAN.
+
+`validateRequest()` therefore refuses destinations on loopback, RFC 1918,
+link-local, `.local` / `.internal` and bare (dot-less) hostnames. The error
+never echoes the host back, because that message reaches a log line.
+
+Set `LIVETAP_RELAY_ALLOW_PRIVATE_DESTINATIONS=1` **only** on a relay that is
+deliberately forwarding to something on its own network.
 
 ### TLS
 

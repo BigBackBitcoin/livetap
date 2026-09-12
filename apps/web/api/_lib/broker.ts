@@ -107,12 +107,68 @@ export class BrokerError extends Error {
 
 const REDIRECT_RE = /^(https:\/\/[^\s/]+\/[^\s]*|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/[^\s]*|livetap:\/\/[^\s]*)$/i;
 
-export function validateExchangeInput(body: unknown): ExchangeInput {
+/**
+ * Is this a redirect_uri this deployment is willing to forward to the platform?
+ *
+ * `redirect_uri` is not a redirect the broker performs -- it is echoed to the
+ * token endpoint, which refuses it unless it matches the one used in the
+ * authorization request AND is registered on the OAuth client. So an arbitrary
+ * https host here is not an open redirect. It is still worth pinning:
+ *
+ *  - it keeps this deployment's client secret from being usable in an exchange
+ *    that some other site started, which is what would let a third party mint
+ *    tokens on our client id if a platform ever relaxed its own check;
+ *  - it makes the accepted set auditable instead of "any https URL on earth".
+ *
+ * Accepted: the deployment's own origin (`host`), RFC 8252 loopback for the
+ * desktop app's ephemeral-port listener, and the `livetap://` private-use
+ * scheme for platforms that only allow a fixed redirect.
+ */
+export function isAllowedRedirectUri(redirectUri: string, host?: string): boolean {
+  if (!REDIRECT_RE.test(redirectUri)) return false;
+  if (/^livetap:\/\//i.test(redirectUri)) return true;
+  let url: URL;
+  try {
+    url = new URL(redirectUri);
+  } catch {
+    return false;
+  }
+  if (url.protocol === 'http:') {
+    // Loopback only, and only literal addresses -- never a name DNS could move.
+    return url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]';
+  }
+  if (url.protocol !== 'https:') return false;
+  // No host to compare against (unit tests, a caller that did not pass one):
+  // fall back to the shape check rather than failing on a comparison we cannot make.
+  if (!host) return true;
+  return url.host.toLowerCase() === host.toLowerCase();
+}
+
+/**
+ * The host this deployment is being served as.
+ *
+ * `x-forwarded-host` is preferred because a custom domain in front of Vercel
+ * leaves `host` as the platform hostname while the SPA's origin (and therefore
+ * its redirect_uri) is the custom domain. Trusting a client-settable header
+ * here is acceptable ONLY because of what this value gates: it narrows which
+ * redirect_uri we are willing to FORWARD, and the platform independently
+ * refuses any redirect_uri that is not registered on the OAuth client. A
+ * forged header therefore buys an attacker a rejection from the platform
+ * instead of a rejection from us -- never a token.
+ */
+export function requestHost(req: Request): string | undefined {
+  const forwarded = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+  return forwarded || req.headers.get('host') || undefined;
+}
+
+export function validateExchangeInput(body: unknown, host?: string): ExchangeInput {
   if (!body || typeof body !== 'object') throw new BrokerError(400, 'Body must be a JSON object.', 'BAD_REQUEST');
   const b = body as Record<string, unknown>;
   if (!isBrokerPlatform(b.platform)) throw new BrokerError(400, 'Unknown platform.', 'BAD_REQUEST');
   if (typeof b.code !== 'string' || b.code.length < 4 || b.code.length > 2048) throw new BrokerError(400, 'Missing code.', 'BAD_REQUEST');
-  if (typeof b.redirectUri !== 'string' || !REDIRECT_RE.test(b.redirectUri)) throw new BrokerError(400, 'Invalid redirectUri.', 'BAD_REQUEST');
+  if (typeof b.redirectUri !== 'string' || !isAllowedRedirectUri(b.redirectUri, host)) {
+    throw new BrokerError(400, 'Invalid redirectUri.', 'BAD_REQUEST');
+  }
   if (b.codeVerifier !== undefined && (typeof b.codeVerifier !== 'string' || !/^[A-Za-z0-9._~-]{43,128}$/.test(b.codeVerifier))) {
     throw new BrokerError(400, 'Invalid codeVerifier.', 'BAD_REQUEST');
   }
@@ -209,8 +265,35 @@ export function errorResponse(err: unknown): Response {
   return json(500, { error: 'INTERNAL', message: 'Unexpected error.' });
 }
 
-/** Same-origin check: browsers send Origin on cross-origin POSTs; we only accept our own origin or none (curl/tests). */
+/**
+ * Same-origin check.
+ *
+ * Why "no Origin header" is allowed, and why that is not a CSRF hole:
+ *
+ *  - The broker has NO ambient authority. There is no cookie, no session, no
+ *    server-side state keyed to a user. A forged cross-site request would be
+ *    the attacker exchanging the attacker's own authorization code, and CORS
+ *    would stop them reading the response. There is nothing for CSRF to steal.
+ *  - A browser cannot reach these handlers cross-site without sending `Origin`
+ *    anyway. `readJsonBody` requires `Content-Type: application/json`, which is
+ *    not a CORS-simple type, so the request is preflighted; the function
+ *    returns no `Access-Control-Allow-*` headers, so the preflight fails and
+ *    the POST is never sent. A `<form>` POST needs no preflight but cannot set
+ *    that content type, and is refused with 415.
+ *  - Omitting `Origin` is therefore only possible for a non-browser client
+ *    (curl, the desktop app, tests). That is deliberate: the desktop app posts
+ *    here for confidential-client exchanges and has no web origin to send.
+ *
+ * `Sec-Fetch-Site` is checked as a second, independent signal. Every current
+ * browser sends it on every request and page script cannot forge it, so a
+ * cross-site (or same-site-but-different-origin) fetch is refused even if some
+ * future proxy strips `Origin`. Absent, it falls through to the Origin check.
+ */
 export function assertSameOrigin(req: Request): void {
+  const fetchSite = req.headers.get('sec-fetch-site');
+  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+    throw new BrokerError(403, 'Cross-origin requests are not allowed.', 'BAD_REQUEST');
+  }
   const origin = req.headers.get('origin');
   if (!origin) return;
   const host = req.headers.get('host');
@@ -221,6 +304,60 @@ export function assertSameOrigin(req: Request): void {
     throw new BrokerError(403, 'Bad origin.', 'BAD_REQUEST');
   }
   if (!host || originHost !== host) throw new BrokerError(403, 'Cross-origin requests are not allowed.', 'BAD_REQUEST');
+}
+
+/* ------------------------------------------------------------- rate limiting
+
+ * A best-effort, per-instance, in-memory token bucket.
+ *
+ * BE HONEST ABOUT WHAT THIS IS. Vercel runs these functions in many isolated
+ * instances and recycles them freely, so this map is NOT a global rate limit:
+ * an attacker with enough concurrency gets roughly (limit x live instances),
+ * and a cold start resets the counter. It is still worth having -- it stops one
+ * warm instance being used as a free brute-force oracle against a platform's
+ * token endpoint, and it costs nothing -- but it is NOT a defence against a
+ * distributed attacker.
+ *
+ * A real limit needs shared state (Vercel KV / Upstash Redis / a Durable
+ * Object) keyed on the client IP. That is tracked as an OPEN finding, SEC-W3,
+ * in docs/qa/SECURITY_REVIEW.md. Do not mistake this for it.
+ */
+export const RATE_LIMIT_MAX = 20;
+export const RATE_LIMIT_WINDOW_MS = 60_000;
+const buckets = new Map<string, { count: number; resetAt: number }>();
+
+/** Client identity for the limiter: the first hop in x-forwarded-for, else one shared bucket. */
+export function rateLimitKey(req: Request): string {
+  const forwarded = req.headers.get('x-forwarded-for') ?? '';
+  const first = forwarded.split(',')[0]?.trim();
+  return first && first.length <= 64 ? first : 'unknown';
+}
+
+export function assertWithinRateLimit(
+  req: Request,
+  now: number = Date.now(),
+  max: number = RATE_LIMIT_MAX,
+  windowMs: number = RATE_LIMIT_WINDOW_MS,
+): void {
+  const key = rateLimitKey(req);
+  // Opportunistic sweep so a long-lived instance cannot grow the map without bound.
+  if (buckets.size > 10_000) {
+    for (const [k, v] of buckets) if (v.resetAt <= now) buckets.delete(k);
+  }
+  const bucket = buckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    buckets.set(key, { count: 1, resetAt: now + windowMs });
+    return;
+  }
+  bucket.count += 1;
+  if (bucket.count > max) {
+    throw new BrokerError(429, 'Too many sign-in attempts. Wait a minute and try again.', 'RATE_LIMITED');
+  }
+}
+
+/** Test-only: forget every bucket. */
+export function resetRateLimit(): void {
+  buckets.clear();
 }
 
 export async function readJsonBody(req: Request): Promise<unknown> {

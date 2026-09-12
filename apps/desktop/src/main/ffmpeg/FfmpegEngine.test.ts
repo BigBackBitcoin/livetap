@@ -621,3 +621,132 @@ describe('mime helpers', () => {
     expect(mimeCarriesH264('video/webm;codecs=av01')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// SECURITY REVIEW 2026-09 — SEC-D3: a stream key must never reach a log line,
+// an event payload or the diagnostics export.
+//
+// This failed before the fix: `spawnChild` logged `argv.join(' ')` at `info`,
+// and main configures electron-log's FILE transport at `info`, so every
+// go-live wrote `rtmp://a.example/live/key-a` into main.log on disk.
+// ---------------------------------------------------------------------------
+
+interface CapturedLog {
+  level: string;
+  message: string;
+  meta: string;
+}
+
+function capturingEngine(): { engine: FfmpegEngine; logs: CapturedLog[] } {
+  const logs: CapturedLog[] = [];
+  const record = (level: string) => (message: string, meta?: Record<string, unknown>) => {
+    logs.push({ level, message, meta: JSON.stringify(meta ?? {}) });
+  };
+  const captured = new FfmpegEngine({
+    ffmpegPath: 'ffmpeg',
+    recordingsDir: path.join(dir, 'recordings'),
+    spawnFn: fakeSpawn,
+    hardwareReport: hardware,
+    cpuSampling: false,
+    metricsIntervalMs: 100_000,
+    logger: { info: record('info'), warn: record('warn'), error: record('error') },
+  });
+  return { engine: captured, logs };
+}
+
+const allText = (logs: CapturedLog[]): string => logs.map((l) => `${l.level} ${l.message} ${l.meta}`).join('\n');
+
+describe('SEC-D3 stream keys never reach the engine log', () => {
+  it('redacts the publish URL in the spawn argv log line', async () => {
+    const { engine: captured, logs } = capturingEngine();
+    await captured.start(request());
+    const text = allText(logs);
+
+    expect(text).not.toContain('key-a');
+    expect(text).not.toContain('key-b');
+    expect(text).not.toContain('rtmp://a.example/live/key-a');
+    // The log is still useful: the host and the redaction marker are both there.
+    expect(text).toContain('rtmp://a.example/live/');
+    expect(text).toContain('••••');
+    // Sanity: the key really was passed to the child process, so the test is
+    // proving redaction and not merely that the key was never used.
+    expect(spawned.some((c) => c.argv.some((a) => a.includes('key-a')))).toBe(true);
+
+    // Mirror the existing stop pattern: the fake children do not exit on
+    // stdin.end(), so tell them to, or stop() sits out its 4 s timeouts.
+    const stopping = captured.stop();
+    for (const child of spawned) child.exit(0);
+    await stopping;
+  });
+
+  it('redacts an FFmpeg stderr line that echoes the publish URL', async () => {
+    const { engine: captured, logs } = capturingEngine();
+    await captured.start(request());
+    const sender = senderChildren()[0];
+    expect(sender).toBeDefined();
+    sender?.stderr.write('rtmp://a.example/live/key-a: Input/output error\n');
+    await flush();
+    await flush();
+
+    const text = allText(logs);
+    expect(text).not.toContain('key-a');
+    expect(text).toContain('••••');
+
+    // ...and the text handed onward (toasts, diagnostics) is redacted too.
+    const senders = captured.diagnostics().senders;
+    expect(JSON.stringify(senders)).not.toContain('key-a');
+
+    // Mirror the existing stop pattern: the fake children do not exit on
+    // stdin.end(), so tell them to, or stop() sits out its 4 s timeouts.
+    const stopping = captured.stop();
+    for (const child of spawned) child.exit(0);
+    await stopping;
+  });
+
+  it('never puts a key in an emitted event, including engineError technicals', async () => {
+    const { engine: captured, logs } = capturingEngine();
+    const seen: DesktopEngineEvent[] = [];
+    captured.on((e) => seen.push(e));
+    await captured.start(request());
+    const encoder = encoderChildren()[0];
+    encoder?.stderr.write('Error opening output rtmp://a.example/live/key-a: Broken pipe\n');
+    await flush();
+    await flush();
+
+    expect(JSON.stringify(seen)).not.toContain('key-a');
+    expect(allText(logs)).not.toContain('key-a');
+
+    // Mirror the existing stop pattern: the fake children do not exit on
+    // stdin.end(), so tell them to, or stop() sits out its 4 s timeouts.
+    const stopping = captured.stop();
+    for (const child of spawned) child.exit(0);
+    await stopping;
+  });
+
+  it('keeps the diagnostics export free of keys and passphrases', async () => {
+    const { engine: captured } = capturingEngine();
+    await captured.start(
+      request({
+        outputs: [
+          {
+            destinationId: 'dest-srt',
+            aspectRatio: '16:9',
+            ingest: {
+              protocol: 'srt',
+              url: 'srt://h.example:9000',
+              streamId: 'sid1234',
+              passphrase: 'p4ssphrase',
+            },
+          },
+        ],
+      }),
+    );
+    const json = JSON.stringify(captured.diagnostics());
+    expect(json).not.toContain('p4ssphrase');
+    // Mirror the existing stop pattern: the fake children do not exit on
+    // stdin.end(), so tell them to, or stop() sits out its 4 s timeouts.
+    const stopping = captured.stop();
+    for (const child of spawned) child.exit(0);
+    await stopping;
+  });
+});

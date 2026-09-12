@@ -1,0 +1,40 @@
+Skip to the main screen
+Studio
+Moments
+Destinations
+Recordings
+Settings
+Pro mode
+Pro mode adds encoder, layer and diagnostic controls. Nothing is hidden.
+Demo mode — every destination here is simulated. LIVETAP is not broadcasting anywhere.
+Manage demo destinations
+Settings
+Pro mode
+
+Adds encoder, arrangement and diagnostic controls. Nothing is hidden — everything you can see now stays exactly where it is.
+
+Quality
+Auto
+720p
+1080p
+1080p60
+
+Auto measures your connection and your computer and keeps adjusting while you stream.
+
+Recording
+Record every stream
+
+A copy is kept while you stream, and it keeps going even if a platform drops. In the browser it is saved when the stream ends, and you download it from Recordings. For long streams, use the desktop app.
+
+Appearance
+System
+Light
+Dark
+About
+
+LIVETAP 0.1.0 · MIT licence · built in public.
+
+Run setup again
+What LIVETAP never collects
+Read the code
+TikTok · TikTok is missing something.

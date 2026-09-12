@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/build/**',
       '**/out/**',
       '**/coverage/**',
+      '**/dist-types/**',
       '**/release/**',
       '**/.vercel/**',
       'apps/mobile/ios/**',
@@ -27,5 +28,9 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
     },
+  },
+  {
+    files: ['**/*.cjs'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
 );

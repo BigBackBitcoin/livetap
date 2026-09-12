@@ -48,6 +48,52 @@ export function redactIngest(ingest: IngestTarget): IngestTarget {
   };
 }
 
+/** What a redacted secret looks like everywhere in LIVETAP. */
+const MASK = '\u2022\u2022\u2022\u2022';
+
+/**
+ * Redact secret-shaped substrings from arbitrary text before it reaches a log,
+ * a crash report, an error toast or a diagnostics export.
+ *
+ * This exists because a stream key stops being a "field" the moment it is
+ * concatenated into a publish URL. Two places in the desktop engine proved that
+ * in the 2026-09 security review (SEC-D3):
+ *
+ *  - the FFmpeg argv was logged verbatim at `info`, and the sender argv's last
+ *    element is `rtmp://host/app/<STREAM KEY>`;
+ *  - FFmpeg's own stderr was logged verbatim, and it echoes the full publish
+ *    URL in most connection failures.
+ *
+ * Both wrote a live stream key into `main.log` on disk on every broadcast.
+ *
+ * The rules are deliberately blunt and ordered longest-match-first. This is a
+ * last line of defence, NOT a licence to pass secrets around and clean them up
+ * later: redact at the boundary, and still never put a secret somewhere it does
+ * not belong.
+ */
+export function redactSecrets(text: string): string {
+  if (typeof text !== 'string' || text.length === 0) return '';
+  return (
+    text
+      // rtmp/rtmps/rtsp: the LAST path segment is the stream key.
+      .replace(/(rtmps?:\/\/[^\s|'"]*\/)([^\s/|?'"]+)/gi, '$1' + MASK)
+      .replace(/(rtsps?:\/\/)[^\s@|'"]*@/gi, '$1' + MASK + '@')
+      // SRT / WHIP / generic query parameters that carry a credential.
+      .replace(
+        /((?:passphrase|streamid|stream_key|streamkey|access_token|refresh_token|id_token|token|key|secret|client_secret|code|code_verifier|password|pwd|signature|sig|auth|authorization)=)[^&\s|'"]+/gi,
+        '$1' + MASK,
+      )
+      // Bearer tokens, including the `-authorization` argv flag the whip muxer takes.
+      .replace(/(Bearer\s+)[\w.\-~+/]+=*/gi, '$1' + MASK)
+      .replace(/(-authorization\s+)\S+/gi, '$1' + MASK)
+  );
+}
+
+/** Redact every element of an argv array that could carry a secret. */
+export function redactArgv(argv: readonly string[]): string[] {
+  return argv.map((arg) => redactSecrets(arg));
+}
+
 /** Compose the final publish URL for RTMP (url + '/' + key) without double slashes. */
 export function composeRtmpPublishUrl(ingest: IngestTarget): string {
   if (ingest.protocol !== 'rtmp' && ingest.protocol !== 'rtmps') return ingest.url;

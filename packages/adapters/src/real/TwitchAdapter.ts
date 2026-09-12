@@ -361,6 +361,46 @@ export class TwitchAdapter implements DestinationAdapter {
 
 // ---------------------------------------------------------------------------- EventSub
 
+/**
+ * Is this `reconnect_url` one we are willing to follow?
+ *
+ * SEC-A1 (2026-09 security review): the previous code did
+ * `if (next) this.connect(next, true)` with whatever string arrived in the
+ * frame. A websocket message is attacker-shaped data — the transport is
+ * TLS-authenticated to Twitch, but the CONTENT is not something we should
+ * trust to pick our next endpoint. An unvalidated value here means one frame
+ * can move the chat socket to any host, or downgrade it to plaintext `ws://`
+ * where the session is readable and injectable on the wire.
+ *
+ * Twitch's own reconnect URL is always on the same origin as the EventSub
+ * endpoint we dialled, so that is the check: same protocol, same host, same
+ * port. Comparing against the CONFIGURED base (rather than hard-coding
+ * `twitch.tv`) keeps the rule correct for a test double or a proxy.
+ */
+export function isAcceptableReconnectUrl(next: unknown, baseUrl: string): next is string {
+  if (typeof next !== 'string' || next.length === 0 || next.length > 2048) return false;
+  if (/[\r\n\0]/.test(next)) return false;
+  let target: URL;
+  let base: URL;
+  try {
+    target = new URL(next);
+    base = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+  if (target.protocol !== 'wss:' && target.protocol !== base.protocol) return false;
+  return target.host === base.host && target.protocol === base.protocol;
+}
+
+/** Backoff for a socket that will not stay up. Bounded, so a flapping endpoint cannot spin. */
+export const RECONNECT_BASE_MS = 1000;
+export const RECONNECT_MAX_MS = 30_000;
+
+export function reconnectDelayMs(attempt: number): number {
+  if (attempt <= 0) return 0;
+  return Math.min(RECONNECT_BASE_MS * 2 ** (attempt - 1), RECONNECT_MAX_MS);
+}
+
 interface EventSubSessionOptions {
   url: string;
   keepaliveTimeoutSeconds: number;
@@ -388,6 +428,9 @@ export class TwitchEventSubSession {
   private pendingSocket: MinimalWebSocket | undefined;
   private watchdog: unknown;
   private stopped = false;
+  /** Consecutive failed connection attempts; reset by a session_welcome. */
+  private reconnectAttempts = 0;
+  private reconnectTimer: unknown;
 
   constructor(options: EventSubSessionOptions) {
     this.options = options;
@@ -400,6 +443,10 @@ export class TwitchEventSubSession {
   stop(): void {
     this.stopped = true;
     this.clearWatchdog();
+    if (this.reconnectTimer !== undefined) {
+      this.options.timers.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
     this.pendingSocket?.close(1000, 'livetap stop');
     this.pendingSocket = undefined;
     this.socket?.close(1000, 'livetap stop');
@@ -421,13 +468,19 @@ export class TwitchEventSubSession {
     socket.onmessage = (event) => {
       const text = messageText(event.data);
       if (!text) return;
-      let envelope: EventSubEnvelope;
+      let parsed: unknown;
       try {
-        envelope = JSON.parse(text) as EventSubEnvelope;
+        parsed = JSON.parse(text);
       } catch {
         return;
       }
-      this.handle(envelope, socket, isReconnect);
+      // SEC-A5: `JSON.parse('null')` is null and `JSON.parse('[]')` is an
+      // array. Reading `.metadata` off null threw a TypeError straight out of
+      // the socket's onmessage handler, which in Node is an unhandled error
+      // that can take the process down -- from one remote frame containing the
+      // four bytes `null`. Anything that is not a plain object is not a frame.
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return;
+      this.handle(parsed as EventSubEnvelope, socket, isReconnect);
     };
     socket.onclose = () => {
       if (this.stopped) return;
@@ -448,6 +501,8 @@ export class TwitchEventSubSession {
     this.armWatchdog();
     const type = envelope.metadata?.message_type;
     if (type === 'session_welcome') {
+      // A socket that reached Welcome is healthy: the backoff starts over.
+      this.reconnectAttempts = 0;
       const sessionId = envelope.payload?.session?.id;
       if (isReconnect) {
         // The reconnect socket has welcomed: promote it, then close the old one (never before,
@@ -465,7 +520,13 @@ export class TwitchEventSubSession {
     if (type === 'session_keepalive') return;
     if (type === 'session_reconnect') {
       const next = envelope.payload?.session?.reconnect_url;
-      if (next) this.connect(next, true);
+      // SEC-A1: never dial a URL just because a frame told us to.
+      if (isAcceptableReconnectUrl(next, this.options.url)) {
+        this.connect(next, true);
+      } else if (next !== undefined) {
+        // Refuse it and fall back to our own endpoint rather than dropping chat.
+        this.reconnectFromScratch();
+      }
       return;
     }
     if (type === 'notification') {
@@ -479,11 +540,34 @@ export class TwitchEventSubSession {
     }
   }
 
+  /**
+   * SEC-A2: this used to call `connect()` directly, and `connect()` wires
+   * `onclose` straight back to it. A socket that fails to open — a dead
+   * network, a 429, a hostile endpoint closing immediately — therefore span a
+   * tight, synchronous connect/close loop that pegged a core and hammered the
+   * endpoint. THREAT_MODEL T12 claims "bounded reconnect with backoff"; this
+   * is what makes that true.
+   *
+   * The FIRST reconnect stays immediate, because a single dropped socket
+   * should recover without a visible gap in chat. Only repeated failures back
+   * off, exponentially, capped at RECONNECT_MAX_MS.
+   */
   private reconnectFromScratch(): void {
     if (this.stopped) return;
+    if (this.reconnectTimer !== undefined) return; // one pending attempt at a time
     this.clearWatchdog();
     this.socket = undefined;
-    this.connect(this.withKeepalive(this.options.url), false);
+    const delay = reconnectDelayMs(this.reconnectAttempts);
+    this.reconnectAttempts += 1;
+    if (delay === 0) {
+      this.connect(this.withKeepalive(this.options.url), false);
+      return;
+    }
+    this.reconnectTimer = this.options.timers.setTimeout(() => {
+      this.reconnectTimer = undefined;
+      if (this.stopped) return;
+      this.connect(this.withKeepalive(this.options.url), false);
+    }, delay);
   }
 
   private armWatchdog(): void {

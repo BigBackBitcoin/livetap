@@ -20,6 +20,9 @@ import {
   newSessionId,
   SESSION_ID_RE,
   createServer,
+  shQuote,
+  isPrivateDestinationHost,
+  destinationHost,
 } from './relay-session.mjs';
 
 const ENV = {
@@ -31,6 +34,15 @@ const ENV = {
 
 const cfg = loadConfig(ENV);
 const cfgVertical = loadConfig({ ...ENV, LIVETAP_ENABLE_VERTICAL_TRANSCODE: '1' });
+// SEC-R3 added an SSRF gate that refuses private/loopback/bare-hostname
+// destinations by default. Fixtures below that deliberately publish to
+// 127.0.0.1 (the local RTMP diagnostics target) opt out explicitly.
+const cfgPrivateOk = loadConfig({ ...ENV, LIVETAP_RELAY_ALLOW_PRIVATE_DESTINATIONS: '1' });
+const cfgVerticalPrivateOk = loadConfig({
+  ...ENV,
+  LIVETAP_ENABLE_VERTICAL_TRANSCODE: '1',
+  LIVETAP_RELAY_ALLOW_PRIVATE_DESTINATIONS: '1',
+});
 
 // ---------------------------------------------------------------------------
 // validateIngest — must match packages/core/src/validation/ingest.ts
@@ -209,11 +221,12 @@ test('validateRequest caps the destination count', () => {
 });
 
 test('validateRequest refuses 9:16 unless the relay enables re-encoding', () => {
-  const body = { destinations: [{ protocol: 'rtmp', url: 'rtmp://h/live', streamKey: 'k', aspectRatio: '9:16' }] };
+  const body = { destinations: [{ protocol: 'rtmp', url: 'rtmp://h.example/live', streamKey: 'k', aspectRatio: '9:16' }] };
   const off = validateRequest(body, cfg);
   assert.equal(off.ok, false);
   assert.ok(off.errors.some((e) => e.includes('LIVETAP_ENABLE_VERTICAL_TRANSCODE')));
   assert.equal(validateRequest(body, cfgVertical).ok, true);
+  assert.equal(validateRequest(body, cfgVerticalPrivateOk).ok, true);
 });
 
 test('validateRequest refuses SRT and WHIP destinations', () => {
@@ -222,12 +235,12 @@ test('validateRequest refuses SRT and WHIP destinations', () => {
 });
 
 test('validateRequest rejects an unknown aspect ratio', () => {
-  const body = { destinations: [{ protocol: 'rtmp', url: 'rtmp://h/live', streamKey: 'k', aspectRatio: '4:3' }] };
+  const body = { destinations: [{ protocol: 'rtmp', url: 'rtmp://h.example/live', streamKey: 'k', aspectRatio: '4:3' }] };
   assert.equal(validateRequest(body, cfg).ok, false);
 });
 
 test('validation errors never echo the stream key back', () => {
-  const body = { destinations: [{ protocol: 'rtmp', url: 'rtmp://h/live', streamKey: 'bad;key' }] };
+  const body = { destinations: [{ protocol: 'rtmp', url: 'rtmp://h.example/live', streamKey: 'bad;key' }] };
   const r = validateRequest(body, cfg);
   assert.equal(r.ok, false);
   assert.ok(!JSON.stringify(r.errors).includes('bad;key'));
@@ -288,7 +301,7 @@ test('POST /sessions creates a path and returns a WHIP URL', async (t) => {
     addPath: async (name, conf) => { calls.push({ name, conf }); },
     deletePath: async () => {},
   };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     const res = await fetch(`${base}/sessions`, {
       method: 'POST', headers: AUTH, body: JSON.stringify({ destinations: twoFlat }),
     });
@@ -308,7 +321,7 @@ test('POST /sessions creates a path and returns a WHIP URL', async (t) => {
 
 test('stream keys never reach the logs', async (t) => {
   const mtx = { addPath: async () => {}, deletePath: async () => {} };
-  await withServer(t, cfg, mtx, async (base, logs) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base, logs) => {
     await fetch(`${base}/sessions`, {
       method: 'POST', headers: AUTH, body: JSON.stringify({ destinations: twoFlat }),
     });
@@ -322,7 +335,7 @@ test('stream keys never reach the logs', async (t) => {
 test('unauthenticated requests get 401 and create nothing', async (t) => {
   let called = false;
   const mtx = { addPath: async () => { called = true; }, deletePath: async () => {} };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     const res = await fetch(`${base}/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -336,10 +349,10 @@ test('unauthenticated requests get 401 and create nothing', async (t) => {
 test('invalid destinations get 400 and create nothing', async (t) => {
   let called = false;
   const mtx = { addPath: async () => { called = true; }, deletePath: async () => {} };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     const res = await fetch(`${base}/sessions`, {
       method: 'POST', headers: AUTH,
-      body: JSON.stringify({ destinations: [{ protocol: 'rtmp', url: 'rtmp://h/live', streamKey: 'evil;id' }] }),
+      body: JSON.stringify({ destinations: [{ protocol: 'rtmp', url: 'rtmp://h.example/live', streamKey: 'evil;id' }] }),
     });
     assert.equal(res.status, 400);
     assert.equal(called, false);
@@ -351,7 +364,7 @@ test('invalid destinations get 400 and create nothing', async (t) => {
 test('DELETE /sessions/:id removes the path', async (t) => {
   const deleted = [];
   const mtx = { addPath: async () => {}, deletePath: async (n) => { deleted.push(n); } };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     const res = await fetch(`${base}/sessions/abcdef0123456789`, {
       method: 'DELETE', headers: { Authorization: 'Bearer pub-secret' },
     });
@@ -363,7 +376,7 @@ test('DELETE /sessions/:id removes the path', async (t) => {
 test('DELETE rejects a malformed session id without calling MediaMTX', async (t) => {
   let called = false;
   const mtx = { addPath: async () => {}, deletePath: async () => { called = true; } };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     for (const bad of ['../../config', 'short', 'has%20space']) {
       const res = await fetch(`${base}/sessions/${bad}`, {
         method: 'DELETE', headers: { Authorization: 'Bearer pub-secret' },
@@ -379,7 +392,7 @@ test('DELETE of an unknown session returns 404', async (t) => {
     addPath: async () => {},
     deletePath: async () => { const e = new Error('nope'); e.status = 404; throw e; },
   };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     const res = await fetch(`${base}/sessions/abcdef0123456789`, {
       method: 'DELETE', headers: { Authorization: 'Bearer pub-secret' },
     });
@@ -392,7 +405,7 @@ test('a MediaMTX failure becomes a 500 that leaks nothing', async (t) => {
     addPath: async () => { throw new Error('MediaMTX API POST /v3/... failed: 500'); },
     deletePath: async () => {},
   };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     const res = await fetch(`${base}/sessions`, {
       method: 'POST', headers: AUTH, body: JSON.stringify({ destinations: twoFlat }),
     });
@@ -405,9 +418,149 @@ test('a MediaMTX failure becomes a 500 that leaks nothing', async (t) => {
 
 test('GET /healthz needs no auth', async (t) => {
   const mtx = { addPath: async () => {}, deletePath: async () => {} };
-  await withServer(t, cfg, mtx, async (base) => {
+  await withServer(t, cfgPrivateOk, mtx, async (base) => {
     const res = await fetch(`${base}/healthz`);
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { ok: true });
   });
+});
+
+// ---------------------------------------------------------------------------
+// SECURITY REVIEW 2026-09 — regression tests for SEC-R1/R2/R3.
+// Every test below FAILED against the pre-review code.
+// ---------------------------------------------------------------------------
+
+const BACKSLASH = String.fromCharCode(92);
+const TAB = String.fromCharCode(9);
+const NEWLINE = String.fromCharCode(10);
+
+test('SEC-R1 rejects a stream key ending in a backslash (sh quote desynchronisation)', () => {
+  const res = validateIngest({
+    protocol: 'rtmp',
+    url: 'rtmp://a.example/app',
+    streamKey: 'KEY' + BACKSLASH,
+  });
+  assert.equal(res.ok, false);
+  assert.ok(res.errors.some((e) => /not allowed/.test(e)), res.errors.join(' / '));
+});
+
+test('SEC-R1 rejects shell and glob metacharacters the old deny-list let through', () => {
+  for (const key of ['KEY' + BACKSLASH, 'KEY(x)', 'KEY{x}', 'KEY*', 'KEY?', 'KEY^', 'KEY[a]']) {
+    const res = validateIngest({ protocol: 'rtmp', url: 'rtmp://a.example/app', streamKey: key });
+    assert.equal(res.ok, false, 'expected refusal for ' + JSON.stringify(key));
+  }
+});
+
+test('SEC-R1 the generated hook command is a balanced sh command with quoted values', () => {
+  const hook = buildHookCommand(
+    'sid',
+    [
+      { protocol: 'rtmp', url: 'rtmp://a.example/app', streamKey: 'K1', aspectRatio: '16:9' },
+      { protocol: 'rtmp', url: 'rtmp://b.example/app', streamKey: 'K2', aspectRatio: '9:16' },
+    ],
+    cfgVertical,
+  );
+  assert.equal((hook.match(/'/g) ?? []).length % 2, 0, 'unbalanced single quotes');
+  assert.equal((hook.match(/"/g) ?? []).length % 2, 0, 'unbalanced double quotes');
+  assert.ok(hook.includes("'[f=flv:onfail=ignore]rtmp://a.example/app/K1'"), hook);
+  assert.ok(hook.includes("'[f=flv:onfail=ignore]rtmp://b.example/app/K2'"), hook);
+  assert.ok(hook.includes("-fifo_options 'attempt_recovery=1"), hook);
+  assert.ok(hook.includes('$RTSP_PORT/$MTX_PATH'), hook);
+});
+
+test('SEC-R1 shQuote makes the command structure independent of the value', () => {
+  assert.equal(shQuote('plain'), "'plain'");
+  assert.equal(shQuote('a;id|b$(y)'), "'a;id|b$(y)'");
+  assert.equal(shQuote("it's"), "'it'" + BACKSLASH + "''s'");
+});
+
+test('SEC-R2 rejects a URL whose whitespace survives only at the edges', () => {
+  for (const url of [
+    'rtmp://a.example/app ',
+    ' rtmp://a.example/app',
+    'rtmp://a.example/app' + TAB,
+    'rtmp://a.example/app' + NEWLINE,
+  ]) {
+    const res = validateIngest({ protocol: 'rtmp', url, streamKey: 'KEY' });
+    assert.equal(res.ok, false, 'expected refusal for ' + JSON.stringify(url));
+  }
+});
+
+test('SEC-R2 composeRtmpPublishUrl only ever sees a value validateIngest approved', () => {
+  const d = { protocol: 'rtmp', url: 'rtmp://a.example/app ', streamKey: 'KEY' };
+  assert.equal(validateIngest(d).ok, false);
+  // Pre-review this destination validated ok and produced the string below.
+  // A space is exactly where librtmp starts parsing tcUrl=/playpath=/conn=.
+  assert.equal(composeRtmpPublishUrl(d), 'rtmp://a.example/app /KEY');
+});
+
+test('SEC-R2 non-string url/streamKey are refused, not thrown on', () => {
+  for (const d of [
+    { protocol: 'rtmp', url: 123, streamKey: 'KEY' },
+    { protocol: 'rtmp', url: 'rtmp://a.example/app', streamKey: ['x;id'] },
+    { protocol: 'rtmp', url: 'rtmp://a.example/app', streamKey: {} },
+    { protocol: 'rtmp', url: { toString: 1 }, streamKey: 'KEY' },
+  ]) {
+    const res = validateIngest(d);
+    assert.equal(res.ok, false, JSON.stringify(d));
+    assert.ok(res.errors.length > 0);
+  }
+});
+
+test('SEC-R2 __proto__ keys in a destination cannot pollute Object.prototype', () => {
+  const body = JSON.parse(
+    '{"destinations":[{"protocol":"rtmp","url":"rtmp://a.example/app","streamKey":"KEY","__proto__":{"polluted":"yes"}}]}',
+  );
+  validateRequest(body, cfg);
+  assert.equal({}.polluted, undefined);
+  assert.equal(Object.prototype.polluted, undefined);
+});
+
+test('SEC-R3 private, loopback and link-local destinations are recognised', () => {
+  for (const host of [
+    '127.0.0.1', '127.0.0.1:1935', 'localhost', 'mediamtx', 'mediamtx:9997',
+    '10.1.2.3', '192.168.1.10', '172.16.9.9', '169.254.169.254',
+    'somebox.local', 'svc.internal',
+  ]) {
+    assert.equal(isPrivateDestinationHost(host), true, 'expected private: ' + host);
+  }
+  for (const host of ['live.twitch.tv', 'a.rtmp.youtube.com', '8.8.8.8', 'ingest.example.com:1935']) {
+    assert.equal(isPrivateDestinationHost(host), false, 'expected public: ' + host);
+  }
+});
+
+test('SEC-R3 destinationHost extracts the authority and drops userinfo', () => {
+  assert.equal(destinationHost('rtmp://live.twitch.tv/app'), 'live.twitch.tv');
+  assert.equal(destinationHost('rtmps://a.example:443/app/x'), 'a.example:443');
+  assert.equal(destinationHost('rtmp://user:pass@169.254.169.254/app'), '169.254.169.254');
+  assert.equal(destinationHost('rtmp://h.example'), 'h.example');
+});
+
+test('SEC-R3 validateRequest refuses an SSRF destination and allows it when opted in', () => {
+  const body = {
+    destinations: [{ protocol: 'rtmp', url: 'rtmp://169.254.169.254/app', streamKey: 'KEY' }],
+  };
+  const blocked = validateRequest(body, cfg);
+  assert.equal(blocked.ok, false);
+  assert.ok(
+    blocked.errors.some((e) => /private, loopback or link-local/.test(e)),
+    blocked.errors.join(' / '),
+  );
+  assert.ok(!blocked.errors.join(' ').includes('169.254.169.254'));
+
+  const opened = validateRequest(body, { ...cfg, allowPrivateDestinations: true });
+  assert.equal(opened.ok, true, opened.errors.join(' / '));
+});
+
+test('SEC-R3 real platform destinations still validate end to end', () => {
+  const res = validateRequest(
+    {
+      destinations: [
+        { protocol: 'rtmps', url: 'rtmps://live.twitch.tv:443/app', streamKey: 'live_1234_abcDEF-xyz' },
+        { protocol: 'rtmp', url: 'rtmp://a.rtmp.youtube.com/live2', streamKey: 'abcd-efgh-ijkl-mnop-qrst' },
+      ],
+    },
+    cfg,
+  );
+  assert.equal(res.ok, true, res.errors.join(' / '));
 });

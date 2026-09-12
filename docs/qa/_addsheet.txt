@@ -1,0 +1,84 @@
+Skip to the main screen
+Studio
+Moments
+Destinations
+Recordings
+Settings
+Pro mode
+Pro mode adds encoder, layer and diagnostic controls. Nothing is hidden.
+Demo mode — every destination here is simulated. LIVETAP is not broadcasting anywhere.
+Manage demo destinations
+Destinations
+
+LIVETAP streams to all the destinations you switch on, at once.
+
++ Add destination
+YouTube · YouTube
+Demo
+In your next stream
+Ready
+Goes live when you tap GO LIVE
+
+16:9 · up to 2160p60
+
+Remove
+TikTok · TikTok
+Demo
+In your next stream
+Not connected
+Sign in to use this destination
+
+9:16 · up to 1920p30
+
+TikTok · TikTok is missing something.
+WHY
+The stream URL or key is empty or malformed.
+DOING
+LIVETAP will not try to go live here.
+YOU CAN
+Open the destination and fix the highlighted field.
+Paste a new key
+Remove
+TikTok · TikTok is missing something.
+Add destination
+
+LIVETAP can stream to all of these at once. How you connect depends on what each platform allows.
+
+YouTube
+Connect account
+Mock
+Sign in once and LIVETAP sets the broadcast up for you.
+Twitch
+Connect account
+Mock
+Sign in once and LIVETAP sets the broadcast up for you.
+TikTok
+Paste stream key
+Mock
+Copy a key from TikTok's own live dashboard and paste it here. You press Go live in TikTok once LIVETAP is sending. TikTok is vertical, so LIVETAP sends it a vertical picture.
+Kick
+Paste stream key
+Mock
+Copy a key from Kick's own live dashboard and paste it here.
+Facebook
+Connect account
+Mock
+Sign in once and LIVETAP sets the broadcast up for you.
+Instagram
+Paste stream key
+Mock
+Copy a key from Instagram's own live dashboard and paste it here. You press Go live in Instagram once LIVETAP is sending. Instagram is vertical, so LIVETAP sends it a vertical picture.
+X
+Paste stream key
+Mock
+Copy a key from X's own live dashboard and paste it here. You press Go live in X once LIVETAP is sending.
+LinkedIn
+Not available yet
+LinkedIn does not let an app like LIVETAP go live for you, so LIVETAP will not pretend it can.
+LinkedIn only allows approved partner tools to go live. LIVETAP is not one, and would rather say so than waste your evening.
+Custom RTMP
+Paste stream key
+Mock
+Copy a key from Custom RTMP's own live dashboard and paste it here.
+
+Some platforms require your account to meet their own rules before you can go live. LIVETAP checks what it can and tells you before you try.

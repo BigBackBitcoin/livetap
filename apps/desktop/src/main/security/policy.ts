@@ -140,8 +140,33 @@ export function isInternalNavigation(targetUrl: string, appUrl: string): boolean
   }
   if (target.protocol === 'file:' && app.protocol === 'file:') {
     // Same directory tree as the renderer bundle, nothing above it.
-    const appDir = app.pathname.slice(0, app.pathname.lastIndexOf('/') + 1);
-    return decodeURIComponent(target.pathname).startsWith(decodeURIComponent(appDir));
+    //
+    // SEC-D1 (2026-09 security review): the previous implementation compared
+    //   decodeURIComponent(target.pathname).startsWith(decodeURIComponent(appDir))
+    // which let `renderer/..%5C..%5C..%5CWindows%5CTemp%5Cevil.html` through.
+    // The WHATWG URL parser normalises dot segments, and it treats `%2e` as a
+    // dot while doing so, so `%2e%2e` was already safe -- but it does NOT treat
+    // `%5c` (an encoded BACKSLASH) as a separator, so those segments survived
+    // parsing untouched and only became `..\..\..` after decodeURIComponent.
+    // The prefix therefore still matched, and Win32 resolves `\` as a path
+    // separator, so the app window could be navigated to any local file --
+    // a document that would then be handed the preload bridge.
+    //
+    // Decode first, then normalise separators, then reject dot segments
+    // explicitly. Prefix comparison alone is not a containment check.
+    const appDir = decodeURIComponent(app.pathname.slice(0, app.pathname.lastIndexOf('/') + 1));
+    let targetPath: string;
+    try {
+      targetPath = decodeURIComponent(target.pathname);
+    } catch {
+      return false;
+    }
+    if (targetPath.includes('\0') || appDir.includes('\0')) return false;
+    const normalised = targetPath.replace(/\\/g, '/');
+    for (const segment of normalised.split('/')) {
+      if (segment === '..' || segment === '.') return false;
+    }
+    return normalised.startsWith(appDir.replace(/\\/g, '/'));
   }
   if (target.protocol === 'devtools:') return true;
   // `about:blank`, `data:` and `javascript:` URLs all report the opaque origin "null", which would

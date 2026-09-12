@@ -102,6 +102,31 @@ interface YtChatListResponse {
  * No token or stream key is ever logged: the token comes from `tokenProvider` per call and
  * the ingest key only ever travels inside the returned `IngestTarget`.
  */
+/**
+ * Clamp the server-supplied chat poll interval.
+ *
+ * SEC-A3 (2026-09 security review): the loop did
+ * `if (page?.pollingIntervalMillis) waitMs = page.pollingIntervalMillis`
+ * and then `await sleep(waitMs)`. The value is whatever the response body
+ * says, with no type check and no range check, so a compromised or
+ * misbehaving upstream (or anything that can answer for the API host) could
+ * send `-1`, `"soon"` or `NaN`. Each of those makes `setTimeout` fire
+ * immediately, turning the poll loop into an unthrottled request flood that
+ * burns the user's daily quota in seconds and pegs a core. A huge value is the
+ * mirror image: chat silently stops for hours.
+ *
+ * YouTube's own documented values sit between roughly 2 s and 10 s, so a
+ * [1 s, 60 s] window honours the server's pacing hint without letting it
+ * choose "no pacing at all".
+ */
+export const CHAT_POLL_MIN_MS = 1000;
+export const CHAT_POLL_MAX_MS = 60_000;
+
+export function clampChatPollInterval(value: unknown, fallbackMs: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackMs;
+  return Math.min(Math.max(value, CHAT_POLL_MIN_MS), CHAT_POLL_MAX_MS);
+}
+
 export class YouTubeAdapter implements DestinationAdapter {
   readonly profile: PlatformProfile = youtubeProfile;
 
@@ -359,7 +384,8 @@ export class YouTubeAdapter implements DestinationAdapter {
             token: freshToken,
           });
           pageToken = page?.nextPageToken;
-          if (page?.pollingIntervalMillis) waitMs = page.pollingIntervalMillis;
+          // SEC-A3: honour the server's pacing hint, but never let it set 0 / NaN / -1.
+          waitMs = clampChatPollInterval(page?.pollingIntervalMillis, waitMs);
           for (const item of page?.items ?? []) {
             if (stopped) return;
             onMessage(toChatMessage(item, destinationId));

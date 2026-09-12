@@ -76,6 +76,9 @@ export function assertCleanUrl(value: string, what: string): void {
   if (value.length === 0) throw new ArgvRefusedError(`${what} is empty.`);
   if (value.length > 2048) throw new ArgvRefusedError(`${what} is too long.`);
   if (value.startsWith('-')) throw new ArgvRefusedError(`${what} must not start with "-".`);
+  // SEC-D4: `%00` has no legitimate place in an ingest URL, and a percent-encoded
+  // NUL is the classic way to truncate a path in whatever decodes it next.
+  if (/%00/i.test(value)) throw new ArgvRefusedError(`${what} contains an encoded NUL byte.`);
 
   const queryIndex = value.indexOf('?');
   const base = queryIndex === -1 ? value : value.slice(0, queryIndex);
@@ -356,6 +359,11 @@ export function buildSenderArgv(spec: SenderArgvSpec): string[] {
     case 'srt': {
       const url = buildSrtUrl(spec.ingest);
       assertCleanUrl(url, 'SRT URL');
+      // SEC-D4: rtmp and whip both re-assert their scheme here; srt relied on
+      // `validateIngest` alone. Symmetry is the point — one gate per protocol
+      // means one place to get wrong, and this closes `concat:`/`subfile:`/
+      // `file:` reaching the muxer if validateIngest is ever loosened.
+      if (!/^srt:\/\//i.test(url)) throw new ArgvRefusedError('SRT URL must be srt://.');
       argv.push('-c', 'copy', '-f', 'mpegts', url);
       return argv;
     }
@@ -563,7 +571,12 @@ export function buildTeeOutput(slaves: TeeSlave[]): string {
       assertCleanToken(slave.format, 'tee slave format');
       // `-` is ffmpeg's stdout sink and the canonical `[f=null]-` anchor; it is the one URL allowed
       // to start with a dash. Everything else gets the path-level check, then tee escaping.
-      if (slave.url !== '-') assertCleanPath(slave.url, 'tee slave URL');
+      if (slave.url !== '-') {
+        assertCleanPath(slave.url, 'tee slave URL');
+        // SEC-D4: `[f=...]` is tee's option-block syntax. A slave URL that opens
+        // with `[` would be read as a SECOND option block by the muxer.
+        if (slave.url.startsWith('[')) throw new ArgvRefusedError('tee slave URL must not start with "[".');
+      }
       const opts = [`f=${slave.format}`];
       if (slave.onfail) opts.push(`onfail=${slave.onfail}`);
       if (slave.useFifo) {

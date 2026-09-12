@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyFailure, type ChatMessage, type DestinationConfig } from '@livetap/core';
-import { YouTubeAdapter } from './YouTubeAdapter.js';
+import { YouTubeAdapter, clampChatPollInterval, CHAT_POLL_MIN_MS, CHAT_POLL_MAX_MS } from './YouTubeAdapter.js';
 import { HttpError } from './http.js';
 import { createFakeFetch } from '../testing/fakeFetch.js';
 
@@ -393,5 +393,43 @@ describe('YouTubeAdapter error mapping', () => {
       expect((err as Error).message).toContain('••••');
       return true;
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SECURITY REVIEW 2026-09 — SEC-A3: the chat poll interval comes from the
+// response body, so it is untrusted. Pre-fix, 0 / -1 / NaN / a string all made
+// setTimeout fire immediately and turned the loop into a request flood that
+// burns the user's daily quota and pegs a core.
+// ---------------------------------------------------------------------------
+
+describe('SEC-A3 clampChatPollInterval', () => {
+  it('honours a sane server hint', () => {
+    expect(clampChatPollInterval(2500, 5000)).toBe(2500);
+    expect(clampChatPollInterval(CHAT_POLL_MIN_MS, 5000)).toBe(CHAT_POLL_MIN_MS);
+    expect(clampChatPollInterval(CHAT_POLL_MAX_MS, 5000)).toBe(CHAT_POLL_MAX_MS);
+  });
+
+  it('floors values that would remove all pacing', () => {
+    for (const v of [0, -1, -100000, 1, 999]) {
+      expect(clampChatPollInterval(v, 5000)).toBeGreaterThanOrEqual(CHAT_POLL_MIN_MS);
+    }
+  });
+
+  it('caps a value that would stall chat for hours', () => {
+    expect(clampChatPollInterval(86_400_000, 5000)).toBe(CHAT_POLL_MAX_MS);
+    expect(clampChatPollInterval(Number.MAX_SAFE_INTEGER, 5000)).toBe(CHAT_POLL_MAX_MS);
+  });
+
+  it('falls back for anything that is not a finite number', () => {
+    for (const v of [undefined, null, 'soon', '1000', NaN, Infinity, -Infinity, {}, [], true]) {
+      expect(clampChatPollInterval(v, 5000)).toBe(5000);
+    }
+  });
+
+  it('never returns a value that would make setTimeout fire immediately', () => {
+    for (const v of [0, -1, NaN, 'x', undefined, 10]) {
+      expect(clampChatPollInterval(v, 5000)).toBeGreaterThanOrEqual(CHAT_POLL_MIN_MS);
+    }
   });
 });

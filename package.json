@@ -16,13 +16,15 @@
     "build:web": "npm run build -w @livetap/web",
     "dev:web": "npm run dev -w @livetap/web",
     "test": "vitest run",
+    "test:relay": "node --test infra/relay/session-api/",
+
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -b tsconfig.json",
     "lint": "eslint .",
     "e2e": "npm run e2e -w @livetap/web",
     "audit:deps": "npm audit --audit-level=high",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build:web"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:relay && npm run build:web"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

@@ -1,4 +1,12 @@
-import { assertSameOrigin, errorResponse, json, readJsonBody, refreshToken, validateRefreshInput } from '../_lib/broker.js';
+import {
+  assertSameOrigin,
+  assertWithinRateLimit,
+  errorResponse,
+  json,
+  readJsonBody,
+  refreshToken,
+  validateRefreshInput,
+} from '../_lib/broker.js';
 import { nodeHandler } from '../_lib/node.js';
 
 /**
@@ -10,6 +18,7 @@ export async function handle(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'METHOD_NOT_ALLOWED' });
   try {
     assertSameOrigin(req);
+    assertWithinRateLimit(req);
     const input = validateRefreshInput(await readJsonBody(req));
     const tokens = await refreshToken(input, process.env);
     return json(200, tokens);

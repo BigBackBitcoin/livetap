@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyFailure, type ChatMessage, type DestinationConfig } from '@livetap/core';
-import { TwitchAdapter } from './TwitchAdapter.js';
+import { TwitchAdapter, isAcceptableReconnectUrl, reconnectDelayMs, RECONNECT_BASE_MS, RECONNECT_MAX_MS } from './TwitchAdapter.js';
 import type { HttpError } from './http.js';
 import { createFakeFetch, type FakeRoute } from '../testing/fakeFetch.js';
 import type { MinimalWebSocket, Timers, WebSocketCtor } from './websocket.js';
@@ -426,5 +426,155 @@ describe('TwitchAdapter error mapping', () => {
     await expect(
       adapter.createBroadcast(config({ metadata: undefined }), credential),
     ).rejects.toThrow(/did not return a stream key/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SECURITY REVIEW 2026-09 — SEC-A1/A2. Both of these failed before the fix.
+// ---------------------------------------------------------------------------
+
+describe('SEC-A1 session_reconnect url is validated, not obeyed', () => {
+  const BASE = 'wss://eventsub.test/ws';
+
+  it('accepts only a same-origin wss url', () => {
+    expect(isAcceptableReconnectUrl('wss://eventsub.test/ws?reconnect=1', BASE)).toBe(true);
+    expect(isAcceptableReconnectUrl('wss://eventsub.test/other/path', BASE)).toBe(true);
+  });
+
+  it('refuses a different host, a downgrade to ws:, and non-websocket schemes', () => {
+    for (const next of [
+      'wss://evil.example/ws',
+      'wss://eventsub.test.evil.example/ws',
+      'ws://eventsub.test/ws',
+      'https://eventsub.test/ws',
+      'file:///C:/x',
+      'javascript:alert(1)',
+      'wss://eventsub.test:9999/ws',
+    ]) {
+      expect(isAcceptableReconnectUrl(next, BASE)).toBe(false);
+    }
+  });
+
+  it('refuses junk, control characters and absurd lengths', () => {
+    for (const next of [undefined, null, 42, {}, '', 'not a url', `wss://eventsub.test/${'a'.repeat(3000)}`]) {
+      expect(isAcceptableReconnectUrl(next, BASE)).toBe(false);
+    }
+    expect(isAcceptableReconnectUrl('wss://eventsub.test/ws\r\nHost: evil', BASE)).toBe(false);
+  });
+
+  it('does not open a socket to a hostile reconnect_url, and keeps chat alive', async () => {
+    FakeSocket.instances = [];
+    const { adapter } = adapterWith([{ match: '/eventsub/subscriptions', method: 'POST', body: {} }], {
+      webSocketCtor: FakeSocket as unknown as WebSocketCtor,
+      timers: manualTimers(),
+    });
+    await adapter.subscribeChat(
+      { streamId: '1234567', ingest: { protocol: 'rtmp', url: 'x' } },
+      () => undefined,
+      credential,
+    );
+    const first = FakeSocket.instances[0];
+    first?.receive({
+      metadata: { message_type: 'session_welcome' },
+      payload: { session: { id: 'session-1' } },
+    });
+
+    first?.receive({
+      metadata: { message_type: 'session_reconnect' },
+      payload: { session: { reconnect_url: 'wss://attacker.example/ws' } },
+    });
+
+    // A second socket was opened, but to OUR endpoint -- never the attacker's.
+    for (const socket of FakeSocket.instances) {
+      expect(socket.url).not.toContain('attacker.example');
+      expect(socket.url.startsWith('wss://eventsub.test/')).toBe(true);
+    }
+  });
+});
+
+describe('SEC-A2 reconnect is bounded', () => {
+  it('backs off exponentially and caps the delay', () => {
+    expect(reconnectDelayMs(0)).toBe(0);
+    expect(reconnectDelayMs(1)).toBe(RECONNECT_BASE_MS);
+    expect(reconnectDelayMs(2)).toBe(RECONNECT_BASE_MS * 2);
+    expect(reconnectDelayMs(3)).toBe(RECONNECT_BASE_MS * 4);
+    expect(reconnectDelayMs(50)).toBe(RECONNECT_MAX_MS);
+    expect(reconnectDelayMs(-1)).toBe(0);
+  });
+
+  it('does not spin when a socket closes immediately on every attempt', async () => {
+    // Pre-fix, `onclose -> reconnectFromScratch -> connect` was a synchronous
+    // cycle: a socket that closed during construction produced an unbounded,
+    // CPU-pegging connect/close loop that also hammered the endpoint.
+    FakeSocket.instances = [];
+    const timers = manualTimers();
+    class InstantlyClosingSocket extends FakeSocket {
+      constructor(url: string) {
+        super(url);
+        // Simulate the endpoint hanging up as soon as the socket is wired up.
+        queueMicrotask(() => this.onclose?.({ code: 1006 }));
+      }
+    }
+    const { adapter } = adapterWith([{ match: '/eventsub/subscriptions', method: 'POST', body: {} }], {
+      webSocketCtor: InstantlyClosingSocket as unknown as WebSocketCtor,
+      timers,
+    });
+    const sub = await adapter.subscribeChat(
+      { streamId: '1234567', ingest: { protocol: 'rtmp', url: 'x' } },
+      () => undefined,
+      credential,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The first reconnect is immediate (so a single drop is invisible), and
+    // then the loop STOPS and waits on a timer instead of spinning.
+    const afterFirstDrop = FakeSocket.instances.length;
+    expect(afterFirstDrop).toBeLessThanOrEqual(3);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(FakeSocket.instances.length).toBe(afterFirstDrop);
+
+    // Each timer tick makes exactly one further attempt.
+    timers.run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(FakeSocket.instances.length).toBeLessThanOrEqual(afterFirstDrop + 2);
+
+    sub.stop();
+    const settled = FakeSocket.instances.length;
+    timers.run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // After stop() nothing more is dialled, and no timer is left behind.
+    expect(FakeSocket.instances.length).toBe(settled);
+    expect(timers.pending()).toBe(0);
+  });
+});
+
+describe('SEC-A5 EventSub frames are treated as untrusted data', () => {
+  it('ignores malformed JSON, wrong types and prototype-polluting payloads', async () => {
+    FakeSocket.instances = [];
+    const received: ChatMessage[] = [];
+    const { adapter } = adapterWith([{ match: '/eventsub/subscriptions', method: 'POST', body: {} }], {
+      webSocketCtor: FakeSocket as unknown as WebSocketCtor,
+      timers: manualTimers(),
+    });
+    await adapter.subscribeChat(
+      { streamId: '1234567', ingest: { protocol: 'rtmp', url: 'x' } },
+      (m) => received.push(m),
+      credential,
+    );
+    const socket = FakeSocket.instances[0];
+
+    socket?.onmessage?.({ data: '{' });
+    socket?.onmessage?.({ data: '[]' });
+    socket?.onmessage?.({ data: 'null' });
+    socket?.onmessage?.({ data: '"a string"' });
+    socket?.onmessage?.({ data: 12345 });
+    socket?.onmessage?.({
+      data: '{"metadata":{"message_type":"notification","subscription_type":"channel.chat.message"},"payload":{"event":{"chatter_user_id":"1","message_id":"m","message":{"text":"x"},"__proto__":{"polluted":"yes"}}}}',
+    });
+
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.prototype).not.toHaveProperty('polluted');
+    // Everything above is either ignored or mapped to a plain message; nothing throws.
+    expect(received.length).toBeLessThanOrEqual(1);
   });
 });

@@ -54,13 +54,29 @@ export class HttpError extends Error {
 
 /**
  * Strip anything secret-shaped from a string before it can reach a log or an error message.
- * Covers bearer tokens, `key=`/`token=`/`secret=` query params and RTMP stream keys.
+ *
+ * SEC-A4 (2026-09 security review): the previous rule set covered bearer
+ * tokens, a handful of query parameters and the RTMP stream-key path segment,
+ * but NOT the credentials the SRT and WHIP paths carry (`passphrase=`,
+ * `streamid=`), nor `password=`/`signature=`/`authorization=`, nor userinfo in
+ * a URL (`rtsp://user:pass@host`). Those are exactly the fields
+ * `packages/core`'s `redactSecrets` handles, and the two lists must not
+ * disagree: a reader who sees one of them let a value through cannot tell
+ * whether the other would have masked it.
+ *
+ * Ordered longest-match-first so `refresh_token=` is not half-matched by the
+ * shorter `token=` alternative.
  */
 export function redact(text: string): string {
+  if (typeof text !== 'string') return '';
   return text
     .replace(/(Bearer\s+)[\w.\-~+/]+=*/gi, '$1••••')
-    .replace(/((?:access_token|token|key|secret|client_secret|code|code_verifier)=)[^&\s]+/gi, '$1••••')
+    .replace(
+      /((?:client_secret|code_verifier|refresh_token|access_token|id_token|stream_key|streamkey|passphrase|authorization|streamid|password|signature|secret|token|code|key|auth|pwd|sig)=)[^&\s]+/gi,
+      '$1••••',
+    )
     .replace(/(rtmps?:\/\/[^\s]+\/)([^\s/?]+)/gi, '$1••••')
+    .replace(/((?:rtsps?|srt|https?|wss?):\/\/)[^\s@/]*@/gi, '$1••••@')
     .slice(0, 500);
 }
 

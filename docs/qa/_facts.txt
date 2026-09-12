@@ -1,0 +1,38 @@
+
+SETTINGS simple solid fills: ["Skip to the main screen :: rgb(26, 29, 33)","Settings :: rgb(35, 39, 44)","1080p :: rgb(18, 20, 23)","Dark :: rgb(18, 20, 23)"]
+SETTINGS typescale: [["14px/500",8],["16px/400",7],["13px/600",7],["18px/600",4],["14px/400",3],["13px/400",2],["28px/700",1]]
+SHOT 23-settings-pro-1440-dark.png 74KB
+SHOT 24-recordings-1440-dark.png 21KB
+SHOT 25-notfound-1440-dark.png 8KB
+404 status: 200
+SHOT 26-landing-1440-light.png 246KB
+LIGHT landing solid fills: ["Skip to download :: rgb(255, 255, 255)","Open LIVETAP :: rgb(214, 58, 45)","Open LIVETAP :: rgb(214, 58, 45)","Open LIVETAP :: rgb(214, 58, 45)","Watch for releases :: rgb(255, 255, 255)"]
+LIGHT studio idle accent: []
+LIGHT studio idle solid: ["Skip to the main screen :: rgb(26, 29, 33)","Studio :: rgb(35, 39, 44)","16:9 :: rgb(18, 20, 23)","Waiting for stream data :: rgb(35, 39, 44)","⏳ Starting Soon :: rgb(26, 29, 33)","🎥 Main Camera :: rgb(26, 29, 33)","🖥️ Screen Share :: rgb(26, 29, 33)","👥 Conversation Viewers see this :: rgb(35, 39, 44)","☕ Break :: rgb(26, 29, 33)","👋 Ending :: rgb(26, 29, 33)","GO LIVE :: rgb(107, 168, 255)","Destinations :: rgb(35, 39, 44)"]
+SHOT 27-studio-live-3dest-1440-light.png 63KB
+SHOT 28-privacy-1440-light.png 38KB
+SHOT 29-studio-idle-834-dark.png 145KB
+834 overflow 0
+834 touch<44: ["a[Skip to the main screen] 196x42","a[LIVETAP Studio] 27x38","a[Studio] 89x32","a[Moments] 107x32","a[Destinations] 126x32","a[Recordings] 118x32","a[Settings] 99x32","a[Manage demo destinations] 160x18","button[16:9] 46x32","button[9:16] 46x32","button[1:1] 37x32","button[Waiting for stream data] 222x34","button[Mute] 217x26","button[Share my screen] 217x26","a[Run setup again] 99x19","a[Run setup again] 99x19","a[Manage destinations] 128x19","a[Manage destinations] 754x24"]
+SHOT 30-landing-375-dark.png 153KB
+375 landing overflow 0
+375 landing touch<44: ["a[Skip to download] 155x42","a[LIVETAP] 115x28","a[How it works] 80x24","a[Open source] 78x24","a[Desktop and mobile] 139x24","a[Read the code] 98x21","a[Security policy] 101x21","a[What LIVETAP never collects] 195x21","a[GitHub] 44x24","a[Privacy] 43x24","a[Terms] 36x24"]
+SHOT 31-onboarding-step1-375-dark.png 26KB
+375 onboarding overflow 0
+375 onboarding touch<44: ["a[Skip setup] 72x24"]
+375 step2 touch<44: ["a[Skip setup] 72x24"]
+375 studio idle overflow 0
+375 studio idle touch<44: ["a[Skip to the main screen] 196x42","a[Manage demo destinations] 160x18","button[16:9] 46x32","button[9:16] 46x32","button[1:1] 44x32","a[Run setup again] 99x19","a[Run setup again] 99x19","a[Manage destinations] 128x19","a[Manage destinations] 311x24"]
+SHOT 32-studio-live-375-dark.png 57KB
+375 live overflow 0
+375 live touch<44: ["a[Skip to the main screen] 196x42","a[Manage demo destinations] 160x18","button[16:9] 46x32","button[9:16] 46x32","button[1:1] 44x32","a[Manage destinations] 311x24"]
+375 live solid fills: ["Skip to the main screen :: rgb(26, 29, 33)","Studio :: rgb(35, 39, 44)","16:9 :: rgb(18, 20, 23)","Waiting for stream data :: rgb(35, 39, 44)","⏳ Starting Soon :: rgb(26, 29, 33)","🎥 Main Camera Viewers see this :: rgb(35, 39, 44)","🖥️ Screen Share :: rgb(26, 29, 33)","👥 Guest :: rgb(26, 29, 33)","☕ Break :: rgb(26, 29, 33)","👋 Ending :: rgb(26, 29, 33)","END 00:00 :: rgb(107, 168, 255)","Destinations :: rgb(35, 39, 44)"]
+SHOT 33-destinations-375-dark.png 29KB
+375 dest overflow 0
+375 dest touch<44: ["a[Skip to the main screen] 196x42","a[Manage demo destinations] 160x18"]
+REDUCED-MOTION chip dot: cls=lt-dot selfAnim=none/0.001s afterAnim=none/0.001s afterOpacity=1
+REDUCED-MOTION any running animations: 
+ESCAPE-CANCEL back to idle: true
+STUDIO initial focus: BODY:Skip to the main screen Studio Moments D
+TAB ORDER: ["Skip to the main screen","LIVETAP Studio","Studio","Moments","Destinations","Recordings","Settings","Pro mode","Manage demo destinations","Main Camera: your camera, fu","16:9","9:16","1:1","Waiting for stream data","⏳ Starting Soon","🎥 Main Camera Viewers see t","🖥️ Screen Share","👥 Guest","☕ Break","👋 Ending","No camera","No microphone","Mute","Share my screen","Run setup again","Run setup again","Manage destinations","GO LIVE","Destinations","This stream YouTube · Ready ","Manage destinations","Skip to the main screen Stud","Skip to the main screen","LIVETAP Studio","Studio","Moments","Destinations","Recordings","Settings","Pro mode"]
+GO LIVE tab index: 27

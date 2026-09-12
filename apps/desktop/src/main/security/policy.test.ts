@@ -216,3 +216,94 @@ describe('isRequestAllowed', () => {
     expect(isRequestAllowed('::::', false)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// SECURITY REVIEW 2026-09
+// ---------------------------------------------------------------------------
+
+describe('SEC-D1 isInternalNavigation path containment', () => {
+  it('blocks traversal through a percent-encoded backslash', () => {
+    // The URL parser normalises `%2e%2e` but NOT `%5c`, so these segments used
+    // to reach decodeURIComponent intact and the prefix comparison still
+    // matched. Win32 resolves `\` as a separator, so this was a real escape
+    // from the renderer bundle into any local file -- with the preload
+    // bridge attached to the new document.
+    expect(
+      isInternalNavigation(
+        'file:///C:/Program%20Files/LIVETAP/resources/app/dist/renderer/..%5C..%5C..%5C..%5C..%5CWindows%5CTemp%5Cevil.html',
+        APP_FILE_URL,
+      ),
+    ).toBe(false);
+    expect(
+      isInternalNavigation(
+        'file:///C:/Program%20Files/LIVETAP/resources/app/dist/renderer/..%5Cevil.html',
+        APP_FILE_URL,
+      ),
+    ).toBe(false);
+  });
+
+  it('blocks traversal through a literal or encoded dot segment', () => {
+    expect(
+      isInternalNavigation(
+        'file:///C:/Program%20Files/LIVETAP/resources/app/dist/renderer/%2e%2e/%2e%2e/evil.html',
+        APP_FILE_URL,
+      ),
+    ).toBe(false);
+    expect(isInternalNavigation('file:///C:/Windows/Temp/evil.html', APP_FILE_URL)).toBe(false);
+  });
+
+  it('blocks a NUL byte smuggled through percent-encoding', () => {
+    expect(
+      isInternalNavigation(
+        'file:///C:/Program%20Files/LIVETAP/resources/app/dist/renderer/index.html%00.txt',
+        APP_FILE_URL,
+      ),
+    ).toBe(false);
+  });
+
+  it('still allows the renderer bundle and its own subdirectories', () => {
+    expect(isInternalNavigation(APP_FILE_URL, APP_FILE_URL)).toBe(true);
+    expect(
+      isInternalNavigation(
+        'file:///C:/Program%20Files/LIVETAP/resources/app/dist/renderer/assets/index-abc.js',
+        APP_FILE_URL,
+      ),
+    ).toBe(true);
+  });
+
+  it('blocks a sibling directory whose name merely starts with the bundle path', () => {
+    expect(
+      isInternalNavigation(
+        'file:///C:/Program%20Files/LIVETAP/resources/app/dist/renderer-evil/index.html',
+        APP_FILE_URL,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('SEC-D2 isExternallyOpenable scheme lock', () => {
+  it('accepts an uppercase scheme because the parser normalises it', () => {
+    // `HTTPS://` is genuinely https once parsed, so allowing it is correct --
+    // pinned here so nobody "fixes" it with a case-sensitive string compare
+    // and reopens the `ms-msdt:`/`file:` class of bug from the other side.
+    expect(isExternallyOpenable('HTTPS://example.com/x')).toBe(true);
+  });
+  it('still refuses every non-https scheme, including the dangerous ones', () => {
+    for (const url of [
+      'http://example.com',
+      'file:///C:/Windows/System32/calc.exe',
+      'ms-msdt:/id',
+      'smb://host/share',
+      'javascript:alert(1)',
+      'data:text/html,<script>1</script>',
+      'vscode://x',
+      'livetap://auth',
+    ]) {
+      expect(isExternallyOpenable(url)).toBe(false);
+    }
+  });
+  it('refuses control characters and absurd lengths', () => {
+    expect(isExternallyOpenable('https://example.com/\r\nSet-Cookie: x')).toBe(false);
+    expect(isExternallyOpenable(`https://example.com/${'a'.repeat(3000)}`)).toBe(false);
+  });
+});

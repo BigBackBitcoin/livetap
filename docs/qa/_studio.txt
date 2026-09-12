@@ -1,0 +1,70 @@
+Skip to the main screen
+Studio
+Moments
+Destinations
+Recordings
+Settings
+Pro mode
+Pro mode adds encoder, layer and diagnostic controls. Nothing is hidden.
+Demo mode — every destination here is simulated. LIVETAP is not broadcasting anywhere.
+Manage demo destinations
+
+Main Camera: your camera, full frame.
+
+16:9
+9:16
+1:1
+Waiting for stream data
+Rec off
+Moments
+⏳
+Starting Soon
+🎥
+Main Camera
+Viewers see this
+🖥️
+Screen Share
+👥
+Guest
+☕
+Break
+👋
+Ending
+Camera, microphone and screen
+Camera
+No camera
+Microphone
+No microphone
+Mute
+
+Say something — the level should move
+
+Share my screen
+
+Not sharing
+
+YouTube · Ready
+Goes live when you tap GO LIVE
+Demo
+TikTok · Ready
+Goes live when you tap GO LIVE
+Demo
+Ready — with 3 things to know
+No camera found — viewers will see your title card instead of your face. Run setup again
+No microphone found — viewers will hear nothing. Run setup again
+2 destinations are demos and will not broadcast anywhere. Manage destinations
+GO LIVE
+
+Demo — going live on 2, and nothing is broadcast anywhere
+
+Chat
+Destinations
+Health
+This stream
+YouTube · Ready
+Goes live when you tap GO LIVE
+Demo
+TikTok · Ready
+Goes live when you tap GO LIVE
+Demo
+Manage destinations

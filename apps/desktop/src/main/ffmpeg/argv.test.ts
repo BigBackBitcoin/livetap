@@ -459,3 +459,138 @@ describe('teeGlobalArgs', () => {
     expect(() => teeGlobalArgs({ recoveryWaitTime: -1 })).toThrow(/recovery wait time/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// SECURITY REVIEW 2026-09 — SEC-D3/D4. Attacks attempted against the argv
+// builders, with the outcome pinned so nobody "simplifies" a gate away.
+// ---------------------------------------------------------------------------
+
+describe('SEC-D4 protocol allow-list cannot be escaped', () => {
+  const asIngest = (o: Record<string, unknown>): IngestTarget => o as unknown as IngestTarget;
+
+  it('refuses FFmpeg pseudo-protocols however they are labelled', () => {
+    for (const url of [
+      'file:///C:/Windows/System32/config/SAM',
+      'concat:/etc/passwd',
+      'data:text/plain;base64,AAAA',
+      'subfile:,start=0,end=100,:/etc/shadow',
+      'http://plain.example/app',
+      'srt://h.example:9000',
+      'https://h.example/whip',
+    ]) {
+      expect(() => buildSenderArgv({ ingest: asIngest({ protocol: 'rtmp', url, streamKey: 'k' }) })).toThrow(
+        ArgvRefusedError,
+      );
+    }
+  });
+
+  it('refuses a pseudo-protocol smuggled in as an srt destination', () => {
+    for (const url of ['concat:/etc/passwd', 'file:///etc/passwd', 'rtmp://h.example/app']) {
+      expect(() => buildSenderArgv({ ingest: asIngest({ protocol: 'srt', url }) })).toThrow(ArgvRefusedError);
+    }
+  });
+
+  it('refuses a WHIP endpoint that is not https', () => {
+    for (const url of ['http://h.example/whip', 'ws://h.example/whip', 'file:///x']) {
+      expect(() => buildSenderArgv({ ingest: asIngest({ protocol: 'whip', url }) })).toThrow(ArgvRefusedError);
+    }
+  });
+
+  it('refuses an encoded NUL byte in any URL', () => {
+    expect(() => assertCleanUrl('rtmp://h.example/app%00', 'Stream URL')).toThrow(ArgvRefusedError);
+    expect(() => assertCleanUrl('srt://h.example:9000?streamid=a%00b', 'SRT URL')).toThrow(ArgvRefusedError);
+    expect(() =>
+      buildSenderArgv({ ingest: asIngest({ protocol: 'rtmp', url: 'rtmp://h.example/app%00', streamKey: 'k' }) }),
+    ).toThrow(ArgvRefusedError);
+  });
+});
+
+describe('SEC-D4 no user string can become an ffmpeg option', () => {
+  const asIngest = (o: Record<string, unknown>): IngestTarget => o as unknown as IngestTarget;
+
+  it('refuses a leading dash in every field that reaches argv', () => {
+    expect(() => assertCleanToken('-loglevel', 'WHIP bearer token')).toThrow(ArgvRefusedError);
+    expect(() => assertCleanUrl('-f', 'Stream URL')).toThrow(ArgvRefusedError);
+    expect(() => assertCleanPath('-y', 'Recording path')).toThrow(ArgvRefusedError);
+    expect(() =>
+      buildSenderArgv({
+        ingest: asIngest({ protocol: 'whip', url: 'https://h.example/whip', streamKey: '-loglevel' }),
+      }),
+    ).toThrow(ArgvRefusedError);
+    expect(() =>
+      buildSrtUrl(asIngest({ protocol: 'srt', url: 'srt://h.example:9000', streamId: '-report' })),
+    ).toThrow(ArgvRefusedError);
+    expect(() =>
+      buildSrtUrl(asIngest({ protocol: 'srt', url: 'srt://h.example:9000', passphrase: '-y' })),
+    ).toThrow(ArgvRefusedError);
+  });
+
+  it('keeps the WHIP bearer token as one argv element, never merged into the URL', () => {
+    const argv = buildSenderArgv({
+      ingest: asIngest({ protocol: 'whip', url: 'https://h.example/whip', streamKey: 'tok3n' }),
+    });
+    const at = argv.indexOf('-authorization');
+    expect(at).toBeGreaterThan(-1);
+    expect(argv[at + 1]).toBe('tok3n');
+    expect(argv.filter((a) => a === 'tok3n')).toHaveLength(1);
+  });
+});
+
+describe('SEC-D4 SRT streamid / passphrase cannot inject a second parameter', () => {
+  const asIngest = (o: Record<string, unknown>): IngestTarget => o as unknown as IngestTarget;
+
+  it('refuses an ampersand, quote or space in a streamid', () => {
+    for (const streamId of ['x&passphrase=evil', 'x&mode=listener', 'a b', "a'b", 'a"b', 'a|b', 'a$b']) {
+      expect(() => buildSrtUrl(asIngest({ protocol: 'srt', url: 'srt://h.example:9000', streamId }))).toThrow(
+        ArgvRefusedError,
+      );
+    }
+  });
+
+  it('percent-encodes a legitimate streamid so it stays one parameter', () => {
+    const url = buildSrtUrl(asIngest({ protocol: 'srt', url: 'srt://h.example:9000', streamId: 'live/key' }));
+    expect(url).toBe('srt://h.example:9000?streamid=live%2Fkey');
+    expect(url.split('&')).toHaveLength(1);
+  });
+
+  it('appends passphrase with & only after an existing query, never duplicating ?', () => {
+    const url = buildSrtUrl(
+      asIngest({ protocol: 'srt', url: 'srt://h.example:9000?mode=caller', passphrase: 'p4ssphrase' }),
+    );
+    expect(url).toBe('srt://h.example:9000?mode=caller&passphrase=p4ssphrase');
+    expect(url.match(/\?/g)).toHaveLength(1);
+  });
+});
+
+describe('SEC-D4 tee slave list cannot be broken out of', () => {
+  it('escapes a pipe so an injected slave stays part of one URL', () => {
+    const out = buildTeeOutput([
+      { format: 'flv', url: 'rtmp://a.example/app/k|[f=flv]rtmp://evil.example/app/k' },
+      { format: 'null', url: '-' },
+    ]);
+    // Exactly ONE real (unescaped) separator: the one between our two slaves.
+    expect(out.replace(/\\\|/g, '')).toContain('|[f=null]-');
+    expect(out.replace(/\\\|/g, '').split('|')).toHaveLength(2);
+    expect(out).toContain('\\|');
+  });
+
+  it('refuses a slave URL that opens its own option block', () => {
+    expect(() => buildTeeOutput([{ format: 'flv', url: '[f=null]-' }, { format: 'null', url: '-' }])).toThrow(
+      ArgvRefusedError,
+    );
+  });
+
+  it('refuses a slave format that is not a clean token', () => {
+    expect(() => buildTeeOutput([{ format: 'flv]x[f=null', url: 'out.flv' }])).toThrow(ArgvRefusedError);
+    expect(() => buildTeeOutput([{ format: 'a b', url: 'out.flv' }])).toThrow(ArgvRefusedError);
+  });
+
+  it('still refuses a network-only slave list with no anchor', () => {
+    expect(() =>
+      buildTeeOutput([
+        { format: 'flv', url: 'rtmp://a.example/app/k' },
+        { format: 'flv', url: 'rtmp://b.example/app/k' },
+      ]),
+    ).toThrow(ArgvRefusedError);
+  });
+});

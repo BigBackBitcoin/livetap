@@ -17,6 +17,9 @@ import {
   isStartRequest,
   isVaultId,
   isVaultSetRequest,
+  MAX_OUTPUTS,
+  MAX_SECRET_BYTES,
+  MAX_URL_LENGTH,
 } from './guards.js';
 
 /**
@@ -369,5 +372,139 @@ describe('isChunkPayload', () => {
     expect(isChunkPayload({ aspectRatio: '16:9', data: new ArrayBuffer(65 * 1024 * 1024) })).toBe(false);
     expect(isChunkPayload({ aspectRatio: '4:3', data: new ArrayBuffer(10) })).toBe(false);
     for (const value of NON_OBJECTS) expect(isChunkPayload(value)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SECURITY REVIEW 2026-09 — payloads that pass a naive guard but are dangerous.
+// ---------------------------------------------------------------------------
+
+describe('SEC-D5 isSafeRelativePath against Windows path tricks', () => {
+  it('refuses a colon anywhere: NTFS alternate data streams and drive-relative paths', () => {
+    // `recording.mp4:payload.exe` resolves "inside" the recordings directory as
+    // far as path.resolve is concerned, but names a hidden ADS that
+    // shell.openPath would happily execute.
+    expect(isSafeRelativePath('LIVETAP-2026-01-01.mp4:payload.exe')).toBe(false);
+    expect(isSafeRelativePath('a/b.mp4:$DATA')).toBe(false);
+    expect(isSafeRelativePath('C:x')).toBe(false);
+  });
+
+  it('refuses every traversal spelling, including mixed separators', () => {
+    for (const p of ['../x', '..\\x', 'a/../b', 'a\\..\\b', './x', 'a/./b', '..', '.']) {
+      expect(isSafeRelativePath(p)).toBe(false);
+    }
+  });
+
+  it('refuses absolute, UNC, NUL and empty-segment paths', () => {
+    for (const p of ['/etc/passwd', '\\\\server\\share\\x', 'C:/Windows', 'a//b', '', 'a\u0000b']) {
+      expect(isSafeRelativePath(p)).toBe(false);
+    }
+  });
+
+  it('refuses an over-long path and a non-string', () => {
+    expect(isSafeRelativePath('a/'.repeat(300) + 'x')).toBe(false);
+    expect(isSafeRelativePath(null)).toBe(false);
+    expect(isSafeRelativePath(['a'])).toBe(false);
+    expect(isSafeRelativePath(42)).toBe(false);
+  });
+
+  it('still accepts the filenames LIVETAP actually writes', () => {
+    // FfmpegEngine.startRecording replaces `:` and `.` in the ISO stamp.
+    expect(isSafeRelativePath('LIVETAP-2026-09-12T03-51-04-123Z.mp4')).toBe(true);
+    expect(isSafeRelativePath('sub/LIVETAP-2026-09-12T03-51-04-123Z.mkv')).toBe(true);
+  });
+});
+
+describe('SEC-D6 prototype pollution through IPC payloads', () => {
+  it('refuses a JSON-parsed object with an own __proto__ key at any depth', () => {
+    const top = JSON.parse('{"protocol":"rtmp","url":"rtmp://a.example/live","__proto__":{"polluted":1}}') as unknown;
+    expect(isRecord(top)).toBe(false);
+    expect(isIngestTarget(top)).toBe(false);
+
+    const nested = JSON.parse(
+      '{"destinationId":"d1","aspectRatio":"16:9","ingest":{"protocol":"rtmp","url":"rtmp://a.example/live","__proto__":{"polluted":1}}}',
+    ) as unknown;
+    expect(isEngineOutput(nested)).toBe(false);
+
+    // And nothing leaked onto the prototype while we were checking.
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('refuses constructor and prototype keys too', () => {
+    expect(isRecord(JSON.parse('{"constructor":{}}'))).toBe(false);
+    expect(isRecord(JSON.parse('{"prototype":{}}'))).toBe(false);
+  });
+
+  it('refuses a formats map keyed by __proto__', () => {
+    expect(
+      isStartRequest(
+        JSON.parse(
+          '{"source":{"kind":"lavfi"},"encoder":{"preference":"auto","softwarePreset":"veryfast","rateControl":"cbr"},"recording":{"enabled":false,"container":"mp4","source":"program"},"formats":{"__proto__":{}},"outputs":[]}',
+        ),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('SEC-D6 oversized payloads are refused, not truncated', () => {
+  it('caps vault secrets by BYTE length, not character count', () => {
+    // 4 bytes per emoji: 2049 of them is 8196 bytes, over MAX_SECRET_BYTES,
+    // even though `.length` is only 4098.
+    const big = '\u{1F600}'.repeat(2049);
+    expect(isVaultSetRequest({ id: 'destination:a', secret: big })).toBe(false);
+    expect(isVaultSetRequest({ id: 'destination:a', secret: 'a'.repeat(MAX_SECRET_BYTES) })).toBe(true);
+    expect(isVaultSetRequest({ id: 'destination:a', secret: 'a'.repeat(MAX_SECRET_BYTES + 1) })).toBe(false);
+  });
+
+  it('caps ingest urls, keys, passphrases and stream ids', () => {
+    const base = { protocol: 'rtmp', url: 'rtmp://a.example/live' };
+    expect(isIngestTarget({ ...base, url: `rtmp://a.example/${'a'.repeat(MAX_URL_LENGTH)}` })).toBe(false);
+    expect(isIngestTarget({ ...base, streamKey: 'k'.repeat(1025) })).toBe(false);
+    expect(isIngestTarget({ ...base, passphrase: 'p'.repeat(1025) })).toBe(false);
+    expect(isIngestTarget({ ...base, streamId: 's'.repeat(513) })).toBe(false);
+  });
+
+  it('caps the number of outputs so one message cannot spawn unbounded processes', () => {
+    const outputs = Array.from({ length: MAX_OUTPUTS + 1 }, (_, i) => ({
+      destinationId: `d${i}`,
+      aspectRatio: '16:9',
+      ingest: { protocol: 'rtmp', url: 'rtmp://a.example/live', streamKey: 'k' },
+    }));
+    expect(
+      isStartRequest({
+        source: { kind: 'lavfi' },
+        encoder: { preference: 'auto', softwarePreset: 'veryfast', rateControl: 'cbr' },
+        recording: { enabled: false, container: 'mp4', source: 'program' },
+        formats: { '16:9': { aspectRatio: '16:9', width: 1920, height: 1080, fps: 30, videoKbps: 4500, audioKbps: 160, codec: 'h264', keyframeIntervalSeconds: 2 } },
+        outputs,
+      }),
+    ).toBe(false);
+  });
+
+  it('caps a single media chunk', () => {
+    expect(isChunkPayload({ aspectRatio: '16:9', data: new ArrayBuffer(64 * 1024 * 1024 + 1) })).toBe(false);
+    expect(isChunkPayload({ aspectRatio: '16:9', data: new ArrayBuffer(0) })).toBe(false);
+    expect(isChunkPayload({ aspectRatio: '16:9', data: new ArrayBuffer(1024) })).toBe(true);
+  });
+});
+
+describe('SEC-D6 isHttpsUrl is the only gate on shell.openExternal', () => {
+  it('refuses every non-https scheme and host-less https', () => {
+    for (const url of [
+      'http://example.com',
+      'file:///C:/Windows/System32/calc.exe',
+      'ms-msdt:/id',
+      'javascript:alert(1)',
+      'data:text/html,x',
+      'livetap://auth/callback',
+      'https://',
+      'not a url',
+    ]) {
+      expect(isHttpsUrl(url)).toBe(false);
+    }
+  });
+  it('accepts a real https url regardless of scheme case', () => {
+    expect(isHttpsUrl('https://id.twitch.tv/oauth2/authorize?client_id=x')).toBe(true);
+    expect(isHttpsUrl('HTTPS://accounts.google.com/o/oauth2/v2/auth')).toBe(true);
   });
 });
