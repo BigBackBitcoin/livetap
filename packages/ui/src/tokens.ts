@@ -304,14 +304,20 @@ export const HEALTH_HEADLINE: Record<HealthLevel, string> = {
   unknown: 'Checking',
 };
 
-/** The human-facing word for each destination state. Always rendered — colour is never alone. */
+/**
+ * The human-facing label for each destination state. Always rendered — colour is
+ * never alone. Canonical copy: PRODUCT_SPEC.md §4.2.
+ *
+ * "Live, rough" rather than "Degraded" because the user's question is whether
+ * they are still on air, and the answer is yes.
+ */
 export const STATE_LABEL: Record<DestinationState, string> = {
   DISCONNECTED: 'Not connected',
-  AUTHENTICATING: 'Connecting',
+  AUTHENTICATING: 'Signing in',
   READY: 'Ready',
   STARTING: 'Starting',
   LIVE: 'Live',
-  DEGRADED: 'Degraded',
+  DEGRADED: 'Live, rough',
   RECONNECTING: 'Reconnecting',
   FAILED: 'Failed',
   STOPPING: 'Stopping',

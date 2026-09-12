@@ -1,0 +1,11 @@
+/**
+ * The single stylesheet entry point for consumers:
+ *   import '@livetap/ui/styles.css';
+ *
+ * Order is normative: tokens define the variables, global resets and bases them,
+ * components consume them.
+ */
+
+@import './tokens.css';
+@import './global.css';
+@import './components.css';

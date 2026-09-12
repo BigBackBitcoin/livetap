@@ -282,7 +282,7 @@ Nine sizes. Adding a tenth requires deleting one.
 | `--lt-text-13` | 13px | 18px (1.385) | `+0.005em` | 500, 600 | Dense Pro rows, tab labels, `Kbd` |
 | `--lt-text-14` | 14px | 20px (1.429) | `0` | 400, 500, 600 | Default body in Pro density; secondary text |
 | `--lt-text-16` | 16px | 24px (1.5) | `0` | 400, 500, 600 | **Default body.** All inputs on mobile (prevents iOS zoom) |
-| `--lt-text-18` | 18px | 26px (1.444) | `-0.005em` | 500, 600 | Card titles, `HealthPill` headline, GO LIVE label (600) |
+| `--lt-text-18` | 18px | 26px (1.444) | `-0.005em` | 500, 600 | Card titles, `HealthPill` headline, `GO LIVE` label (700) |
 | `--lt-text-22` | 22px | 28px (1.273) | `-0.01em` | 600, 700 | Section headings, sheet titles, `ErrorCard` WHAT |
 | `--lt-text-28` | 28px | 34px (1.214) | `-0.014em` | 700 | Screen titles, onboarding step headings |
 | `--lt-text-36` | 36px | 42px (1.167) | `-0.018em` | 700, 800 | Landing section headlines |
@@ -296,7 +296,9 @@ Rules:
 - Body copy never exceeds **68 characters** per line (`max-width: 34rem` at 16px).
 - Never centre more than two consecutive lines of text.
 - Sentence case everywhere except the wordmark and the GO LIVE / END labels. No Title Case.
-- Text is never justified, and never uppercased except GO LIVE / END / `Kbd`.
+- Text is never justified. Upper case appears only in the wordmark, `GO LIVE`, `END` and `Kbd` —
+  and in those it is part of the string, never a `text-transform`, so what the DOM says is what the
+  screen shows (see PRODUCT_SPEC.md §6.4).
 - `font-synthesis: none` — no faux bold or faux italic from the fallback stack.
 
 ### 3.3 Numerals — metrics must not dance
@@ -538,17 +540,21 @@ components that must respond to *their own* width use container queries
 |---|---|---|---|
 | Page gutter | `space-4` (16) | `space-6` (24) | `space-12` (48), content capped at 1440px |
 | Grid | 1 column | 2 columns, 16px gutter | 12 columns, 24px gutter |
-| Navigation | Bottom tab bar, 4 items, 56px tall + safe-area inset | Left icon rail, 64px, labels on hover/focus | Left rail with labels, 240px, collapsible to 64px |
-| Studio dock (Chat / Destinations / Health) | Bottom `Sheet`, 3 tabs, snap points 45% / 92% of viewport | Right panel, 320px, overlays the preview, closable | Right panel, 360–400px, docked beside the preview, always available |
+| Navigation | Bottom bar, 64px + safe-area inset, 5 items, centre Studio item raised (56px circle) | Top bar, 56px, sticky, text tabs | Left rail, 88px, icon above a 12px label — never icon-only |
+| Studio dock (Chat / Destinations / Health) | Bottom `Sheet`, 3 tabs, snap points 45% / 92% of viewport | Right-edge `Sheet`, 420px, over the preview | Docked column, 380px default, drag-resizable 320–520px, width persists |
 | Studio preview | Full-width, top of screen, controls on a `--lt-scrim-preview` bar beneath | Full-width, dock overlays from the right | Flexible centre column, `min-width: 640px` |
-| Moment strip | Horizontal scroll-snap, 2.2 cards visible, 140px cards | Horizontal scroll, 3.5 visible, 160px | 6-up grid, no scroll, 168px |
+| Moment strip | Horizontal scroll-snap, 2.2 cards visible, 140×104px cards | Horizontal scroll, 3.5 visible, 160×104px | 6-up grid, no scroll, 168×104px |
 | Destination chips | Horizontal scroll row under the preview | Wrapping row | Wrapping row + full state list in the dock |
-| GO LIVE | Full-width, 64px tall, pinned above the nav bar with safe-area inset | 320px wide, bottom-right of the control bar | 280px wide, bottom-right of the control bar |
+| GO LIVE | Full-width, 64px tall, pinned above the nav bar with safe-area inset, never within 16px of it | Full-width of the centre column, 76px tall | Full-width of the centre column, 88px tall |
 | Quick controls | Icon-only; device pickers open as a `Sheet` | Icon + chevron; pickers open as a popover | Icon + device name + chevron, inline |
 | `Sheet` | Bottom sheet, full width, drag handle, `border-radius: 24px 24px 0 0` | Right side panel, 380px | Right side panel, 420px |
 | Tables | Card-per-row (labels inline) | Scrolling table, 4 columns | Full table |
 | Landing hero | 36px headline, stacked, one CTA | 36px, two-column from 768px | 48px, two-column |
 | Settings | Single column, sections as accordions | Two columns | Left section list + right detail pane |
+
+Screen-level derivations of this table (the Studio grid `88px | 1fr | 380px`, the tablet
+dock-as-Sheet decision, focus orders) live in `PRODUCT_SPEC.md` §5. Where the two disagree on a
+dimension, this table wins.
 
 Additional invariants:
 
@@ -583,7 +589,7 @@ what each component *guarantees*.
 | `StatusChip` | `state: DestinationState` + `label`. Always renders the label text. Per-state colour from §2.4. Dot pulses only for `LIVE` and `RECONNECTING`. `LIVE` renders as the solid fill. |
 | `HealthPill` | `level: HealthLevel` + `headline`. One word plus colour, expandable to detail. `aria-live="polite"` on the headline. |
 | `ErrorCard` | Renders a `HumaneError` as WHAT / WHY / DOING / YOU CAN with exactly one primary action. `technical` is Pro-only, behind a `<details>` disclosure. |
-| `MomentCard` | Large tappable card, icon + name, `aria-pressed` for active. ≥96px tall, ≥140px wide. |
+| `MomentCard` | Large tappable card, icon + name, `aria-pressed` for active. ≥104px tall, ≥140px wide. |
 | `GoLiveButton` | States `idle` / `countdown` / `starting` / `live` / `stopping`. Countdown shows 3-2-1 with Cancel; `Escape` cancels. Live shows `mm:ss` in tabular numerals plus the word END. |
 | `Meter` | Audio level bar. `role="meter"` with `aria-valuenow/min/max`; peak-hold marker; never the only indication that audio is present. |
 | `Logo` | The §1.2 SVG plus optional wordmark. `mark` / `full` variants, sizes 20/24/32/40. |
