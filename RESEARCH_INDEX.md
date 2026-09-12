@@ -7,8 +7,8 @@
 | docs/research/PLATFORM_YOUTUBE_TWITCH_KICK.md | DONE | Platform Integrations 1 |
 | docs/research/PLATFORM_TIKTOK_INSTAGRAM_FACEBOOK.md | DONE | Platform Integrations 2 |
 | docs/research/PLATFORM_X_LINKEDIN_OTHERS.md (+ secondary destinations, WHIP/HEVC/AV1/SRT matrix, custom spec) | DONE | Platform Integrations 3 |
-| docs/research/PLATFORM_CAPABILITY_MATRIX.md (synthesis of the three above) | NOT STARTED | Orchestrator |
-| docs/research/COMPETITOR_FAILURE_DATABASE.md (synthesis of A+B) | NOT STARTED | Orchestrator |
+| docs/research/PLATFORM_CAPABILITY_MATRIX.md (synthesis of the three above) | DONE | Orchestrator |
+| docs/research/COMPETITOR_FAILURE_DATABASE.md (synthesis of A+B) | DONE | Orchestrator |
 | docs/research/MEDIA_ENGINE_EVALUATION.md | IN PROGRESS | Media Engineering |
 | docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md | DONE (1223 lines; store checklists) | Desktop + Mobile + Release |
 | docs/research/SWITCHING_TRIGGERS.md (what makes OBS users switch; intent onboarding validation; MVP destination set; friction benchmark) | IN PROGRESS | Product Research |

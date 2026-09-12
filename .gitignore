@@ -19,3 +19,4 @@ apps/mobile/android/.gradle/
 apps/mobile/android/app/build/
 .turbo/
 *.tsbuildinfo
+tools/
