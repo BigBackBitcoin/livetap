@@ -110,6 +110,39 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # Optional TLS front door. Start with: docker compose --profile tls up -d
+  # Requires LIVETAP_RELAY_DOMAIN in .env and ports 80/443 reachable from the
+  # internet (ACME HTTP-01). With this profile, set
+  # LIVETAP_RELAY_PUBLIC_WHIP_SCHEME=https and LIVETAP_RELAY_PUBLIC_WHIP_PORT=443.
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: livetap-relay-tls
+    profiles: [tls]
+    restart: unless-stopped
+    networks: [relay]
+    depends_on:
+      mediamtx:
+        condition: service_healthy
+      session-api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      LIVETAP_RELAY_DOMAIN: ${LIVETAP_RELAY_DOMAIN:?set LIVETAP_RELAY_DOMAIN in .env when using the tls profile}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
 networks:
   relay:
     driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:

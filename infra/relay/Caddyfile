@@ -1,0 +1,31 @@
+# LIVETAP CORE relay — TLS front door (docker compose --profile tls up -d)
+#
+# Set LIVETAP_RELAY_DOMAIN in .env to a DNS name that points at this host;
+# Caddy obtains and renews the certificate automatically (ports 80/443 must be
+# reachable). WebRTC media (UDP 18189 on the host) bypasses this proxy — open it
+# in your firewall. See README.md "TLS".
+{$LIVETAP_RELAY_DOMAIN} {
+        encode zstd gzip
+
+        # WHIP signalling (RFC 9725) and the authenticated HLS preview.
+        reverse_proxy /live/* mediamtx:8889
+        reverse_proxy /hls/*  mediamtx:8888
+
+        # Session API (creates/deletes relay sessions; Bearer-authenticated).
+        handle /sessions* {
+                reverse_proxy session-api:8080
+        }
+        handle /healthz {
+                reverse_proxy session-api:8080
+        }
+
+        header {
+                Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                X-Content-Type-Options nosniff
+                Referrer-Policy no-referrer
+                -Server
+        }
+
+        # Everything else is not part of the relay.
+        respond 404
+}

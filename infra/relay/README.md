@@ -258,8 +258,10 @@ deliberately forwarding to something on its own network.
 ### TLS
 
 Browsers require a secure context for `getUserMedia`, so production needs HTTPS
-in front of the relay. Terminate TLS in a reverse proxy and keep MediaMTX's own
-encryption off:
+in front of the relay. The compose file ships a ready `caddy` service behind the
+`tls` profile (`docker compose --profile tls up -d`, with `LIVETAP_RELAY_DOMAIN`
+set in `.env`; see `Caddyfile`). If you run your own proxy instead, terminate TLS
+there and keep MediaMTX's own encryption off:
 
 ```caddyfile
 # Caddyfile
