@@ -45,8 +45,8 @@ Local: `npm install && npm run dev:web` (http://localhost:5173); `npm test`; `np
 
 ## Review outcomes
 
-- Security (docs/qa/SECURITY_REVIEW.md): 4 release-blocking findings fixed with regression tests — stream keys were written to the desktop log on every go-live; relay hook quoting allowed a backslash escape; a trailing-space URL bypassed validation; relay destinations could reach internal addresses (SSRF). Open: `style-src 'unsafe-inline'`, relay cleartext default behind a proxy.
-- Product (docs/qa/PRODUCT_REVIEW.md): verdict was NOT-YET on first look; 7 P0 + 15 P1 fixed (END was dead while live, error cards rendered off-screen, GO LIVE below the fold, over-claiming landing, developer vocabulary, reload honesty, hidden mobile nav). 15 P2 polish items open.
+- Security (docs/qa/SECURITY_REVIEW.md): 4 release-blocking findings fixed with regression tests — stream keys were written to the desktop log on every go-live; relay hook quoting allowed a backslash escape; a trailing-space URL bypassed validation; relay destinations could reach internal addresses (SSRF). Subsequently narrowed: CSP now `style-src 'self'; style-src-attr 'unsafe-inline'`; relay ships an opt-in Caddy TLS profile.
+- Product (docs/qa/PRODUCT_REVIEW.md): verdict was NOT-YET on first look; 7 P0 + 15 P1 fixed (END was dead while live, error cards rendered off-screen, GO LIVE below the fold, over-claiming landing, developer vocabulary, reload honesty, hidden mobile nav). All 15 P2 polish items subsequently fixed.
 - Desktop smoke (Playwright Electron): the packaged shell opens in onboarding under hash routing.
 
 ## Desktop test instructions
@@ -61,5 +61,5 @@ Local: `npm install && npm run dev:web` (http://localhost:5173); `npm test`; `np
 - No camera, microphone or GPU on the build host: real capture and hardware encoders are UNVERIFIED (software x264 path is PASS).
 - Desktop builds are unsigned; auto-update is inert until signed.
 - Mobile native code has never been compiled (no macOS/JDK/Android SDK on host); projects are structurally complete and CI-ready.
-- Landing JS is ~90 KB gzipped (React DOM alone is 69 KB); the ≤60 KB target needs a static landing.
+- Public page JS is 46 KB gzipped (static Live-surface experience, no React on the landing); the ≤60 KB target is met.
 - Web go-live needs the self-hosted relay; browsers cannot speak RTMP. Container packaging of the relay is unverified on this host (native binary verified).
