@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>LIVETAP</string>
+	<string>LIVETAP</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,15 +26,92 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+
+	<!--
+	  Permission usage strings.
+	  These are shown verbatim in the system prompt and are read by App Review. They describe what
+	  LIVETAP actually does with the device and deliberately avoid the two things that get an app
+	  rejected here: vagueness ("this app needs camera access") and over-promising.
+	  Both keys are required for `getUserMedia` in WKWebView as well as for the native encoder —
+	  see docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md section 2.2.
+	-->
+	<key>NSCameraUsageDescription</key>
+	<string>LIVETAP uses the camera to record and broadcast you live to the channels you have connected. Video is encoded on this device and sent straight to those channels; LIVETAP does not keep a copy unless you turn on recording.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LIVETAP uses the microphone to capture your voice for the live broadcast. Audio is encoded on this device and sent straight to the channels you have connected; LIVETAP does not keep a copy unless you turn on recording.</string>
+
+	<!--
+	  Background modes.
+	  `audio` only. It is declared because a live broadcast must survive the user glancing at a
+	  notification or taking a call: the native encoder keeps the AVAudioSession running and keeps
+	  pushing audio plus a "camera paused" slate.
+
+	  It is NOT a keep-alive switch and Apple reviews it as such. iOS does not permit camera use in
+	  the background at all (AVCaptureSession is interrupted with
+	  `videoDeviceNotAvailableInBackground`), so the camera genuinely stops. Camera-while-backgrounded
+	  would require the Apple-gated `com.apple.developer.avfoundation.multitasking-camera-access`
+	  entitlement, which LIVETAP does not hold — see MOBILE_ARCHITECTURE "Background behaviour".
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
+	<!--
+	  Export compliance.
+	  `false` is claimed on the basis that the shipped app uses only TLS provided by the OS
+	  (RTMPS via the platform's TLS stack, HTTPS for every API call), performs no encryption of
+	  data at rest beyond the system Keychain, and ships no proprietary or custom cryptography.
+
+	  THIS ANSWER CHANGES IF SRT IS ENABLED. SRT with a passphrase performs AES inside HaishinKit
+	  rather than through an Apple framework, which plausibly makes the app non-exempt: `true`,
+	  plus a self-classification report and possibly a CCATS. That is a legal/export-compliance
+	  determination, not an engineering one — it is escalated, not decided here. Tracked as
+	  APP_STORE_READINESS item A22, and the reason `capabilities().srt` is hard-coded false on
+	  both platforms.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!--
+	  OAuth callback, custom scheme. Paired with PKCE and with ASWebAuthenticationSession, which
+	  hands the callback straight back to this app rather than letting another app claim it.
+	  The https Universal Link callback (the stronger option) additionally needs the Associated
+	  Domains capability and a hosted apple-app-site-association file —
+	  BLOCKED_EXTERNAL_DEPENDENCY until the domain and Team ID exist.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>app.livetap.mobile.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>livetap</string>
+			</array>
+		</dict>
+	</array>
+
+	<!--
+	  No LSApplicationQueriesSchemes: LIVETAP never probes for other installed apps.
+	-->
+
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
+
+	<!--
+	  Orientation. LIVETAP mobile is vertical-first (prompt pack section 09): the phone build is
+	  portrait-only so the capture UI, the 9:16 safe areas and the preview never disagree.
+	  iPad keeps every orientation because iPad multitasking ignores a single-orientation app and
+	  App Review expects an iPad build to rotate.
+	-->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
@@ -43,7 +120,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- The studio UI is a dark broadcast surface; a light status bar would be unreadable. -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 </dict>
 </plist>

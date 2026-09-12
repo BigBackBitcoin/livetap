@@ -5,6 +5,8 @@
     { "path": "packages/adapters" },
     { "path": "packages/media" },
     { "path": "packages/ui" },
-    { "path": "apps/web" }
+    { "path": "apps/web" },
+    { "path": "apps/desktop" },
+    { "path": "apps/mobile" }
   ]
 }

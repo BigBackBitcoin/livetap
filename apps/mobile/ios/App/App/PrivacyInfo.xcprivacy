@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LIVETAP app-target privacy manifest.
+
+  WHY THE APP TARGET NEEDS ONE EVEN THOUGH CAPACITOR SHIPS ONE
+  `node_modules/@capacitor/ios/Capacitor/Capacitor/PrivacyInfo.xcprivacy` exists (verified
+  2026-09-11) but declares an EMPTY `NSPrivacyAccessedAPITypes` array, and `@capacitor/preferences`
+  ships no manifest at all while calling `UserDefaults.standard` directly
+  (node_modules/@capacitor/preferences/ios/Sources/PreferencesPlugin/Preferences.swift:19).
+  Required-reason API usage that a dependency does not declare becomes the app target's
+  responsibility, so `NSPrivacyAccessedAPITypeUserDefaults` is declared here.
+
+  BEFORE FIRST SUBMISSION — two things must be checked by a human:
+  1. The reason code string below. `CA92.1` is the commonly used code for "access user defaults
+     only for this app or its app group". It could NOT be verified against Apple's own
+     required-reason API page from the build host: that page is rendered client-side and returns
+     only its title to a plain fetch. Status: UNVERIFIED. Read the reason tables in Xcode's
+     privacy-manifest editor (or the live Apple page in a browser) and correct the string if it
+     differs — a mismatched reason is a rejection, not a warning.
+  2. `NSPrivacyCollectedDataTypes` below. It is empty because the LIVETAP MVP binary collects
+     nothing: no analytics SDK, no crash reporter, no LIVETAP account, no LIVETAP server that
+     receives media. Camera and microphone data is encoded on device and pushed directly to the
+     third-party channels the user connected, which is the user's own transmission, not developer
+     collection. The App Store Connect "App Privacy Details" questionnaire is a SEPARATE surface
+     with a broader reading of "collect", and the moment crash reporting, analytics or any
+     LIVETAP-operated service is added, both this file and that questionnaire must change in the
+     same release. See docs/release/APP_STORE_READINESS.md items A17/A19.
+-->
+<plist version="1.0">
+<dict>
+	<!-- LIVETAP does not track. No IDFA, no ad SDK, no data broker, no cross-app linking. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+
+	<!-- No domains are used for tracking, so this array stays empty (required when tracking is false). -->
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!--
+	  Empty for the MVP. See note 2 above before changing.
+	-->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!--
+			  Reached through @capacitor/preferences, which stores non-secret local settings
+			  (chosen content intent, quality preset, Moment layout) in UserDefaults.standard.
+			  Secrets never go here: OAuth tokens and stream keys belong in the Keychain.
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPITypeUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<!-- UNVERIFIED exact string — see note 1 above. -->
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

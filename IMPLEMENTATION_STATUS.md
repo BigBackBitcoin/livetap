@@ -13,7 +13,7 @@ Legend: PASS | FAIL | SIMULATED | UNAVAILABLE | EXTERNALLY BLOCKED | UNVERIFIED 
 | apps/web landing | NOT STARTED | |
 | apps/web studio | NOT STARTED | |
 | apps/desktop | NOT STARTED | |
-| apps/mobile | NOT STARTED | |
+| apps/mobile | PASS (TS) / EXTERNALLY BLOCKED (native builds) | Capacitor 7.6.9 (8 needs Node 22; host is 20.11). `cap add android` + `cap add ios` both succeeded — real Gradle and Xcode projects committed; only `pod install`/`xcodebuild` were skipped (no CocoaPods/Xcode). LiveStream plugin contract + web fallback + MobileEngine (`kind: 'native'`): 22 vitest tests PASS, tsc + eslint clean. Native skeletons written against verified APIs: RootEncoder 2.8.1 (Apache-2.0) / HaishinKit 2.0.9 (BSD-3). Android manifest, FGS (camera\|microphone\|mediaProjection), targetSdk 36 / minSdk 26; iOS Info.plist, PrivacyInfo.xcprivacy, Podfile, portrait-only. Everything native UNVERIFIED (no JDK/SDK/Xcode/device). Known FAIL: iOS app-local plugin registration (`packageClassList`). Docs: docs/architecture/MOBILE_ARCHITECTURE.md, docs/release/{APP_STORE,GOOGLE_PLAY}_READINESS.md, .github/workflows/mobile.yml. |
 | Tests (unit/integration/e2e) | NOT STARTED | |
 | Security review | NOT STARTED | |
 | Vercel deploy | NOT STARTED | |

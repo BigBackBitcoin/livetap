@@ -1,6 +1,11 @@
 require_relative '../../../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
-platform :ios, '14.0'
+# iOS 15.0 is the LIVETAP floor:
+# - HaishinKit 2.x declares iOS 15.0+ support (its README OS table).
+# - AVAudioSession / AVCaptureSession behaviour that the encoder relies on is stable from 15.
+# Capacitor 7's template ships 14.0; raising it here must be matched by
+# IPHONEOS_DEPLOYMENT_TARGET in App.xcodeproj (both are set to 15.0).
+platform :ios, '15.0'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires
@@ -22,7 +27,32 @@ end
 
 target 'App' do
   capacitor_pods
-  # Add your Pods here
+
+  # --------------------------------------------------------------------------------------------
+  # HaishinKit — RTMP/SRT publisher for the LiveStream plugin.
+  #
+  # License: BSD-3-Clause ("New BSD" in the podspec). Verified 2026-09-11 by reading
+  #   https://raw.githubusercontent.com/shogo4405/HaishinKit.swift/2.0.9/HaishinKit.podspec
+  # which declares version 2.0.9, swift_version 5.10, ios.deployment_target 13.0 and a dependency
+  # on Logboard ~> 2.5.0.
+  #
+  # VERSION PIN AND WHY IT IS NOT THE LATEST:
+  # The project's latest release is 2.2.5 (2026-03-28), but CocoaPods trunk's last published
+  # HaishinKit version is 2.0.9 — verified against
+  #   https://trunk.cocoapods.org/api/v1/pods/HaishinKit  (123 versions, newest 2.0.9)
+  # and by the absence of a HaishinKit.podspec on the repo's main branch (404). 2.1.x and 2.2.x
+  # are Swift Package Manager only.
+  #
+  # Consequence, recorded honestly: staying on CocoaPods (Capacitor 7's default) caps us at 2.0.9
+  # and therefore excludes 2.2.5's Xcode 26.4 fix and its multitasking-camera support. The
+  # migration path is Capacitor 8 + SPM (which also needs Node 22 on the build host) or adding
+  # HaishinKit as an SPM package dependency to this Xcode project alongside the CocoaPods Capacitor
+  # pods. Tracked in docs/architecture/MOBILE_ARCHITECTURE.md.
+  #
+  # Attribution obligation: BSD-3-Clause requires the copyright notice and the no-endorsement
+  # clause to ship with the app. Recorded in docs/legal/THIRD_PARTY_LICENSES.md.
+  # --------------------------------------------------------------------------------------------
+  pod 'HaishinKit', '~> 2.0.9'
 end
 
 post_install do |installer|

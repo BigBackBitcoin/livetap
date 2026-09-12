@@ -8,6 +8,8 @@ export default defineConfig({
       'packages/media',
       'packages/ui',
       'apps/web',
+      'apps/desktop',
+      'apps/mobile',
     ],
     coverage: {
       provider: 'v8',

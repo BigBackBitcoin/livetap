@@ -30,7 +30,11 @@ const config: CapacitorConfig = {
     // `always` keeps the WebView content clear of the notch/home indicator without the WebView
     // doing its own inset maths; LIVETAP draws its own safe-area padding from env(safe-area-inset-*).
     contentInset: 'always',
-    // Links inside the WebView open in the system browser, not as in-WebView navigations.
+    // WKAppBoundDomains restricts the WebView to a declared domain list and is what unlocks
+    // some privacy-sensitive WKWebView APIs. LIVETAP serves its UI from the bundle rather than a
+    // remote origin, so there is no domain list to bind to and nothing to gain here. Left at the
+    // Capacitor default; `server.allowNavigation: []` is what actually keeps external origins out
+    // of the WebView.
     limitsNavigationsToAppBoundDomains: false,
     // Do not let the WebView scroll the whole document; the studio UI is fixed-viewport.
     scrollEnabled: false,

@@ -1,10 +1,25 @@
 ext {
-    minSdkVersion = 23
-    compileSdkVersion = 35
-    targetSdkVersion = 35
+    // ---- SDK levels -------------------------------------------------------------------------
+    // minSdk 26 (Android 8.0): RootEncoder's Camera2 path and MediaCodec surface input behave
+    // predictably from 26, and 26 is where notification channels (required for the live
+    // foreground service notification) become mandatory rather than optional.
+    minSdkVersion = 26
+    // compileSdk/targetSdk 36 (Android 16): required by Google Play for new apps and updates from
+    // 2026-08-31 (docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md section 3.2.1). Capacitor 7's
+    // template ships 35; we raise it deliberately and inherit Android 16's orientation behaviour
+    // (see MOBILE_ARCHITECTURE "Orientation policy").
+    compileSdkVersion = 36
+    targetSdkVersion = 36
+
+    // Kotlin is added on top of Capacitor 7's Java-only template for LiveStreamPlugin and
+    // LiveForegroundService. capacitor-android reads this property (default 1.9.25).
+    kotlin_version = '2.2.20'
+
     androidxActivityVersion = '1.9.2'
     androidxAppCompatVersion = '1.7.0'
     androidxCoordinatorLayoutVersion = '1.2.0'
+    // 1.12+ is required for ServiceCompat.startForeground(..., foregroundServiceType) used by
+    // LiveForegroundService on Android 14+.
     androidxCoreVersion = '1.15.0'
     androidxFragmentVersion = '1.8.4'
     coreSplashScreenVersion = '1.0.1'
@@ -13,4 +28,11 @@ ext {
     androidxJunitVersion = '1.2.1'
     androidxEspressoCoreVersion = '3.6.1'
     cordovaAndroidVersion = '10.1.1'
+
+    // ---- RTMP/SRT encoder ------------------------------------------------------------------
+    // RootEncoder 2.8.1, Apache-2.0 (verified 2026-09-11 against github.com/pedroSG94/RootEncoder:
+    // LICENSE.txt is Apache-2.0, latest release 2.8.1). Distributed via JitPack.
+    // Attribution obligations (license text + NOTICE) are recorded in
+    // docs/legal/THIRD_PARTY_LICENSES.md.
+    rootEncoderVersion = '2.8.1'
 }

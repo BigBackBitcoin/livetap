@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  LIVETAP Android manifest.
+  android:allowBackup="false" — OAuth tokens live in the Android Keystore-backed secure store and
+  must never be carried into a cloud backup or a device-to-device transfer.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="false">
 
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
@@ -22,7 +28,54 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+              OAuth callback, custom scheme. Used for the platforms whose developer console does
+              not accept an https redirect for a mobile client. A custom scheme can be claimed by
+              any other installed app, so this is the weaker of the two callbacks and is only ever
+              paired with PKCE (RFC 8252 / 7636). Handled in JS via App.addListener('appUrlOpen').
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="livetap" android:host="oauth" />
+            </intent-filter>
+
+            <!--
+              OAuth callback, Android App Link (PLACEHOLDER HOST).
+              android:autoVerify requires https://livetap.example/.well-known/assetlinks.json to
+              carry the SHA-256 fingerprint of the *Play app signing key* (not the upload key) —
+              see docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md section 2.7. That fingerprint does not
+              exist until Play App Signing is configured, so this filter is BLOCKED_EXTERNAL_DEPENDENCY
+              and the real hostname must replace `livetap.example` before release.
+              Until verification succeeds, Android silently falls back to the browser — which is
+              why the custom scheme above still exists.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="livetap.example" android:pathPrefix="/oauth/callback" />
+            </intent-filter>
+
         </activity>
+
+        <!--
+          The live broadcast service. Android 14+ requires a foregroundServiceType that matches the
+          runtime permission set, and the same types must be declared in Play Console
+          (Policy -> App content -> Foreground service types) — see
+          docs/release/GOOGLE_PLAY_READINESS.md item G13.
+
+          `mediaProjection` is declared now because the screen-share build is one release away and
+          adding an FGS type later requires another Play Console review round. It is NOT used by
+          the MVP code path: LiveForegroundService.start() passes only camera|microphone unless a
+          MediaProjection consent result is supplied.
+        -->
+        <service
+            android:name=".LiveForegroundService"
+            android:foregroundServiceType="camera|microphone|mediaProjection"
+            android:exported="false"
+            android:stopWithTask="true" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -33,9 +86,44 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!--
+          Android 16 (targetSdk 36) ignores android:screenOrientation on displays with a smallest
+          width >= 600dp. LIVETAP does NOT use the temporary
+          PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY opt-out (it stops working at API 37).
+          The capture UI is responsive instead — see MOBILE_ARCHITECTURE "Orientation policy".
+        -->
     </application>
 
-    <!-- Permissions -->
+    <!-- Capture -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Publish -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Keep encoding and pushing while the screen is off or the user is in another app -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Android 13+: the live notification is the user's only handle on a running broadcast -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      No <queries> element. LIVETAP never enumerates or targets other installed apps: OAuth goes
+      through Custom Tabs (which needs no query), and there is no share-to-app picker in the MVP.
+      Declaring package visibility we do not use would be a Play policy liability for nothing.
+    -->
+
+    <!--
+      Features are optional so the app still installs on a device without a camera (e.g. a TV box
+      running the WebView UI); capabilities() then reports camera:false honestly.
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

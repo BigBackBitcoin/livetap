@@ -1,4 +1,7 @@
 apply plugin: 'com.android.application'
+// Kotlin is added on top of Capacitor 7's Java-only template: LiveStreamPlugin and
+// LiveForegroundService are Kotlin, MainActivity stays Java.
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     namespace "app.livetap.mobile"
@@ -18,8 +21,27 @@ android {
     }
     buildTypes {
         release {
+            // Left off until a device-tested ProGuard configuration exists for RootEncoder's
+            // MediaCodec/JNI paths. Turning this on untested is a classic way to ship a release
+            // build that crashes only on real hardware.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Signing is BLOCKED_EXTERNAL_DEPENDENCY: it needs an upload keystore that does not
+            // exist in this repository and must never be committed. See
+            // docs/release/GOOGLE_PLAY_READINESS.md items G8/G27.
+        }
+        debug {
+            // The CI workflow builds only this variant (unsigned, debug-signed by the SDK).
+            applicationIdSuffix ""
+        }
+    }
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+    packagingOptions {
+        resources {
+            // RootEncoder pulls in transitive modules that each ship their own license copies.
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE.md', 'META-INF/NOTICE.md']
         }
     }
 }
@@ -34,8 +56,18 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    // core-ktx/core supplies ServiceCompat.startForeground(..., type) for Android 14+ FGS types.
+    implementation "androidx.core:core:$androidxCoreVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+
+    // RootEncoder 2.8.1 — Apache-2.0. RTMP/RTMPS/RTSP/SRT/UDP publisher with Camera2 + MediaCodec
+    // and built-in MediaProjection support. Verified 2026-09-11 against
+    // github.com/pedroSG94/RootEncoder (LICENSE.txt = Apache-2.0, latest release 2.8.1).
+    implementation "com.github.pedroSG94.RootEncoder:library:$rootEncoderVersion"
+    // extra-sources (BitmapSource / CameraXSource / UVC) is NOT included: the MVP captures the
+    // built-in camera only, and every extra source is extra attack surface and extra APK weight.
+
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

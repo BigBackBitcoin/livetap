@@ -1,5 +1,6 @@
-import UIKit
+import AVFoundation
 import Capacitor
+import UIKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,42 +8,66 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
         return true
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
+        // A call, Siri or Control Centre lands here. The capture session is about to be
+        // interrupted; LiveStreamPlugin observes AVCaptureSession.wasInterruptedNotification and
+        // reports it as `deviceLost`, so nothing is torn down here.
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
+        // THE iOS CONSTRAINT, IN THE PLACE PEOPLE ACTUALLY LOOK:
+        // iOS does not permit camera capture in the background. AVCaptureSession is interrupted
+        // with `videoDeviceNotAvailableInBackground` and the video track genuinely stops.
+        //
+        // `UIBackgroundModes: audio` (declared in Info.plist) keeps the AVAudioSession and the
+        // RTMP socket alive, so the broadcast continues audio-only rather than dying. The UI's job
+        // is to show the creator that their camera is paused; the plugin's job is to keep the
+        // connection up. Do NOT try to keep the camera alive here with a background task — it will
+        // not work, and pretending it might is how a broadcast silently drops.
+        //
+        // Camera-while-backgrounded needs the Apple-gated entitlement
+        // `com.apple.developer.avfoundation.multitasking-camera-access`, which LIVETAP does not
+        // hold. See docs/architecture/MOBILE_ARCHITECTURE.md "Background behaviour".
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
+        // Reactivating the audio session here is cheap insurance: an interruption that ended while
+        // backgrounded can leave the session inactive.
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // The WebView UI resumes the preview itself once it sees the capture session recover.
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+        // Nothing to persist: settings are written through @capacitor/preferences as they change,
+        // and secrets live in the Keychain, not in app state.
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        // Called when the app was launched with a url. Feel free to add additional processing here,
-        // but if you want the App API to support tracking app url opens, make sure to keep this call
+        // OAuth callbacks on the custom `livetap://oauth` scheme arrive here and are forwarded to
+        // the App plugin, which raises `appUrlOpen` in JavaScript.
+        //
+        // NOTE ON WHICH BROWSER LIVETAP USES FOR OAUTH:
+        // @capacitor/browser opens SFSafariViewController on iOS, which is NOT
+        // ASWebAuthenticationSession. SFSafariViewController cannot intercept the callback itself,
+        // which is exactly why this delegate method has to exist, and it does not give the user the
+        // OS-level "wants to use … to sign in" consent sheet. RFC 8252 wants
+        // ASWebAuthenticationSession on iOS and Chrome Custom Tabs on Android.
+        // LIVETAP therefore treats @capacitor/browser + this callback as the MVP path, always with
+        // PKCE, and an ASWebAuthenticationSession plugin as a hardening step once one has been
+        // verified for Capacitor 7 (none has been — see MOBILE_ARCHITECTURE "OAuth on mobile").
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        // Called when the app was launched with an activity, including Universal Links.
-        // Feel free to add additional processing here, but if you want the App API to support
-        // tracking app url opens, make sure to keep this call
+        // Universal Link callbacks (https://<host>/oauth/callback) arrive here. They require the
+        // Associated Domains capability and a hosted apple-app-site-association file, both of
+        // which need a Team ID and a real domain — BLOCKED_EXTERNAL_DEPENDENCY today.
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 

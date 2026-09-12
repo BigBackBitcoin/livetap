@@ -1,0 +1,193 @@
+package app.livetap.mobile
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+
+/**
+ * LiveForegroundService — keeps the encoder and the RTMP socket alive while LIVETAP is broadcasting.
+ *
+ * WHY THIS EXISTS
+ * Android kills background work aggressively. Without a foreground service the encoder stops the
+ * moment the user pulls down a notification or answers a message, and the broadcast dies. This is
+ * the Android half of the asymmetry documented in
+ * docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md section 2.3: Android CAN keep the camera running in
+ * the background behind an FGS; iOS cannot without an Apple-gated entitlement.
+ *
+ * ANDROID 14+ RULES THIS CLASS ENCODES
+ * - The manifest declares `foregroundServiceType="camera|microphone|mediaProjection"` and the
+ *   same set must also be declared in Play Console (Policy -> App content).
+ * - `ServiceCompat.startForeground(..., type)` must be called with the type bitmask that matches
+ *   the permissions actually held, or the platform throws
+ *   `MissingForegroundServiceTypeException` / `SecurityException`.
+ * - `camera` and `microphone` FGS types are **while-in-use**: this service can only be started
+ *   while the app is in the foreground. `startLive()` must therefore be called from the
+ *   `GO LIVE` tap, never from a background callback or a BOOT_COMPLETED receiver (Android 15
+ *   additionally forbids the latter for `mediaProjection`).
+ * - MediaProjection ordering is strict and is NOT handled here: the consent Intent from
+ *   `MediaProjectionManager.createScreenCaptureIntent()` must be obtained first, then this
+ *   service started with `EXTRA_MEDIA_PROJECTION`, and only then may
+ *   `getMediaProjection(resultCode, data)` be called. The consent Intent is single-use — caching
+ *   and replaying it throws. Screen capture is post-MVP; the plumbing is marked below.
+ *
+ * VERIFICATION: UNVERIFIED. There is no Android SDK, emulator or device on the build host, so
+ * none of this has been compiled or run. See docs/architecture/MOBILE_ARCHITECTURE.md.
+ */
+class LiveForegroundService : Service() {
+
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+        }
+
+        val withScreen = intent?.getBooleanExtra(EXTRA_WITH_SCREEN, false) ?: false
+        val title = intent?.getStringExtra(EXTRA_TITLE) ?: "LIVETAP is live"
+        val detail = intent?.getStringExtra(EXTRA_DETAIL) ?: "Tap to return to LIVETAP"
+
+        createChannel()
+
+        val type = if (withScreen) {
+            // TODO(device): the mediaProjection path is post-MVP. Starting with this type requires
+            // a fresh consent Intent handed in by the Activity; see the ordering note above.
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
+
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(title, detail), type)
+        } catch (e: Exception) {
+            // A SecurityException here means a type-specific permission is missing or the service
+            // was started from the background. Failing loudly beats a zombie service.
+            Log.e(TAG, "startForeground refused: ${e.javaClass.simpleName}: ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        acquireWakeLock()
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        releaseWakeLock()
+        super.onDestroy()
+    }
+
+    /**
+     * A partial wake lock keeps the CPU encoding when the screen turns off. It does NOT keep the
+     * screen on — the preview surface is allowed to go dark while audio and video keep flowing.
+     * Released in onDestroy so a crashed broadcast cannot drain the battery silently.
+     */
+    private fun acquireWakeLock() {
+        if (wakeLock != null) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:broadcast").apply {
+            setReferenceCounted(false)
+            acquire(MAX_BROADCAST_MS)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+    }
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Live broadcast",
+            // LOW: the notification is a control surface and a legal requirement, not an alert.
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "Shown while LIVETAP is broadcasting so you always know the camera is on."
+            setShowBadge(false)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        manager.createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(title: String, detail: String): Notification {
+        val open = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPending = PendingIntent.getActivity(
+            this,
+            0,
+            open,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val stop = Intent(this, LiveForegroundService::class.java).setAction(ACTION_STOP)
+        val stopPending = PendingIntent.getService(
+            this,
+            1,
+            stop,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(detail)
+            .setSmallIcon(android.R.drawable.presence_video_online)
+            .setContentIntent(openPending)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "End broadcast", stopPending)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+    }
+
+    companion object {
+        private const val TAG = "LiveForegroundService"
+        private const val CHANNEL_ID = "livetap.broadcast"
+        private const val NOTIFICATION_ID = 4201
+
+        /** 6 hours. A broadcast longer than this has to re-acquire; the lock is not open-ended. */
+        private const val MAX_BROADCAST_MS = 6L * 60L * 60L * 1000L
+
+        const val ACTION_STOP = "app.livetap.mobile.action.STOP_BROADCAST"
+        const val EXTRA_WITH_SCREEN = "withScreen"
+        const val EXTRA_TITLE = "title"
+        const val EXTRA_DETAIL = "detail"
+
+        /**
+         * Must be called while the app is in the foreground (camera/microphone FGS types are
+         * while-in-use restricted).
+         */
+        fun startLive(context: Context, title: String, detail: String, withScreen: Boolean = false) {
+            val intent = Intent(context, LiveForegroundService::class.java)
+                .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_DETAIL, detail)
+                .putExtra(EXTRA_WITH_SCREEN, withScreen)
+            context.startForegroundService(intent)
+        }
+
+        fun stopLive(context: Context) {
+            context.stopService(Intent(context, LiveForegroundService::class.java))
+        }
+    }
+}
