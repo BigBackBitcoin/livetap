@@ -21,3 +21,5 @@ apps/mobile/android/app/build/
 .turbo/
 *.tsbuildinfo
 tools/
+scrollcraft/builds/*/lab/
+scrollcraft/builds/*/out/
