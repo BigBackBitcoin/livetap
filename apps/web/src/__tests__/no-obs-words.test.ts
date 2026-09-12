@@ -47,7 +47,7 @@ const EXEMPT = [
  * recommending "Software encoding". Not one was caught, because the guard did not look for them.
  */
 const BANNED =
-  /\b(rtmps?|srt|whip|ingest|cbr|vbr|rate control|keyframe|gop|bitrate|kbps|codec|h\.?264|hevc|av1|nvenc|qsv|videotoolbox|x264|encoders?|encoding|mocks?|simulated engine|muxing|transcod\w*|scenes?|sources?|scene collection|z-order|compositor|oauth|refresh token|webhook|rtt|dropped frames|skipped frames|lagged frames|remux)\b/i;
+  /\b(rtmps?|srt|whip|ingest|cbr|vbr|rate control|keyframe|gop|bitrate|kbps|codec|h\.?264|hevc|av1|nvenc|qsv|videotoolbox|x264|encod\w*|mocks?|simulated engine|muxing|transcod\w*|scenes?|sources?|scene collection|z-order|compositor|oauth|refresh token|webhook|rtt|dropped frames|skipped frames|lagged frames|remux)\b/i;
 
 /** Matches single-quoted, double-quoted and backtick string literals. */
 const STRING_LITERAL = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
@@ -76,6 +76,67 @@ function walk(dir: string, out: string[] = []): string[] {
   }
   return out;
 }
+
+/**
+ * The HTML entry documents.
+ *
+ * `/` is a static document now, so the whole of the marketing page's copy — every sentence the
+ * product's first-time reader meets — lives in `index.html` rather than in a component. A guard
+ * that only read `.tsx` would stop covering exactly the page it matters most on.
+ */
+const HTML_ENTRIES = [join(SRC, '..', 'index.html'), join(SRC, '..', 'app.html')].filter((file) =>
+  existsSync(file),
+);
+
+/**
+ * "Open source" is not an OBS Source.
+ *
+ * The banned list contains `sources?` because an OBS *Source* is the vocabulary this product
+ * refuses to teach. "Open source" and "open-source" are a different word, which the marketing
+ * page says out loud on purpose (PRODUCT_SPEC §5a), so that phrase is neutralised by name
+ * before the scan. It is the only exemption, and it is narrow enough that "Add a source" still
+ * fails.
+ */
+const OPEN_SOURCE = /open[\s-]source/gi;
+
+/**
+ * Copy, extracted from a document: text nodes plus the attributes a person actually reads or
+ * hears. Markup, addresses, class names and SVG geometry are not copy and are not scanned;
+ * `aria-label`, `alt`, `title` and `<meta content>` are, because a screen-reader user meets
+ * those exactly as a sighted user meets a paragraph — which is where "encodes it once per
+ * shape" was hiding on the diagram until this guard learned to read HTML.
+ */
+function htmlCopy(source: string): string {
+  const stripped = source
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  const spoken = Array.from(
+    stripped.matchAll(/(?:aria-label|alt|title|content)="([^"]*)"/gi),
+    (match) => match[1] ?? '',
+  );
+  const text = stripped.replace(/<[^>]*>/g, ' ');
+  return [text, ...spoken].join('\n').replace(OPEN_SOURCE, 'open-licensed');
+}
+
+describe('no OBS vocabulary in the static marketing page', () => {
+  it('scans both HTML entries, so a moved or renamed file cannot pass silently', () => {
+    expect(HTML_ENTRIES.length).toBe(2);
+  });
+
+  it('finds no banned protocol vocabulary in the copy a visitor reads or hears', () => {
+    const offences: string[] = [];
+    for (const file of HTML_ENTRIES) {
+      for (const line of htmlCopy(readFileSync(file, 'utf8')).split('\n')) {
+        const match = BANNED.exec(line);
+        if (match) {
+          offences.push(`${relative(SRC, file)}: ${match[0]} in ${line.trim().slice(0, 90)}`);
+        }
+      }
+    }
+    expect(offences).toEqual([]);
+  });
+});
 
 describe('no OBS vocabulary in Simple-mode UI strings', () => {
   it('scans a meaningful number of files, so a broken glob cannot pass silently', () => {

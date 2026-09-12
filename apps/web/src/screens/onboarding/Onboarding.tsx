@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Badge, Banner, Button, Logo, Select, Spinner, VisuallyHidden } from '@livetap/ui';
+import { Badge, Banner, Button, IntentIcon, Logo, Select, Spinner, VisuallyHidden } from '@livetap/ui';
 import { CONTENT_TYPES, INTENT_PROFILES } from '@livetap/core';
 import type { AspectRatio, ContentType, PlatformId } from '@livetap/core';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
@@ -169,8 +169,14 @@ function IntentStep({
                 aria-pressed={selected === id}
                 onClick={() => onChoose(id)}
               >
-                <span className="lt-intentcard__emoji" aria-hidden="true">
-                  {profile.emoji}
+                {/*
+                  The icon set, not emoji (PRODUCT_REVIEW P2-5). Emoji on the intent cards and
+                  Moment cards put a second visual language next to the drawn icons in the nav,
+                  and it renders differently on every platform — which for the first screen of
+                  the product is the one place a glyph has to look deliberate.
+                */}
+                <span className="lt-intentcard__glyph" aria-hidden="true">
+                  <IntentIcon intent={id} size={32} />
                 </span>
                 <span className="lt-intentcard__title">{profile.title}</span>
                 <span className="lt-intentcard__tagline">{profile.tagline}</span>

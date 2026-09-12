@@ -25,9 +25,563 @@
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/brand/hero-a.webp" />
     <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="./src/landing.css" />
+    <!--
+      The marketing page carries no framework.
+
+      It used to be a React screen, which meant a visitor who read it and left downloaded React
+      19's DOM renderer — 69.2 KB gzipped before a word of LIVETAP's own code — and the page
+      could not meet its 60 KB budget however well it was split
+      (`docs/qa/FRICTION_BENCHMARK.md` §6). Nothing on this page needs JavaScript: it has no
+      state, no carousel, no autoplaying video, no cookie banner, and its one interaction is a
+      link. So it ships as HTML and the design system's stylesheet, and the 4 KB script below
+      exists only to carry a theme the visitor already chose inside the app.
+
+      It is a plain classic script in `<head>`, not a module, so it runs before first paint and
+      a user who chose dark never sees a flash of light. It is a separate file rather than an
+      inline `<script>` because the deployed CSP is `script-src 'self'`.
+    -->
+    <script src="/theme.js"></script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div class="lt-landing">
+      <a class="lt-skip-link" href="#lt-get">Skip to download</a>
+
+      <header class="lt-landing__bar">
+        <a href="/" class="lt-landing__brand" aria-label="LIVETAP home">
+          <svg viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true">
+            <rect
+              x="2.5"
+              y="2.5"
+              width="27"
+              height="27"
+              rx="8.5"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+            <circle cx="12.5" cy="16" r="3" fill="var(--lt-accent-live-solid)" />
+            <path
+              d="M15.94 20.91A6 6 0 0 0 15.94 11.09"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              opacity="0.55"
+            />
+          </svg>
+          <span class="lt-landing__wordmark">LIVETAP</span>
+        </a>
+        <nav aria-label="Sections">
+          <a href="#lt-how">How it works</a>
+          <a href="#lt-open">Open source</a>
+          <a class="lt-btn lt-btn--secondary lt-btn--md" href="/app">Open LIVETAP</a>
+        </nav>
+      </header>
+
+      <section class="lt-hero" aria-labelledby="lt-hero-heading">
+        <img
+          class="lt-hero__plate"
+          src="/brand/hero-a.webp"
+          alt=""
+          width="1536"
+          height="864"
+          loading="eager"
+          decoding="async"
+        />
+        <div class="lt-hero__copy">
+          <h1 id="lt-hero-heading">
+            Connect your accounts.<br />Pick where you want to go live.<br />Tap GO LIVE.
+          </h1>
+          <p class="lt-hero__sub">
+            That is the whole product. LIVETAP is the easiest way to go live — not a prettier
+            version of broadcasting software, but a shorter road to being on air.
+          </p>
+          <div class="lt-hero__actions">
+            <a class="lt-btn lt-btn--primary lt-btn--lg" href="/app">Open LIVETAP</a>
+            <a class="lt-textlink" href="#lt-get">Desktop and mobile</a>
+          </div>
+          <p class="lt-hero__note">
+            Free. Open source. No account needed.<!--lt:demo-hero-->
+          </p>
+        </div>
+      </section>
+
+      <section class="lt-section" aria-labelledby="lt-what">
+        <h2 id="lt-what">What LIVETAP is</h2>
+        <div class="lt-cols">
+          <article>
+            <h3>One app</h3>
+            <p>
+              Camera, screen, microphone, overlays and recording in one place. Nothing to install
+              on top of it, and no plugin to keep alive between updates.
+            </p>
+          </article>
+          <article>
+            <h3>Every destination</h3>
+            <p>
+              Go live on several places at the same time. LIVETAP makes the picture once and opens
+              a separate connection to each one, so they cannot take each other down.
+            </p>
+          </article>
+          <article>
+            <h3>Yours</h3>
+            <p>
+              Free forever, open source, and it runs on your machine. Your stream never passes
+              through our servers, because we do not have any in the path.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="lt-section" aria-labelledby="lt-why">
+        <h2 id="lt-why">Why it is easier</h2>
+        <div class="lt-pairs">
+          <article>
+            <h3>Nothing to configure</h3>
+            <p>
+              LIVETAP measures your connection and your computer, picks the settings, and keeps
+              adjusting while you stream. You will never meet a quality field unless you go looking
+              for one.
+            </p>
+          </article>
+          <article>
+            <h3>Six Moments, not a tree of panels</h3>
+            <p>
+              Starting Soon, Main Camera, Screen Share, Guest, Break, Ending. Tap one to change what
+              viewers see. There is one thing to name and one thing to switch.
+            </p>
+          </article>
+          <article>
+            <h3>Errors that tell you what to do</h3>
+            <p>
+              When something breaks, LIVETAP says what happened, why, what it is already doing about
+              it, and the one thing you can do. No codes, no log files to upload to a second website.
+            </p>
+          </article>
+          <article>
+            <h3>It tells you the truth about each platform</h3>
+            <p>
+              Some platforms let an app go live for you. Some only accept a key you paste. One does
+              not allow third-party apps at all. LIVETAP says which before you spend an hour finding
+              out, and never pretends to a capability it does not have.
+            </p>
+          </article>
+          <article>
+            <h3>One destination failing is one destination&rsquo;s problem</h3>
+            <p>
+              Each place you send to has its own connection, its own state and its own reconnect. A
+              platform having a bad night does not end your show everywhere else.
+            </p>
+          </article>
+          <article>
+            <h3>Nothing is paywalled</h3>
+            <p>
+              Streaming to several places at once, 1080p, unlimited destinations and unlimited
+              recording are all in the free app. There is no paid tier to find.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="lt-section" aria-labelledby="lt-how-heading" id="lt-how">
+        <h2 id="lt-how-heading">How going live in several places at once works</h2>
+        <p class="lt-section__lede">
+          Your camera and screen go into LIVETAP. LIVETAP composes your Moment and makes the picture
+          once for each shape you need. Then it opens a separate connection to each destination you
+          picked and sends the same show to all of them.
+        </p>
+
+        <!--
+          Two drawings, not one scaled drawing.
+
+          A single 720-unit-wide SVG scaled into a 343px phone viewport shrinks every label with
+          it: 12px type rendered at about 6px, which is what PRODUCT_REVIEW P2-10 measured. The
+          narrow drawing is a vertical diagram in a 320-unit viewBox capped at 320px, so at 375
+          it renders 1:1 and its text is exactly the 12 and 15px the design system specifies.
+          Both carry the same role and the same aria-label and CSS shows exactly one, so
+          whichever is on screen is the one in the accessibility tree.
+        -->
+        <figure class="lt-diagram">
+          <svg
+            viewBox="0 0 720 260"
+            class="lt-diagram__svg lt-diagram__svg--wide"
+            role="img"
+            aria-label="Your camera and screen go into LIVETAP. LIVETAP composes your Moment and makes the picture once for each shape you need — widescreen, vertical and square. Then it opens a separate connection to each destination you picked."
+          >
+            <defs>
+              <marker
+                id="lt-arrow"
+                viewBox="0 0 8 8"
+                refX="7"
+                refY="4"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M0 0 L8 4 L0 8 z" fill="currentColor" />
+              </marker>
+            </defs>
+
+            <g class="lt-diagram__stage">
+              <rect x="8" y="94" width="150" height="72" rx="12" />
+              <text x="83" y="124" text-anchor="middle" class="lt-diagram__title">Your camera</text>
+              <text x="83" y="146" text-anchor="middle" class="lt-diagram__sub">
+                and your screen
+              </text>
+            </g>
+
+            <line
+              x1="162"
+              y1="130"
+              x2="210"
+              y2="130"
+              marker-end="url(#lt-arrow)"
+              class="lt-diagram__link"
+            />
+
+            <g class="lt-diagram__stage lt-diagram__stage--core">
+              <rect x="214" y="78" width="164" height="104" rx="12" />
+              <text x="296" y="112" text-anchor="middle" class="lt-diagram__title">LIVETAP</text>
+              <text x="296" y="134" text-anchor="middle" class="lt-diagram__sub">
+                One production,
+              </text>
+              <text x="296" y="152" text-anchor="middle" class="lt-diagram__sub">
+                made once on your machine
+              </text>
+            </g>
+
+            <g>
+              <line
+                x1="382"
+                y1="130"
+                x2="436"
+                y2="52"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__shape">
+                <rect x="440" y="34" width="70" height="36" rx="8" />
+                <text x="475" y="58" text-anchor="middle" class="lt-diagram__sub">16:9</text>
+              </g>
+            </g>
+            <g>
+              <line
+                x1="382"
+                y1="130"
+                x2="436"
+                y2="130"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__shape">
+                <rect x="440" y="112" width="70" height="36" rx="8" />
+                <text x="475" y="136" text-anchor="middle" class="lt-diagram__sub">9:16</text>
+              </g>
+            </g>
+            <g>
+              <line
+                x1="382"
+                y1="130"
+                x2="436"
+                y2="208"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__shape">
+                <rect x="440" y="190" width="70" height="36" rx="8" />
+                <text x="475" y="214" text-anchor="middle" class="lt-diagram__sub">1:1</text>
+              </g>
+            </g>
+
+            <g>
+              <line
+                x1="514"
+                y1="52"
+                x2="562"
+                y2="50"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__dest">
+                <rect x="566" y="34" width="146" height="32" rx="8" />
+                <text x="580" y="55" class="lt-diagram__sub">YouTube</text>
+              </g>
+            </g>
+            <g>
+              <line
+                x1="514"
+                y1="52"
+                x2="562"
+                y2="94"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__dest">
+                <rect x="566" y="78" width="146" height="32" rx="8" />
+                <text x="580" y="99" class="lt-diagram__sub">Twitch</text>
+              </g>
+            </g>
+            <g>
+              <line
+                x1="514"
+                y1="130"
+                x2="562"
+                y2="138"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__dest">
+                <rect x="566" y="122" width="146" height="32" rx="8" />
+                <text x="580" y="143" class="lt-diagram__sub">TikTok</text>
+              </g>
+            </g>
+            <g>
+              <line
+                x1="514"
+                y1="130"
+                x2="562"
+                y2="182"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__dest">
+                <rect x="566" y="166" width="146" height="32" rx="8" />
+                <text x="580" y="187" class="lt-diagram__sub">Instagram</text>
+              </g>
+            </g>
+            <g>
+              <line
+                x1="514"
+                y1="208"
+                x2="562"
+                y2="226"
+                marker-end="url(#lt-arrow)"
+                class="lt-diagram__link"
+              />
+              <g class="lt-diagram__dest">
+                <rect x="566" y="210" width="146" height="32" rx="8" />
+                <text x="580" y="231" class="lt-diagram__sub">Anywhere else</text>
+              </g>
+            </g>
+          </svg>
+
+          <svg
+            viewBox="0 0 320 512"
+            class="lt-diagram__svg lt-diagram__svg--tall"
+            role="img"
+            aria-label="Your camera and screen go into LIVETAP. LIVETAP composes your Moment and makes the picture once for each shape you need — widescreen, vertical and square. Then it opens a separate connection to each destination you picked."
+          >
+            <defs>
+              <marker
+                id="lt-arrow-down"
+                viewBox="0 0 8 8"
+                refX="7"
+                refY="4"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M0 0 L8 4 L0 8 z" fill="currentColor" />
+              </marker>
+            </defs>
+
+            <g class="lt-diagram__stage">
+              <rect x="40" y="0" width="240" height="60" rx="12" />
+              <text x="160" y="26" text-anchor="middle" class="lt-diagram__title">Your camera</text>
+              <text x="160" y="46" text-anchor="middle" class="lt-diagram__sub">
+                and your screen
+              </text>
+            </g>
+
+            <line
+              x1="160"
+              y1="60"
+              x2="160"
+              y2="86"
+              marker-end="url(#lt-arrow-down)"
+              class="lt-diagram__link"
+            />
+
+            <g class="lt-diagram__stage lt-diagram__stage--core">
+              <rect x="16" y="90" width="288" height="82" rx="12" />
+              <text x="160" y="118" text-anchor="middle" class="lt-diagram__title">LIVETAP</text>
+              <text x="160" y="139" text-anchor="middle" class="lt-diagram__sub">
+                One production, made once
+              </text>
+              <text x="160" y="157" text-anchor="middle" class="lt-diagram__sub">
+                on your machine
+              </text>
+            </g>
+
+            <line
+              x1="160"
+              y1="172"
+              x2="160"
+              y2="198"
+              marker-end="url(#lt-arrow-down)"
+              class="lt-diagram__link"
+            />
+
+            <g class="lt-diagram__shape">
+              <rect x="12" y="202" width="92" height="36" rx="8" />
+              <text x="58" y="226" text-anchor="middle" class="lt-diagram__sub">16:9</text>
+            </g>
+            <g class="lt-diagram__shape">
+              <rect x="114" y="202" width="92" height="36" rx="8" />
+              <text x="160" y="226" text-anchor="middle" class="lt-diagram__sub">9:16</text>
+            </g>
+            <g class="lt-diagram__shape">
+              <rect x="216" y="202" width="92" height="36" rx="8" />
+              <text x="262" y="226" text-anchor="middle" class="lt-diagram__sub">1:1</text>
+            </g>
+
+            <line
+              x1="160"
+              y1="238"
+              x2="160"
+              y2="264"
+              marker-end="url(#lt-arrow-down)"
+              class="lt-diagram__link"
+            />
+
+            <g class="lt-diagram__dest">
+              <rect x="40" y="268" width="240" height="36" rx="8" />
+              <text x="160" y="291" text-anchor="middle" class="lt-diagram__sub">YouTube</text>
+            </g>
+            <g class="lt-diagram__dest">
+              <rect x="40" y="312" width="240" height="36" rx="8" />
+              <text x="160" y="335" text-anchor="middle" class="lt-diagram__sub">Twitch</text>
+            </g>
+            <g class="lt-diagram__dest">
+              <rect x="40" y="356" width="240" height="36" rx="8" />
+              <text x="160" y="379" text-anchor="middle" class="lt-diagram__sub">TikTok</text>
+            </g>
+            <g class="lt-diagram__dest">
+              <rect x="40" y="400" width="240" height="36" rx="8" />
+              <text x="160" y="423" text-anchor="middle" class="lt-diagram__sub">Instagram</text>
+            </g>
+            <g class="lt-diagram__dest">
+              <rect x="40" y="444" width="240" height="36" rx="8" />
+              <text x="160" y="467" text-anchor="middle" class="lt-diagram__sub">Anywhere else</text>
+            </g>
+          </svg>
+
+          <ol class="lt-sr-only">
+            <li>Your camera and your screen go into LIVETAP.</li>
+            <li>LIVETAP composes your Moment and makes the picture once for each shape you need.</li>
+            <li>
+              It opens a separate connection to each destination you picked and sends to all of them.
+            </li>
+          </ol>
+
+          <figcaption class="lt-diagram__caption">
+            Made once on your machine. Sent straight to each platform. No relay in the middle to
+            fail — so one platform having a bad night does not touch the others.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="lt-section" aria-labelledby="lt-get-heading" id="lt-get">
+        <h2 id="lt-get-heading">Get LIVETAP</h2>
+        <p class="lt-section__lede">Free, no account, and no tracking by default.</p>
+        <div class="lt-cols">
+          <article class="lt-getcard">
+            <h3>In your browser</h3>
+            <p>
+              Nothing to install. This is the build you are one tap away from right
+              now.<!--lt:demo-browser-->
+            </p>
+            <a class="lt-btn lt-btn--secondary lt-btn--md" href="/app">Open LIVETAP</a>
+          </article>
+          <article class="lt-getcard">
+            <h3>Desktop</h3>
+            <p>
+              Windows, macOS and Linux builds are coming soon — they are not published yet, so there
+              is nothing to download here today.
+            </p>
+            <a
+              class="lt-btn lt-btn--secondary lt-btn--md"
+              href="https://github.com/BigBackBitcoin/livetap/releases"
+              rel="noreferrer noopener"
+              >Watch for releases</a
+            >
+          </article>
+          <article class="lt-getcard">
+            <h3>Phone</h3>
+            <p>
+              iOS and Android are in preparation. There is no store listing yet, and we would rather
+              say so than collect an email address about it.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="lt-section lt-section--split" aria-labelledby="lt-open-heading" id="lt-open">
+        <h2 id="lt-open-heading">Why open source matters here</h2>
+        <p class="lt-section__lede">
+          You are about to hand a piece of software your streaming accounts. You should be able to
+          read what it does with them. LIVETAP is MIT-licensed, developed in public, and its
+          credential handling is documented line by line. If we ever stopped working on it, you
+          would still have it — unlike the simple streaming tools that have been switched off before.
+        </p>
+        <ul class="lt-linklist">
+          <li>
+            <a href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener"
+              >Read the code</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://github.com/BigBackBitcoin/livetap/blob/main/SECURITY.md"
+              rel="noreferrer noopener"
+              >Security policy</a
+            >
+          </li>
+          <li><a href="/privacy">What LIVETAP never collects</a></li>
+        </ul>
+      </section>
+
+      <footer class="lt-landing__foot">
+        <div class="lt-landing__brand">
+          <svg viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true">
+            <rect
+              x="2.5"
+              y="2.5"
+              width="27"
+              height="27"
+              rx="8.5"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+            <circle cx="12.5" cy="16" r="3" fill="var(--lt-accent-live-solid)" />
+            <path
+              d="M15.94 20.91A6 6 0 0 0 15.94 11.09"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              opacity="0.55"
+            />
+          </svg>
+          <span class="lt-landing__wordmark">LIVETAP</span>
+        </div>
+        <nav aria-label="Footer">
+          <a href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener">GitHub</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+        </nav>
+        <p>No tracking cookies. Nothing to accept. Built in public.</p>
+      </footer>
+    </div>
   </body>
 </html>

@@ -1,5 +1,4 @@
 import type { ReactElement } from 'react';
-import { Link } from 'react-router';
 
 /**
  * Honest, specific, and short enough to read. Everything stated here is a property of the code
@@ -10,9 +9,13 @@ export function Privacy(): ReactElement {
   return (
     <article className="lt-legal">
       <p className="lt-legal__back">
-        <Link className="lt-textlink" to="/">
+        {/*
+          `/` is a separate, React-free document, so this is a real navigation rather than a
+          router link — a router link here would look for a `/` route this app no longer has.
+        */}
+        <a className="lt-textlink" href="/">
           Back to LIVETAP
-        </Link>
+        </a>
       </p>
       <h1>Privacy</h1>
       <p className="lt-legal__lede">

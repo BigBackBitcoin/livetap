@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Banner, ErrorCard } from '@livetap/ui';
 import type { ErrorCardAction } from '@livetap/ui';
 import type { DestinationSnapshot, HumaneError } from '@livetap/core';
@@ -69,6 +69,7 @@ export function DestinationErrorCard({
   const retry = useAppStore((s) => s.retry);
   const reconnect = useAppStore((s) => s.reconnect);
   const remove = useAppStore((s) => s.removeDestination);
+  const stopOne = useAppStore((s) => s.stopOne);
 
   const error = snapshot.error;
   if (!error) return null;
@@ -86,11 +87,39 @@ export function DestinationErrorCard({
     },
   };
 
+  /*
+   * PRODUCT_SPEC §4.1: `INGEST_DISCONNECTED`'s primary action is deliberately the thing already
+   * happening ("Keep trying"), and the *only* other affordance the card is allowed is one footer
+   * text link — "Stop trying". Without it the card offered no way out of a reconnect loop at all:
+   * the one button confirmed the machine's behaviour and there was nothing that stopped it.
+   */
+  const canStopTrying = stopTryingApplies(snapshot.state, error.code);
+
   return (
     <div className="lt-noticecards">
-      <Card error={error} pro={mode === 'pro'} tone={warning ? 'warning' : 'danger'} action={action} />
+      <Card error={error} pro={mode === 'pro'} tone={warning ? 'warning' : 'danger'} action={action}>
+        {canStopTrying ? (
+          <p className="lt-errorcard__foot">
+            <button type="button" className="lt-textlink" onClick={() => void stopOne(id)}>
+              Stop trying
+            </button>
+          </p>
+        ) : null}
+      </Card>
     </div>
   );
+}
+
+/**
+ * "Stop trying" is offered exactly where stopping is the alternative to waiting: a destination
+ * LIVETAP is currently reconnecting, or a lost-connection card. It is never offered on a card
+ * whose condition the user cannot end by giving up on that destination.
+ */
+export function stopTryingApplies(state: DestinationSnapshot['state'], code: string): boolean {
+  const reconnecting = state === 'RECONNECTING';
+  const lostConnection =
+    code === 'INGEST_DISCONNECTED' || code === 'INGEST_TIMEOUT' || code === 'INGEST_REFUSED';
+  return reconnecting || lostConnection;
 }
 
 function Card({
@@ -99,12 +128,15 @@ function Card({
   tone,
   action,
   onDismiss,
+  children,
 }: {
   error: HumaneError;
   pro: boolean;
   tone: 'danger' | 'warning';
   action?: ErrorCardAction;
   onDismiss?: () => void;
+  /** Footer text links only (§4.1): never a second button. */
+  children?: ReactNode;
 }): ReactElement {
   const plan = primaryFor(error.code);
   return (
@@ -114,6 +146,7 @@ function Card({
       showTechnical={pro}
       tone={tone}
     >
+      {children}
       {/*
         Dismissal hides the card, never the condition: the chip keeps its real state and the
         card comes back on the next state change. Cards for unrecoverable errors cannot be

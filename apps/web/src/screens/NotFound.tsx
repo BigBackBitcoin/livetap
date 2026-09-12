@@ -23,9 +23,10 @@ export function NotFound(): ReactElement {
           Go to Studio
         </Link>
         <p>
-          <Link className="lt-textlink" to="/">
+          {/* `/` is a separate document (the static marketing page), so this is a real link. */}
+          <a className="lt-textlink" href="/">
             Or read what LIVETAP is
-          </Link>
+          </a>
         </p>
       </div>
     </main>

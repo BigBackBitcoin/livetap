@@ -21,11 +21,16 @@ body {
   color: var(--lt-text-primary);
 }
 
-/* The app is dark by default: the preview is the brightest thing on screen and the chrome
-   has to recede from it. The marketing site is left to follow the OS. */
-:root[data-livetap-app='true'] {
-  color-scheme: dark;
-}
+/*
+ * No forced colour scheme.
+ *
+ * DESIGN_SYSTEM §2.1 is normative about how a theme is chosen: `data-theme` when the user has
+ * chosen one, and otherwise `prefers-color-scheme` decides. This block pinned the app to dark
+ * regardless of the OS — which, together with the first-boot write in `AppBoot.tsx`, meant a
+ * user whose machine asks for light got dark and a Settings screen that said "System"
+ * (PRODUCT_REVIEW P2-12). `tokens.css` already sets `color-scheme` per resolved theme, so the
+ * honest behaviour needs no rule here at all.
+ */
 
 .lt-route-loading {
   display: grid;
@@ -145,9 +150,23 @@ body {
     font-size: var(--lt-text-14);
   }
 
+  /*
+   * "Pro mode" wrapped to two lines in the tablet top bar, because the label was allowed to
+   * shrink and break while the nav list took the space (PRODUCT_REVIEW P2-7). The mode switch
+   * is intrinsically sized and its label never breaks.
+   */
   .lt-shell__mode {
     display: block;
     margin-inline-start: auto;
+    flex: 0 0 auto;
+  }
+
+  .lt-shell__mode .lt-toggle {
+    white-space: nowrap;
+  }
+
+  .lt-shell__mode .lt-toggle__label {
+    white-space: nowrap;
   }
 
   .lt-shell__main {
@@ -156,18 +175,43 @@ body {
 }
 
 @media (min-width: 1025px) {
+  /*
+   * The rail's colour is painted by the shell, not by the rail.
+   *
+   * `.lt-shell__nav` is sticky and exactly one viewport tall, which is right for the controls
+   * inside it — but it meant the rail's `bg-1` stopped at the fold on any page longer than the
+   * window, leaving the rest of the 240px column showing the app ground (PRODUCT_REVIEW P2-6).
+   * Painting the column on the grid container makes the band full-height by construction, at
+   * any page length, with no second element to keep in sync.
+   */
   .lt-shell {
     grid-template-areas: 'nav main';
     grid-template-columns: 240px minmax(0, 1fr);
     grid-template-rows: 1fr;
+    min-block-size: 100dvh;
+    background:
+      linear-gradient(
+        to right,
+        var(--lt-bg-1) 0 239px,
+        var(--lt-border) 239px 240px,
+        var(--lt-bg-0) 240px
+      )
+      no-repeat;
   }
 
   .lt-shell__nav {
     flex-direction: column;
     align-items: stretch;
     border-block-end: 0;
-    border-inline-end: 1px solid var(--lt-border);
+    /* The hairline is part of the shell's gradient now, so the rail draws none. */
+    border-inline-end: 0;
+    background: transparent;
+    position: sticky;
+    inset-block-start: 0;
+    inset-block-end: auto;
+    align-self: start;
     block-size: 100dvh;
+    overflow-y: auto;
     padding: var(--lt-space-4);
   }
 
@@ -405,6 +449,25 @@ body {
     max-inline-size: 100%;
     margin-inline: auto;
   }
+}
+
+/*
+ * The preview's shape is one of exactly three values, so it is three classes rather than an
+ * inline `style={{ aspectRatio }}`. That was the last inline style attribute in `apps/web`,
+ * and dropping it is what lets the deployed CSP lose `style-src 'unsafe-inline'`
+ * (SECURITY_REVIEW SEC-W4) — an injected `<style>` element is a CSS exfiltration channel, and
+ * the only thing keeping the allowance was a value with three possible states.
+ */
+.lt-preview--16x9 {
+  aspect-ratio: 16 / 9;
+}
+
+.lt-preview--9x16 {
+  aspect-ratio: 9 / 16;
+}
+
+.lt-preview--1x1 {
+  aspect-ratio: 1 / 1;
 }
 
 .lt-preview {
@@ -745,12 +808,42 @@ body {
   gap: var(--lt-space-3);
 }
 
-.lt-dock__destrow,
 .lt-dock__destactions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--lt-space-2);
+}
+
+/*
+ * The one destination list (PRODUCT_REVIEW P2-4) lives in the dock, which is a column, so the
+ * shared row layout stacks here instead of wrapping.
+ */
+.lt-dock__dests .lt-chiprow {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.lt-dock__dests .lt-chiprow > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  min-inline-size: 0;
+}
+
+.lt-dock__none {
+  margin: 0;
+  color: var(--lt-text-secondary);
+  font-size: var(--lt-text-14);
+}
+
+/*
+ * A card's footer link ("Stop trying", PRODUCT_SPEC §4.1). It is the one secondary affordance
+ * a humane error card may carry, and it never looks like a button.
+ */
+.lt-errorcard__foot {
+  margin: var(--lt-space-2) 0 0;
+  font-size: var(--lt-text-14);
 }
 
 .lt-chatlist__author {
@@ -893,9 +986,20 @@ body {
   background: var(--lt-bg-3);
 }
 
-.lt-intentcard__emoji {
-  font-size: var(--lt-text-28);
+/*
+ * The intent card's glyph is from the icon set, not an emoji (PRODUCT_REVIEW P2-5): emoji on
+ * these cards put a second visual language beside the drawn icons in the nav, and they render
+ * differently on every platform — which on the first screen of the product is the one place a
+ * glyph has to look deliberate.
+ */
+.lt-intentcard__glyph {
+  display: inline-flex;
+  color: var(--lt-text-secondary);
   line-height: 1;
+}
+
+.lt-intentcard.is-active .lt-intentcard__glyph {
+  color: var(--lt-accent-focus);
 }
 
 .lt-intentcard__title,
@@ -1014,6 +1118,28 @@ body {
   gap: var(--lt-space-3);
 }
 
+/*
+ * The demo group in the add sheet (PRODUCT_SPEC §4.4). `info`, not `warning`: a demo
+ * destination is a valid state, not a problem.
+ */
+.lt-addgroup {
+  margin-block-start: var(--lt-space-6);
+  padding-block-start: var(--lt-space-4);
+  border-block-start: 1px solid var(--lt-border);
+}
+
+.lt-addgroup__title {
+  margin: 0;
+  font-size: var(--lt-text-18);
+  line-height: var(--lt-leading-18);
+}
+
+.lt-addgroup__note {
+  margin: var(--lt-space-2) 0 var(--lt-space-4);
+  color: var(--lt-text-secondary);
+  font-size: var(--lt-text-14);
+}
+
 .lt-destcard--demo {
   border-color: var(--lt-info);
 }
@@ -1115,309 +1241,6 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* ------------------------------------------------------------------ landing */
-
-.lt-landing {
-  --lt-landing-gutter: var(--lt-space-4);
-  max-inline-size: 1200px;
-  margin-inline: auto;
-  padding-inline: var(--lt-landing-gutter);
-}
-
-@media (min-width: 640px) {
-  .lt-landing {
-    --lt-landing-gutter: var(--lt-space-6);
-  }
-}
-
-@media (min-width: 1025px) {
-  .lt-landing {
-    --lt-landing-gutter: var(--lt-space-12);
-  }
-}
-
-.lt-landing__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--lt-space-4);
-  padding-block: var(--lt-space-4);
-}
-
-.lt-landing__bar nav {
-  display: flex;
-  align-items: center;
-  gap: var(--lt-space-4);
-}
-
-.lt-landing__bar nav a:not(.lt-btn) {
-  color: var(--lt-text-secondary);
-  text-decoration: none;
-  font-size: var(--lt-text-14);
-}
-
-.lt-landing__bar nav a:not(.lt-btn):hover {
-  color: var(--lt-text-primary);
-}
-
-.lt-landing__brand {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--lt-space-3);
-  color: var(--lt-text-primary);
-  text-decoration: none;
-}
-
-.lt-landing__wordmark {
-  font-weight: var(--lt-weight-extrabold);
-  letter-spacing: -0.01em;
-  font-size: var(--lt-text-18);
-}
-
-/*
- * The hero sits on a permanently dark photographic plate in both themes. The design system
- * covers exactly this case for the Studio preview (§2.6: --lt-scrim-preview plus the dark ink),
- * so the hero borrows that treatment and pins the two dark-palette inks locally rather than
- * inventing colours. These are the dark palette's text-primary and text-secondary, verbatim.
- */
-.lt-hero {
-  --lt-hero-ink: #f2f4f7;
-  --lt-hero-ink-muted: #a7b0bb;
-  position: relative;
-  display: grid;
-  align-items: center;
-  border-radius: var(--lt-radius-xl);
-  overflow: hidden;
-  background: var(--lt-bg-1);
-  border: 1px solid var(--lt-border);
-  margin-block: var(--lt-space-6) var(--lt-space-16);
-  min-block-size: 420px;
-}
-
-.lt-hero__plate {
-  position: absolute;
-  inset: 0;
-  inline-size: 100%;
-  block-size: 100%;
-  object-fit: cover;
-  opacity: 0.55;
-}
-
-@media (min-width: 1025px) {
-  .lt-hero__plate {
-    opacity: 1;
-  }
-}
-
-.lt-hero__copy {
-  position: relative;
-  padding: var(--lt-space-8) var(--lt-space-6);
-  max-inline-size: 34rem;
-  background: linear-gradient(to right, var(--lt-scrim-preview), transparent 100%);
-}
-
-@media (min-width: 1025px) {
-  .lt-hero {
-    grid-template-columns: 1fr 1fr;
-  }
-  .lt-hero__copy {
-    grid-column: 2;
-    padding: var(--lt-space-12);
-    background: linear-gradient(to right, var(--lt-scrim-preview), transparent 60%);
-  }
-}
-
-.lt-hero__copy h1 {
-  font-size: var(--lt-text-36);
-  line-height: var(--lt-leading-36);
-  letter-spacing: -0.018em;
-  font-weight: var(--lt-weight-extrabold);
-  margin: 0;
-  color: var(--lt-hero-ink);
-}
-
-@media (min-width: 1025px) {
-  .lt-hero__copy h1 {
-    font-size: var(--lt-text-48);
-    line-height: var(--lt-leading-48);
-  }
-}
-
-.lt-hero__sub {
-  color: var(--lt-hero-ink-muted);
-  max-inline-size: 34rem;
-}
-
-.lt-hero__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--lt-space-4);
-  margin-block-start: var(--lt-space-6);
-}
-
-.lt-hero__note {
-  color: var(--lt-hero-ink-muted);
-  font-size: var(--lt-text-14);
-}
-
-.lt-section {
-  padding-block: var(--lt-space-16);
-  border-block-start: 1px solid var(--lt-border);
-}
-
-@media (min-width: 1025px) {
-  .lt-section {
-    padding-block: var(--lt-space-24);
-  }
-}
-
-.lt-section h2 {
-  font-size: var(--lt-text-28);
-  line-height: var(--lt-leading-28);
-  margin-block-start: 0;
-}
-
-@media (min-width: 640px) {
-  .lt-section h2 {
-    font-size: var(--lt-text-36);
-    line-height: var(--lt-leading-36);
-  }
-}
-
-.lt-section__lede {
-  color: var(--lt-text-secondary);
-  max-inline-size: 34rem;
-  font-size: var(--lt-text-18);
-  line-height: var(--lt-leading-18);
-}
-
-.lt-cols,
-.lt-pairs {
-  display: grid;
-  gap: var(--lt-space-6);
-  grid-template-columns: 1fr;
-  margin-block-start: var(--lt-space-8);
-}
-
-@media (min-width: 640px) {
-  .lt-cols,
-  .lt-pairs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1025px) {
-  .lt-cols {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-.lt-cols h3,
-.lt-pairs h3 {
-  font-size: var(--lt-text-18);
-  line-height: var(--lt-leading-18);
-  margin: 0 0 var(--lt-space-2);
-}
-
-.lt-cols p,
-.lt-pairs p {
-  color: var(--lt-text-secondary);
-  margin: 0;
-}
-
-.lt-getcard {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--lt-space-3);
-  padding: var(--lt-space-6);
-  background: var(--lt-bg-2);
-  border: 1px solid var(--lt-border);
-  border-radius: var(--lt-radius-lg);
-}
-
-.lt-linklist {
-  list-style: none;
-  margin: var(--lt-space-6) 0 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--lt-space-4);
-}
-
-.lt-linklist a {
-  color: var(--lt-accent-focus);
-}
-
-.lt-diagram {
-  margin: var(--lt-space-8) 0 0;
-}
-
-.lt-diagram__svg {
-  inline-size: 100%;
-  block-size: auto;
-  max-inline-size: 100%;
-  color: var(--lt-text-tertiary);
-}
-
-.lt-diagram__stage rect,
-.lt-diagram__shape rect,
-.lt-diagram__dest rect {
-  fill: var(--lt-bg-2);
-  stroke: var(--lt-border-control);
-  stroke-width: 1;
-}
-
-.lt-diagram__stage--core rect {
-  stroke: var(--lt-accent-focus);
-}
-
-.lt-diagram__link {
-  stroke: var(--lt-border-strong);
-  stroke-width: 1.5;
-}
-
-.lt-diagram__title {
-  fill: var(--lt-text-primary);
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.lt-diagram__sub {
-  fill: var(--lt-text-secondary);
-  font-size: 12px;
-}
-
-.lt-diagram__caption {
-  color: var(--lt-text-secondary);
-  max-inline-size: 44rem;
-  margin-block-start: var(--lt-space-4);
-  font-size: var(--lt-text-14);
-}
-
-.lt-landing__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--lt-space-4);
-  justify-content: space-between;
-  padding-block: var(--lt-space-8);
-  border-block-start: 1px solid var(--lt-border);
-  color: var(--lt-text-tertiary);
-  font-size: var(--lt-text-14);
-}
-
-.lt-landing__foot nav {
-  display: flex;
-  gap: var(--lt-space-4);
-}
-
-.lt-landing__foot a {
-  color: var(--lt-text-secondary);
-}
-
 /* ------------------------------------------------------------------ legal */
 
 .lt-legal {
@@ -1496,4 +1319,53 @@ body {
 .lt-onboarding__heading:focus,
 .lt-onboarding__heading:focus-visible {
   outline: none;
+}
+
+/*
+ * Bringing an OBS setup across (Pro mode, Moments).
+ *
+ * The report is the feature, so it is laid out to be read: one claim, then three lists, each
+ * with a heading. The failure block borrows the humane-error shape rather than the error card
+ * itself, because "that is the wrong file" is not a `HumaneError` from the machine — it is a
+ * statement about a file the user just picked, and §4.1 reserves `ErrorCard` for the former.
+ */
+.lt-obsimport {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-4);
+}
+
+.lt-obsimport h3 {
+  margin: 0 0 var(--lt-space-2);
+  font-size: var(--lt-text-16);
+  line-height: var(--lt-leading-16);
+}
+
+.lt-obsimport__summary {
+  margin: 0;
+  font-size: var(--lt-text-18);
+  line-height: var(--lt-leading-18);
+  font-weight: var(--lt-weight-semibold);
+}
+
+.lt-obsimport__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.lt-obsimport__problem {
+  margin-block-start: var(--lt-space-3);
+  padding: var(--lt-space-3);
+  border: 1px solid var(--lt-warning);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-bg-2);
+}
+
+.lt-obsimport__what {
+  margin: 0;
+  font-weight: var(--lt-weight-semibold);
 }

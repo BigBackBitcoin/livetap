@@ -372,6 +372,38 @@ Seven screens. Each section is self-contained apart from §4, which it assumes.
 
 ## 5a. Landing (marketing site)
 
+> **Revised 2026-09-12 — `/` is a static document, not a screen.**
+>
+> The landing is built as `apps/web/index.html`: plain HTML, the design system's stylesheet, and a
+> 0.6 KB script that carries a theme the visitor chose inside the app. It contains no framework.
+> The application moved to `apps/web/app.html` and the host rewrites `/app/*`, `/oauth/*`,
+> `/privacy` and `/terms` to it.
+>
+> The reason is arithmetic, not preference. §5a's own budget is 60 KB gzipped; React 19's DOM
+> renderer is 69.2 KB gzipped on its own, so no React landing could ever have met it however well
+> the rest was split, and the measured page was 90.5 KB
+> (`docs/qa/FRICTION_BENCHMARK.md` §6, now 13.0 KB). Nothing on this page has state: no carousel,
+> no autoplaying video, no cookie banner, and one interaction, which is a link.
+>
+> Everything this section specifies still holds and is unchanged — the copy, the structure, the
+> hero still and its `alt`, the honest demo sentence, one accent CTA, the footer links, the skip
+> link, the diagram's `role="img"` with its three stages as prose plus the visually hidden ordered
+> list. Two things this revision adds:
+>
+> - **The diagram is two drawings.** A single 720-unit-wide SVG scaled into a 343px phone viewport
+>   rendered its 12px labels at about 6px (PRODUCT_REVIEW P2-10). Below 640px the page shows a
+>   *vertical* diagram — camera, LIVETAP, the three shapes, the destinations, the order this
+>   section's mobile layout already specifies — in a 320-unit viewBox capped at 320px, so at 375
+>   it renders at 1:1 and its text is exactly 12 and 15px. Both drawings carry the same `role` and
+>   `aria-label`; CSS shows one, and `display: none` keeps the other out of the accessibility tree.
+> - **Vertical rhythm is 40px of section padding, not `space-24`.** `space-24` on both sides of a
+>   section border is a 192px empty band at 1440, which is what P2-8 measured. Bands are 73–81px
+>   now, and the rhythm comes from the heading scale and the border.
+>
+> **Not built, and named rather than dropped:** the per-OS download cards with checksums and
+> release metadata, the nine-row capability table, and the mobile sticky CTA. The Get LIVETAP
+> section says instead that no desktop or phone build is published yet, because none is.
+
 ### Purpose
 
 The landing page has one job: convince a creator who already owns a streaming problem that LIVETAP removes it, and get them to the download in one scroll. It is not a features page. It explains what LIVETAP is, why it is easier, how multistreaming works, where to get it, and why being open source matters — in that order, because that is the order of the reader's questions. It never uses the word "solution", never shows a dashboard screenshot with fake numbers, and never claims a platform capability the product does not have (tenet 8).
@@ -781,6 +813,33 @@ Grid: `88px | 1fr | 380px`. The centre column is a single vertical stack whose o
 ```
 
 The dock is a Sheet rather than a column because a 380px dock inside 1024px leaves the preview too small to judge framing. The chat-unread count rides on the dock button.
+
+> **Revised 2026-09-12 — there is one destination list, and it is in the dock.**
+>
+> The three drawings above put a destination chip row in the centre column *and* a list of the
+> same destinations in the dock's Destinations tab. Built, that was two lists of the same chips
+> about 200px apart on the same screen, each rendered by its own code
+> (`PRODUCT_REVIEW.md` §4 P2-4). One of them had to go, and the row is the one that went:
+>
+> - **It keeps GO LIVE higher.** The row is the last thing between the preview and the
+>   pre-flight line, so removing it lifts the button by the height of a chip plus a gap at every
+>   breakpoint — and §5c's own first requirement ("on one screen without scrolling at any
+>   breakpoint") is the strongest sentence in this section.
+> - **§4.1 already puts a destination's ErrorCard in the dock's Destinations tab.** With the list
+>   there too, a destination's state and the explanation of that state are in one place. With the
+>   row kept instead, the chip that changed colour was 200px away from the card that says why.
+> - **The count stays on the fold.** GO LIVE's subtitle carries "Going live on {n} · {m} is a
+>   demo" / "Live on {n}", and the demo-mode banner carries the honesty sentence, so "where is
+>   this going, and is any of it a demo" is answered beside the button without a list.
+>
+> The first-run prompt is the exception and stays directly above GO LIVE: with no destinations
+> there is no list to duplicate, and §4.3 requires that call to action to be on the screen.
+>
+> One list, one component (`DestinationList`). **Known gap:** at ≤1024 the dock is still a grid
+> row at the bottom of the column rather than the Sheet drawn above, so the destination list is
+> below the fold on a phone and a tablet. Turning the dock into a Sheet at those widths is the
+> outstanding work that restores the five-questions guarantee there; it is not a new gap — the
+> dock has always been below the fold at those widths.
 
 ### Layout: mobile (<640)
 

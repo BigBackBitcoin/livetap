@@ -5,9 +5,10 @@ export function Terms(): ReactElement {
   return (
     <article className="lt-legal">
       <p className="lt-legal__back">
-        <Link className="lt-textlink" to="/">
+        {/* `/` is a separate document (the static marketing page), so this is a real link. */}
+        <a className="lt-textlink" href="/">
           Back to LIVETAP
-        </Link>
+        </a>
       </p>
       <h1>Terms</h1>
       <p className="lt-legal__lede">

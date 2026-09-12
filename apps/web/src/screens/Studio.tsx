@@ -7,7 +7,7 @@ import {
   GoLiveButton,
   HealthPill,
   MomentCard,
-  StatusChip,
+  MomentIcon,
   Tabs,
   Tooltip,
   VisuallyHidden,
@@ -15,9 +15,9 @@ import {
 import { evaluateHealth } from '@livetap/core';
 import type { AspectRatio, HealthAssessment, HealthLevel } from '@livetap/core';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
-import { DestinationChips, chipLabel, statusText } from '../components/DestinationChips.js';
+import { DestinationList, NoDestinationsPrompt } from '../components/DestinationChips.js';
 import { DeviceControls } from '../components/DeviceControls.js';
-import { DestinationErrorCard, NoticeCards } from '../components/NoticeCards.js';
+import { NoticeCards } from '../components/NoticeCards.js';
 import { PreviewCanvas } from '../components/PreviewCanvas.js';
 import { evaluatePreflight, goLiveSubtitle } from '../components/preflight.js';
 import { COPY } from '../lib/copy.js';
@@ -205,7 +205,7 @@ export function Studio(): ReactElement {
       </section>
 
       <section className="lt-studio__go" aria-label="Going live">
-        <DestinationChips />
+        <NoDestinationsPrompt />
 
         {/*
           Amber is "expandable" in PRODUCT_SPEC §4.5, and it was always expanded — which put
@@ -304,7 +304,12 @@ export function Studio(): ReactElement {
           {moments.map((moment) => (
             <li key={moment.id}>
               <MomentCard
-                icon={<span aria-hidden="true">{moment.icon}</span>}
+                /*
+                  The icon set, not emoji (PRODUCT_REVIEW P2-5). `MomentIcon` draws the glyph
+                  for a built-in Moment and a neutral one for a Moment the user made, so an
+                  imported Moment is never given a guess at its content.
+                */
+                icon={<MomentIcon moment={moment.id} size={32} />}
                 name={moment.name}
                 active={production.activeMomentId === moment.id}
                 onSelect={() => void setMoment(moment.id)}
@@ -321,7 +326,7 @@ export function Studio(): ReactElement {
       </section>
 
       <aside className="lt-studio__dock" aria-label="Chat, destinations and health">
-        <StudioDock live={live} showDemoPanel={showDemoPanel} />
+        <StudioDock showDemoPanel={showDemoPanel} />
       </aside>
     </div>
   );
@@ -375,14 +380,12 @@ export function liveSubtitle(liveCount: number, enabledCount: number, allMock: b
 
 /* ------------------------------------------------------------------ the dock */
 
-function StudioDock({ live, showDemoPanel }: { live: boolean; showDemoPanel: boolean }): ReactElement {
+function StudioDock({ showDemoPanel }: { showDemoPanel: boolean }): ReactElement {
   const [tab, setTab] = useState('destinations');
   const chat = useAppStore((s) => s.chat);
   const destinations = useAppStore((s) => s.destinations);
   const metrics = useAppStore((s) => s.metrics);
   const mode = useAppStore((s) => s.mode);
-  const stopOne = useAppStore((s) => s.stopOne);
-  const retry = useAppStore((s) => s.retry);
   const destinationHealth = useMemo(
     () => ({
       reconnecting: destinations.filter((d) => d.state === 'RECONNECTING').length,
@@ -435,35 +438,14 @@ function StudioDock({ live, showDemoPanel }: { live: boolean; showDemoPanel: boo
           id: 'destinations',
           label: 'Destinations',
           content: (
+            /*
+              The one destination list in Studio (PRODUCT_REVIEW P2-4). It used to be rendered
+              twice: once as a chip row under the preview and once, hand-built again, here. Both
+              surfaces now share `DestinationList`, and only this one is on screen.
+            */
             <div className="lt-dock__dests">
               <h3>This stream</h3>
-              <ul>
-                {destinations.map((snap) => (
-                  <li key={snap.config.id}>
-                    <div className="lt-dock__destrow">
-                      <StatusChip
-                        state={snap.state}
-                        label={`${PLATFORM_PROFILES[snap.config.platform].displayName} · ${chipLabel(snap.state)}`}
-                        status={statusText(snap)}
-                      />
-                      {snap.config.mock ? <Badge tone="info">{COPY.demo}</Badge> : null}
-                    </div>
-                    <DestinationErrorCard snapshot={snap} />
-                    <div className="lt-dock__destactions">
-                      {snap.state === 'FAILED' ? (
-                        <Button variant="secondary" size="sm" onClick={() => void retry(snap.config.id)}>
-                          {COPY.retry}
-                        </Button>
-                      ) : null}
-                      {live && (snap.state === 'LIVE' || snap.state === 'DEGRADED') ? (
-                        <Button variant="ghost" size="sm" onClick={() => void stopOne(snap.config.id)}>
-                          Stop this destination
-                        </Button>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <DestinationList />
               <Link className="lt-textlink" to="/app/destinations">
                 Manage destinations
               </Link>

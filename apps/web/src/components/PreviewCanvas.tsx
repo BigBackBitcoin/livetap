@@ -4,10 +4,16 @@ import { Badge } from '@livetap/ui';
 import type { AspectRatio, Moment } from '@livetap/core';
 import { useAppStore } from '../state/store.js';
 
-const RATIO: Record<AspectRatio, string> = {
-  '16:9': '16 / 9',
-  '9:16': '9 / 16',
-  '1:1': '1 / 1',
+/**
+ * The shape is one of three known values, so it is a class rather than an inline style. That
+ * matters beyond tidiness: the inline `style` attribute here was the last one in `apps/web`,
+ * and it is the reason the deployed CSP still allowed `style-src 'unsafe-inline'`
+ * (SECURITY_REVIEW SEC-W4), which also permits an injected `<style>` element.
+ */
+const RATIO_CLASS: Record<AspectRatio, string> = {
+  '16:9': 'lt-preview--16x9',
+  '9:16': 'lt-preview--9x16',
+  '1:1': 'lt-preview--1x1',
 };
 
 /**
@@ -39,8 +45,9 @@ export function PreviewCanvas({
 
   return (
     <div
-      className={['lt-preview', live ? 'is-live' : ''].filter(Boolean).join(' ')}
-      style={{ aspectRatio: RATIO[aspect] }}
+      className={['lt-preview', RATIO_CLASS[aspect], live ? 'is-live' : '']
+        .filter(Boolean)
+        .join(' ')}
       tabIndex={0}
       role="group"
       aria-label={`Program preview, ${active?.name ?? 'no Moment'}`}

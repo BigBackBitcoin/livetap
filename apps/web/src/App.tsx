@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { BrowserRouter, HashRouter, Route, Routes } from 'react-router';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router';
 
 /**
  * The desktop shell loads the bundle from file:// (and Capacitor from a custom scheme), where
@@ -11,15 +11,20 @@ const useHashRouting =
   (window.location.protocol === 'file:' || 'livetap' in window || window.location.protocol === 'capacitor:');
 const Router = useHashRouting ? HashRouter : BrowserRouter;
 import { Spinner } from '@livetap/ui';
-import { Landing } from './screens/Landing.js';
 
 /**
  * Routes, per PRODUCT_SPEC §3.2 with the `/app` prefix this deployment uses so the
  * marketing site and the application can share one origin.
  *
- * The landing page is the only eagerly-imported screen. Everything under `/app` — the store,
- * the orchestrator, the media engine, the adapter registry — is behind `React.lazy`, so a
- * visitor who reads the marketing page and leaves downloads none of it.
+ * The marketing page is not one of them. `/` is its own document — plain HTML, no framework —
+ * because a React page cannot meet the landing's 60 KB budget however well it is split: React
+ * 19's DOM renderer alone is 69.2 KB gzipped (`docs/qa/FRICTION_BENCHMARK.md` §6). This module
+ * is the *application* document, reached at `/app/*`, `/oauth/*`, `/privacy` and `/terms`, and
+ * every screen in it is behind `React.lazy` so no route pays for another's code.
+ *
+ * `/` still has a route here, as a redirect: the desktop and mobile shells load this document
+ * over `file://` with a hash router, where an empty hash is `/` and the right answer is the
+ * app, not a marketing page inside a native window.
  */
 const AppBoot = lazy(() => import('./screens/AppBoot.js').then((m) => ({ default: m.AppBoot })));
 const AppIndex = lazy(() => import('./screens/AppBoot.js').then((m) => ({ default: m.AppIndex })));
@@ -73,7 +78,7 @@ export function App(): ReactElement {
     <Router>
       <Suspense fallback={<Loading label="Opening LIVETAP…" />}>
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/oauth/callback" element={<OAuthCallback />} />

@@ -23,7 +23,9 @@ test.describe('landing', () => {
       page.getByRole('link', { name: 'GitHub' }),
     ).toHaveAttribute('href', 'https://github.com/BigBackBitcoin/livetap');
 
-    // The diagram is a real image with a real description, not decoration.
+    // The diagram is a real image with a real description, not decoration. There are two
+    // drawings (wide and tall) and CSS shows one, so exactly one is in the accessibility tree.
+    await expect(page.getByRole('img', { name: /LIVETAP composes your Moment/ })).toHaveCount(1);
     await expect(page.getByRole('img', { name: /LIVETAP composes your Moment/ })).toBeVisible();
 
     // Every internal link goes somewhere that is not the not-found page.
@@ -47,10 +49,75 @@ test.describe('landing', () => {
     }
   });
 
-  test('the not-found page names itself and offers the way back', async ({ page }) => {
-    await page.goto('/definitely-not-a-page');
+  /**
+   * The landing carries no framework.
+   *
+   * This is the assertion behind the budget in `docs/qa/FRICTION_BENCHMARK.md` §6: a React
+   * landing cannot meet 60 KB gzipped however well it is split, because React 19's DOM renderer
+   * alone is 69.2 KB. If a script ever creeps back onto `/`, the page has quietly lost its
+   * budget again and this fails rather than a number in a document going stale.
+   */
+  test('ships no framework: one 1 KB script, and nothing rendered by JavaScript', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const scripts = await page
+      .locator('script')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          src: (node as HTMLScriptElement).getAttribute('src') ?? '',
+          type: (node as HTMLScriptElement).getAttribute('type') ?? '',
+          inline: ((node as HTMLScriptElement).textContent ?? '').trim().length,
+        })),
+      );
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]?.src).toBe('/theme.js');
+    // Not a module: it has to run before first paint so a chosen theme never flashes.
+    expect(scripts[0]?.type).toBe('');
+    // Inline script would be blocked by the deployed CSP (`script-src 'self'`).
+    expect(scripts[0]?.inline).toBe(0);
+
+    // The whole page is in the served HTML, not built by a renderer.
+    const served = await (await page.request.get('/')).text();
+    expect(served).toContain('Connect your accounts.');
+    expect(served).toContain('Why open source matters here');
+    expect(served).not.toContain('id="root"');
+  });
+
+  /**
+   * A theme chosen inside the app is honoured on the marketing page too — the one thing on `/`
+   * that needs a script, and the reason `theme.js` exists.
+   */
+  test('carries a theme the visitor chose in the app', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => window.localStorage.setItem('livetap.theme', 'light'));
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+    await page.evaluate(() => window.localStorage.setItem('livetap.theme', 'system'));
+    await page.reload();
+    // `system` is stored as a preference, so the attribute is absent and the OS decides.
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
+  });
+
+  test('the not-found page names itself, offers the way back, and returns a real 404', async ({
+    page,
+  }) => {
+    /*
+     * PRODUCT_REVIEW P2-9: this used to come back 200, because a catch-all rewrite handed every
+     * unmatched address to the SPA. The rewrites are a list of the application's own route
+     * prefixes now, and everything else is served as `404.html` with the status to match.
+     */
+    const response = await page.goto('/definitely-not-a-page');
+    expect(response?.status()).toBe(404);
     await expect(page.getByText('There is nothing at this address')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Go to Studio' })).toBeVisible();
+
+    // A known application route is still a 200, at every prefix the app owns.
+    for (const route of ['/app', '/privacy', '/terms', '/oauth/callback']) {
+      const ok = await page.goto(route);
+      expect(ok?.status(), `${route} should be rewritten to the application document`).toBe(200);
+    }
   });
 
   test('privacy and terms say something specific, not boilerplate', async ({ page }) => {

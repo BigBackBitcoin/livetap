@@ -181,6 +181,20 @@ function uid(prefix: string): string {
  */
 const WAS_LIVE_KEY = 'livetap.wasLive';
 
+/**
+ * How long the simulated engine takes to report an output back up. Passed to the engine
+ * explicitly so the demo outage below can be timed against a number this file states rather
+ * than a default it hopes for.
+ */
+const DEMO_CONNECT_DELAY_MS = 800;
+
+/**
+ * How long a demo drop stays down before it recovers. Four seconds is long enough to read the
+ * humane error card, watch the other destination stay LIVE, and see the reconnect countdown
+ * tick — which is the entire point of the demo (PRODUCT_REVIEW P2-11).
+ */
+const DEMO_OUTAGE_MS = 4000;
+
 function markLive(live: boolean): void {
   try {
     const s = (globalThis as { sessionStorage?: StorageLike }).sessionStorage;
@@ -316,7 +330,13 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         if (runtime) return;
         const mockMode = deps.mockMode ?? envMockMode();
         const registry = deps.registry ?? createMockAdapters();
-        const engine = deps.engine ?? createEngineForEnvironment({ preferMock: mockMode });
+        const engine =
+          deps.engine ??
+          createEngineForEnvironment({
+            preferMock: mockMode,
+            // Stated rather than inherited, because the demo outage below is timed against it.
+            mock: { connectDelayMs: DEMO_CONNECT_DELAY_MS },
+          });
         const stored = persist.readMoments();
         const settings = persist.read(persist.KEYS.settings, DEFAULT_SETTINGS);
         const orchestrator = new BroadcastOrchestrator({
@@ -545,7 +565,12 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         const config: DestinationConfig = {
           id: destinationId,
           platform: 'custom',
-          label: input.label || PLATFORM_PROFILES.custom.displayName,
+          /*
+           * The form requires a name now (PRODUCT_REVIEW P2-15), so this is a guard against a
+           * caller that is not the form, not a silent default: a destination named after a
+           * fallback the user never typed is a destination they cannot recognise later.
+           */
+          label: input.label.trim() || PLATFORM_PROFILES.custom.displayName,
           aspectRatio: input.aspect,
           enabled: true,
           mock: false,
@@ -779,13 +804,43 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       // failure would raise. Nothing here is a UI-only simulation: the orchestrator's isolation,
       // reconnect and humanize paths all run for real.
 
+      /**
+       * The scripted drop, timed to be readable.
+       *
+       * With the shipping reconnect policy the demo recovered in about 1.3 s — faster than
+       * anyone can read the four-field card the demo exists to show (PRODUCT_REVIEW P2-11). The
+       * outage is stretched to ~4 s here, in the app, by widening the reconnect policy for the
+       * one synchronous turn in which the orchestrator schedules the retry, and restoring it
+       * immediately afterwards. Nothing about the failure path is faked: the orchestrator's own
+       * isolation, backoff, `humanize()` and recovery all run exactly as they do for a real
+       * drop, and a real drop still uses the real policy. `packages/media` is untouched — the
+       * mock engine has no API for a per-event reconnect delay.
+       */
       demoDropDestination(destinationId: string): void {
-        engineEmitter(runtime)?.emit('output', {
-          type: 'outputLost',
-          destinationId,
-          code: 'INGEST_DISCONNECTED',
-          technical: 'demo: scripted drop',
-        });
+        const r = runtime;
+        const emitter = engineEmitter(r);
+        if (!r || !emitter) return;
+        const policy = r.orchestrator.settings.reconnect;
+        r.orchestrator.settings = {
+          ...r.orchestrator.settings,
+          reconnect: {
+            ...policy,
+            // The engine takes DEMO_CONNECT_DELAY_MS to report the output back up.
+            initialDelayMs: Math.max(0, DEMO_OUTAGE_MS - DEMO_CONNECT_DELAY_MS),
+            // A demo that varies by ±10% is a demo that cannot be described in a sentence.
+            jitter: 0,
+          },
+        };
+        try {
+          emitter.emit('output', {
+            type: 'outputLost',
+            destinationId,
+            code: 'INGEST_DISCONNECTED',
+            technical: 'demo: scripted drop',
+          });
+        } finally {
+          r.orchestrator.settings = { ...r.orchestrator.settings, reconnect: policy };
+        }
       },
 
       demoDegradeDestination(destinationId: string): void {

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
-import { Badge, Button, Card, MomentCard, Toggle } from '@livetap/ui';
+import { Badge, Button, Card, MomentCard, MomentIcon, Toggle } from '@livetap/ui';
 import { INTENT_PROFILES } from '@livetap/core';
 import type { Layer, Moment as MomentType, NormalizedRect } from '@livetap/core';
 import { PreviewCanvas } from '../components/PreviewCanvas.js';
 import { describe } from '../components/PreviewCanvas.js';
+import { ObsImportCard } from './pro/ObsImport.js';
 import { useAppStore } from '../state/store.js';
 
 /**
@@ -82,7 +83,8 @@ export function Moments(): ReactElement {
         {moments.map((moment) => (
           <li key={moment.id}>
             <MomentCard
-              icon={<span aria-hidden="true">{moment.icon}</span>}
+              /* The icon set, not emoji — PRODUCT_REVIEW P2-5. */
+              icon={<MomentIcon moment={moment.id} size={32} />}
               name={moment.name}
               active={selected?.id === moment.id}
               onSelect={() => setSelectedId(moment.id)}
@@ -146,6 +148,13 @@ export function Moments(): ReactElement {
             </p>
           </Card>
 
+          {/*
+            Pro additions only ever append, and this one is the most additive thing in the
+            product: an OBS user's own arrangement, read off their own file, with a truth report
+            in front of it (PRODUCT_SPEC §5e, north-star §14 — what would make an OBS user
+            *switch* rather than merely try).
+          */}
+          {mode === 'pro' ? <ObsImportCard /> : null}
           {mode === 'pro' && selected ? <ProLayerList moment={selected} /> : null}
         </div>
       </div>

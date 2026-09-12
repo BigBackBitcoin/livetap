@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { Badge, Button, Card, Sheet, StatusChip, Toggle } from '@livetap/ui';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
+import type { PlatformId } from '@livetap/core';
 import { chipLabel, statusText } from '../components/DestinationChips.js';
 import { DestinationErrorCard, NoticeCards } from '../components/NoticeCards.js';
 import { StreamKeyForm } from '../components/StreamKeyForm.js';
@@ -40,6 +41,15 @@ export function Destinations(): ReactElement {
   const [keyFlow, setKeyFlow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  /*
+   * Which rows of the add sheet are demos is a fact about this build, not a label: in a demo
+   * deployment, tapping any real platform produces a simulated destination, while "Other" still
+   * takes a key you paste and LinkedIn still cannot be connected by anyone. So the split is
+   * derived, never hand-listed, and it disappears on a deployment with real credentials.
+   */
+  const demo = mockMode ? PLATFORM_ORDER.filter(isDemoRow) : [];
+  const real = PLATFORM_ORDER.filter((id) => !demo.includes(id));
 
   return (
     <div className="lt-screen">
@@ -188,42 +198,61 @@ export function Destinations(): ReactElement {
             }}
           />
         ) : (
-          <ul className="lt-addlist">
-            {PLATFORM_ORDER.map((id) => {
-              const status = platformStatus(id);
-              return (
-                <li key={id}>
-                  <button
-                    type="button"
-                    className="lt-addrow lt-touch"
-                    aria-disabled={status.blocked || undefined}
-                    aria-describedby={status.blocked ? `lt-addwhy-${id}` : undefined}
-                    onClick={() => {
-                      if (status.blocked) return;
-                      if (id === 'custom' || (!mockMode && status.method === 'key')) {
-                        setKeyFlow(true);
-                        return;
-                      }
+          <>
+            {real.length > 0 ? (
+              <ul className="lt-addlist">
+                {real.map((id) => (
+                  <AddRow
+                    key={id}
+                    id={id}
+                    demo={false}
+                    onPasteKey={() => setKeyFlow(true)}
+                    onConnect={() => {
                       void connectPlatform(id);
                       setSheetOpen(false);
                     }}
-                  >
-                    <span className="lt-addrow__name">{status.profile.displayName}</span>
-                    <span className="lt-addrow__badges">
-                      <Badge tone={status.tone}>{status.actionLabel}</Badge>
-                      {mockMode && !status.blocked ? <Badge tone="info">{COPY.demo}</Badge> : null}
-                    </span>
-                    <span className="lt-addrow__summary">{status.summary}</span>
-                    {status.blocked ? (
-                      <span className="lt-addrow__why" id={`lt-addwhy-${id}`}>
-                        {status.blockedReason}
-                      </span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                  />
+                ))}
+              </ul>
+            ) : null}
+
+            {/*
+              PRODUCT_SPEC §4.4 and §5d: demo providers get their own section at the bottom of
+              the sheet, under their own heading, with the sentence that says what they are. The
+              sheet still lists all nine platforms and still never filters one out — absence
+              would read as "not supported yet", which for LinkedIn would be a lie.
+
+              §5d draws this section collapsed. It is expanded here, deliberately: on a demo
+              deployment these rows are the only ones that can produce anything, and hiding the
+              one path that works behind a disclosure would be the opposite of the honesty the
+              section exists for.
+            */}
+            {demo.length > 0 ? (
+              <section className="lt-addgroup" aria-labelledby="lt-demogroup">
+                <h3 className="lt-addgroup__title" id="lt-demogroup">
+                  Demo destinations
+                </h3>
+                <p className="lt-addgroup__note">
+                  These simulate a platform so you can try LIVETAP. They never broadcast
+                  anywhere.
+                </p>
+                <ul className="lt-addlist">
+                  {demo.map((id) => (
+                    <AddRow
+                      key={id}
+                      id={id}
+                      demo
+                      onPasteKey={() => setKeyFlow(true)}
+                      onConnect={() => {
+                        void connectPlatform(id);
+                        setSheetOpen(false);
+                      }}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </>
         )}
 
         <p className="lt-screen__note">
@@ -232,5 +261,60 @@ export function Destinations(): ReactElement {
         </p>
       </Sheet>
     </div>
+  );
+}
+
+/**
+ * True when tapping this platform in a demo build produces a simulated destination. "Other"
+ * does not: it takes a key you paste and sends to it for real. A blocked platform never does:
+ * nothing the user taps there produces a broadcast, demo or otherwise.
+ */
+export function isDemoRow(id: PlatformId): boolean {
+  const status = platformStatus(id);
+  return !status.blocked && id !== 'custom';
+}
+
+/** One row of the add sheet. Identical in both sections, so neither can drift from the other. */
+function AddRow({
+  id,
+  demo,
+  onConnect,
+  onPasteKey,
+}: {
+  id: PlatformId;
+  demo: boolean;
+  onConnect: () => void;
+  onPasteKey: () => void;
+}): ReactElement {
+  const status = platformStatus(id);
+  return (
+    <li>
+      <button
+        type="button"
+        className="lt-addrow lt-touch"
+        aria-disabled={status.blocked || undefined}
+        aria-describedby={status.blocked ? `lt-addwhy-${id}` : undefined}
+        onClick={() => {
+          if (status.blocked) return;
+          if (!demo && (id === 'custom' || status.method === 'key')) {
+            onPasteKey();
+            return;
+          }
+          onConnect();
+        }}
+      >
+        <span className="lt-addrow__name">{status.profile.displayName}</span>
+        <span className="lt-addrow__badges">
+          <Badge tone={status.tone}>{status.actionLabel}</Badge>
+          {demo ? <Badge tone="info">{COPY.demo}</Badge> : null}
+        </span>
+        <span className="lt-addrow__summary">{status.summary}</span>
+        {status.blocked ? (
+          <span className="lt-addrow__why" id={`lt-addwhy-${id}`}>
+            {status.blockedReason}
+          </span>
+        ) : null}
+      </button>
+    </li>
   );
 }

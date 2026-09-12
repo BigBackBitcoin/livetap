@@ -81,6 +81,11 @@ export function Settings(): ReactElement {
             { value: 'dark', label: 'Dark' },
           ]}
         />
+        <p className="lt-screen__note">
+          {preference === 'system'
+            ? 'Following your computer’s appearance setting. LIVETAP does this until you choose, and a computer that does not ask for light gets the dark palette.'
+            : `You chose ${preference}. LIVETAP keeps it on every screen until you change it back to System.`}
+        </p>
       </Card>
 
       <ProSettings live={live} />

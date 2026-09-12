@@ -37,13 +37,18 @@ export function StreamKeyForm({
   const [aspect, setAspect] = useState<AspectRatio>('16:9');
   const [urlError, setUrlError] = useState<string | undefined>(undefined);
   const [keyError, setKeyError] = useState<string | undefined>(undefined);
+  const [labelError, setLabelError] = useState<string | undefined>(undefined);
 
   const check = (): boolean => {
+    const nextLabelError = labelProblem(label);
     const nextUrlError = urlProblem(url);
     const nextKeyError = keyProblem(streamKey);
+    setLabelError(nextLabelError);
     setUrlError(nextUrlError);
     setKeyError(nextKeyError);
-    return nextUrlError === undefined && nextKeyError === undefined;
+    return (
+      nextLabelError === undefined && nextUrlError === undefined && nextKeyError === undefined
+    );
   };
 
   return (
@@ -66,7 +71,9 @@ export function StreamKeyForm({
         hint="Anything you will recognise in Studio, like “Late night build”."
         value={label}
         spellCheck={false}
+        error={labelError}
         onChange={(event) => setLabel(event.currentTarget.value)}
+        onBlur={() => setLabelError(labelProblem(label))}
       />
 
       <TextField
@@ -116,6 +123,21 @@ export function StreamKeyForm({
       </div>
     </form>
   );
+}
+
+/**
+ * The name is required, and it is required here rather than fixed up afterwards.
+ *
+ * An empty name used to fall through to the platform profile's display name, so a destination
+ * the user had just described to themselves came back called "Custom" and every later mention
+ * of it — the chip, the card, the remove confirmation, the pre-flight item — named something
+ * they had never typed (PRODUCT_REVIEW P2-15). A silent default is worse than a question.
+ */
+export function labelProblem(value: string): string | undefined {
+  if (value.trim().length === 0) {
+    return 'Give this destination a name, so you can recognise it in Studio.';
+  }
+  return undefined;
 }
 
 /**

@@ -1,6 +1,8 @@
 # LIVETAP — FRICTION BENCHMARK
 
-**Measured:** 2026-09-11 · **Surface:** `apps/web` (mock mode, Chromium, production build served by `vite preview`)
+**Measured:** 2026-09-11, §6 re-measured 2026-09-12 · **Surface:** `apps/web` (mock mode, Chromium,
+production build served by `apps/web/scripts/preview-server.mjs`, which applies the host's own route
+rewrites and returns a real 404 for an unmatched path)
 **How to reproduce:** `npm run e2e -w @livetap/web` — every LIVETAP number below is asserted by a test, not estimated by a person.
 
 ---
@@ -35,6 +37,14 @@ If a change makes any LIVETAP number worse, the golden-path E2E fails and this f
 
 The six taps are, in order: **Talking → YouTube → TikTok → Continue → Open Studio → GO LIVE.**
 The three-second countdown after the sixth tap is a wait, not a tap, and it is cancellable.
+
+One note on the failure numbers, so they are not read as faster than they are. The **demo** drop is
+scripted to stay down for about **4 seconds** before it recovers, not the 1.3 seconds it used to: the
+card that drop exists to demonstrate cannot be read in 1.3 seconds (PRODUCT_REVIEW §4 P2-11). The
+timing is set in `apps/web/src/state/store.ts` for the demo path only, by widening the reconnect
+policy for the single turn in which the orchestrator schedules the retry. A real drop still uses the
+real policy — 1 s, doubling, ±20% jitter, 10 attempts — and the user still takes **0** actions either
+way.
 
 ---
 
@@ -92,18 +102,64 @@ Named so nobody mistakes silence for a passing grade:
 
 ---
 
-## 6. Bundle and build (measured the same day)
+## 6. Bundle and build (re-measured 2026-09-12, production build)
+
+**How to reproduce:** `npm run build:web`, then gzip each emitted file at level 9. The numbers below
+are files on disk, not estimates, and the resource lists are the ones Chromium actually requested
+(recorded with `page.on('response')` against the production build served by
+`apps/web/scripts/preview-server.mjs`).
+
+### `/` — the marketing page
 
 | Artefact | Raw | Gzipped |
 |---|---|---|
-| Landing route JS (React + router + page) | 284.4 KB | **90.5 KB** |
-| — of which React 19's DOM renderer | 223.2 KB | 69.2 KB |
-| — of which LIVETAP's own landing code | 21.9 KB | 7.0 KB |
-| Studio route JS (landing chunks + app + engine) | ~430 KB | **~143.6 KB** |
-| Stylesheet (whole product) | 52.0 KB | 9.2 KB |
+| `index.html` (the whole page: copy, both diagrams, inline SVG marks) | 24.0 KB | **5.4 KB** |
+| `landing-*.css` (the design system: tokens, resets, components, landing layout) | 38.2 KB | **7.1 KB** |
+| `theme.js` (carries a theme chosen inside the app; the page's only script) | 1.1 KB | **0.6 KB** |
+| **Total** | **63.3 KB** | **13.0 KB** |
+| — of which **JavaScript** | 1.1 KB | **0.6 KB** |
 
-The landing misses its 60 KB budget, and the reason is structural rather than a code-splitting failure:
-React 19's DOM renderer alone is 69.2 KB gzipped, so **no** React page can meet that budget. The
-code-splitting goal is met — the landing ships none of the orchestrator, adapters or media engine. Getting
-under 60 KB requires rendering the marketing page as static HTML with no framework, which is recorded as an
-open issue rather than quietly dropped.
+**Budget: 60 KB gzipped. Measured: 13.0 KB. Met, with the hero image excluded as before.**
+
+The open issue in the previous revision of this section is closed, and it was closed the way that
+section said it would have to be: the marketing page renders as static HTML with no framework.
+React 19's DOM renderer is 69.2 KB gzipped on its own, so no React page could ever have met a
+60 KB budget however well the rest of it was split — the previous measurement was 90.5 KB, of which
+69.2 KB was the renderer and 7.0 KB was LIVETAP's own landing code. The page now ships **0.6 KB** of
+JavaScript, which exists only so that a visitor who chose light or dark inside the app is not shown
+the other one when they come back to `/`.
+
+Nothing about the page's content changed to get there: same copy, same structure, same hero image,
+same honest demo statement, same single accent CTA, same footer links, same skip link and
+accessible diagram description. What changed is that `/` is its own document
+(`apps/web/index.html`) and the application moved to `apps/web/app.html`, built as two Vite
+entries. `e2e/landing-and-layout.spec.ts` asserts the page ships exactly one script, that the
+script is not a module and not inline, and that the page's text is present in the served HTML
+rather than produced by a renderer — so this number cannot quietly regress.
+
+### `/app/*` — the application
+
+| Artefact | Raw | Gzipped |
+|---|---|---|
+| Studio, reached by the golden path (25 chunks) | 459.7 KB | **150.1 KB** |
+| Studio, loaded directly (the same, without the onboarding chunk) | ~452.5 KB | **~147.3 KB** |
+| — of which React 19 | 218.0 KB | 67.4 KB |
+| — of which the router | 39.4 KB | 14.1 KB |
+| — of which `livetap-engine` (core, adapters, media) | 127.4 KB | 39.7 KB |
+| — of which LIVETAP's own screens, store and design system | — | 29.0 KB |
+| `app-*.css` (the whole application) | 51.4 KB | **9.0 KB** |
+| `app.html`, and `404.html` copied from it | 2.0 KB | 1.0 KB |
+
+The code-splitting goal still holds and is now absolute rather than nearly so: the marketing page
+downloads **none** of the orchestrator, the adapters, the media engine, the router or React,
+because it cannot — they are in the other document.
+
+### The 404
+
+`dist/404.html` is a copy of `app.html`, written by a plugin in `apps/web/vite.config.ts` after
+every build. Vercel serves a `404.html` from the output directory with a real 404 status for any
+path that matches neither a file nor a rewrite, and the rewrites are now a list of the
+application's own route prefixes (`/app`, `/oauth`, `/privacy`, `/terms`) rather than a catch-all.
+So `/nope-not-a-page` returns **404** and renders the routed not-found screen, where it used to
+return 200 (PRODUCT_REVIEW §4 P2-9). The E2E asserts the status code, and asserts that each
+application prefix still returns 200.

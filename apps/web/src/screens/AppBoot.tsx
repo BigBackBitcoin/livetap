@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import { Navigate, Outlet } from 'react-router';
-import { Spinner, THEME_STORAGE_KEY } from '@livetap/ui';
+import { Spinner, useTheme } from '@livetap/ui';
 import { useAppStore } from '../state/store.js';
 
 /**
  * Boots the one orchestrator and one media engine, then hands over to the routed screen.
  *
- * Studio is dark by default (DESIGN_SYSTEM §2.1), so the app root carries `data-app` and the
- * density attribute; the marketing site is left alone to follow the OS.
+ * It also applies the user's theme preference for the whole application, which is the only
+ * place that can: `useTheme` used to be called by the Settings screen alone, so a stored
+ * choice was painted only while Settings was on screen.
  */
 export function AppBoot(): ReactElement {
   const ready = useAppStore((s) => s.ready);
@@ -18,22 +19,19 @@ export function AppBoot(): ReactElement {
     void useAppStore.getState().init();
   }, []);
 
-  // Studio is dark by default (DESIGN_SYSTEM §2.1): the preview is the brightest thing on
-  // screen and the chrome has to recede from it. This writes the preference once, on a first
-  // app boot only, so Settings shows the real current value and the user can change it — rather
-  // than painting dark while the control claims to be following the OS.
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem(THEME_STORAGE_KEY) === null) {
-        window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
-      }
-      if (window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-      }
-    } catch {
-      // Storage disabled. The app still paints, following the OS.
-    }
-  }, []);
+  /*
+   * The colour scheme follows the operating system on a first boot (PRODUCT_REVIEW P2-12).
+   *
+   * This used to write `livetap.theme = 'dark'` before the user had expressed any preference
+   * and paint `data-theme="dark"`, which is a silent override of a stated system preference —
+   * and it left Settings truthful only by accident, because the override had been written into
+   * storage first. DESIGN_SYSTEM §2.1 is normative: `data-theme` when the user has chosen, and
+   * "with no attribute, `prefers-color-scheme` decides". `useTheme` defaults to `'system'`,
+   * removes the attribute in that state, and stores nothing until the user picks — so a first
+   * boot follows the OS, dark remains the base palette in `tokens.css` for every machine that
+   * does not ask for light, and the Settings control shows the truth in all three states.
+   */
+  useTheme();
 
   useEffect(() => {
     const root = document.documentElement;

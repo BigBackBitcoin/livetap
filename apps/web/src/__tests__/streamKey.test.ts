@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keyProblem, urlProblem } from '../components/StreamKeyForm.js';
+import { keyProblem, labelProblem, urlProblem } from '../components/StreamKeyForm.js';
 
 /**
  * "Invalid URL" is the string this product is designed against. Every message here names the
@@ -35,5 +35,11 @@ describe('stream-key form validation', () => {
 
   it('accepts a real key', () => {
     expect(keyProblem('live_123456789_abcdefgh')).toBeUndefined();
+  });
+
+  it('requires a name rather than silently calling the destination something else', () => {
+    expect(labelProblem('')).toContain('Give this destination a name');
+    expect(labelProblem('   ')).toContain('recognise it in Studio');
+    expect(labelProblem('Late night build')).toBeUndefined();
   });
 });
