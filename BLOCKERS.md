@@ -25,4 +25,32 @@ Format per entry: Category | Exact requirement | Why autonomous resolution faile
 - Exact human action: pick one — (a) run LinkedIn auth through a LIVETAP-operated hosted service holding the approved app and secret, and apply to the Live Events API Program; (b) document a bring-your-own-approved-LinkedIn-app path for self-hosters as advanced and unsupported; or (c) ship LinkedIn as UNAVAILABLE at launch. Get counsel to read the LLE terms against the chosen model before any LinkedIn code merges.
 - What resumes: the LinkedIn destination adapter. Nothing else is blocked — X, custom RTMP/RTMPS/SRT/WHIP, and every other destination are independent of this decision.
 
+## B-004 | Release / signing | Desktop code-signing identities (Windows + macOS)
+- Exact requirement: Windows Authenticode (or Azure Trusted Signing) certificate; Apple Developer ID Application certificate + notarization credentials (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID).
+- Why autonomous resolution failed: both require paid, identity-verified accounts owned by a legal entity/person.
+- Already completed: electron-builder config, entitlements, NSIS installer, unsigned Windows package built and launched (docs/release/DESKTOP_RELEASE.md), electron-updater wiring.
+- Exact human action: obtain the certificates, set CSC_LINK/CSC_KEY_PASSWORD and the Apple variables as GitHub Actions secrets.
+- What resumes: signed installers, notarized DMG, auto-update channel.
+
+## B-005 | Stores / accounts | Apple Developer Program + macOS build host; Google Play Console + Android SDK/JDK
+- Exact requirement: Apple Developer account (App Store Connect, bundle id app.livetap.mobile, certificates/profiles) and a macOS machine or CI runner; Google Play developer account (12 testers / 14 days closed test for new personal accounts), JDK 21 + Android SDK 36 for local builds.
+- Why autonomous resolution failed: accounts are owner-only and paid; host has no macOS, JDK or Android SDK.
+- Already completed: real Xcode + Android projects, plugin package discovered by `cap sync`, privacy manifest, permissions, readiness audits (docs/release/*_READINESS.md), CI workflows for macOS/Ubuntu runners (parked, B-001).
+- Exact human action: create both accounts, enable B-001 so CI compiles on GitHub runners (free for public repos), then run the first builds and fix compile findings.
+- What resumes: TestFlight/internal-testing builds, store metadata submission.
+
+## B-006 | Platform credentials | OAuth client IDs/secrets and app review for YouTube, Twitch, Kick, Facebook
+- Exact requirement: Google Cloud OAuth client (web + desktop types) with YouTube Data API enabled and OAuth verification for sensitive scopes; Twitch developer application; Kick developer app; Facebook app with Live Video API review + Business Verification.
+- Why autonomous resolution failed: developer consoles require the owner's accounts, phone verification, and review submissions.
+- Already completed: real adapters tested against recorded fakes, token broker with env-var placeholders (apps/web/.env.example), PKCE helpers, desktop loopback + device-code flows.
+- Exact human action: create the apps, set redirect URIs (https://<vercel-domain>/oauth/callback, http://127.0.0.1:<port>/callback, livetap://oauth/callback), paste credentials into Vercel env vars, set LIVETAP_MOCK_MODE=false.
+- What resumes: real go-live on YouTube/Twitch/Kick/Facebook; TikTok/Instagram/X remain stream-key based by platform design.
+
+## B-007 | Hardware verification | GPU host and a physical camera/microphone
+- Exact requirement: a Windows machine with an NVIDIA/Intel/AMD GPU and a webcam + mic; a Mac for VideoToolbox.
+- Why autonomous resolution failed: build host is a headless VM with no GPU or capture devices.
+- Already completed: hardware-encoder probe that asserts real packets; capture code paths with injectable fakes; MockEngine test pattern for UX.
+- Exact human action: run `npm run verify:engine -w @livetap/desktop` and the web app on such a machine; record results in docs/qa.
+- What resumes: PASS labels for hardware encoding and real capture.
+
 (other environment-derived candidates to be finalized: Apple Developer account + macOS/Xcode host, Google Play console + Android SDK host, platform OAuth client credentials, code-signing certificates, GPU host for hardware-encoder verification, physical camera/mic for capture verification)
