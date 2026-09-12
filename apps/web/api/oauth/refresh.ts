@@ -1,11 +1,12 @@
 import { assertSameOrigin, errorResponse, json, readJsonBody, refreshToken, validateRefreshInput } from '../_lib/broker.js';
+import { nodeHandler } from '../_lib/node.js';
 
 /**
  * POST /api/oauth/refresh
  * Body: { platform, refreshToken }
  * Returns: { accessToken, refreshToken?, expiresIn?, scope? }
  */
-export default async function handler(req: Request): Promise<Response> {
+export async function handle(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'METHOD_NOT_ALLOWED' });
   try {
     assertSameOrigin(req);
@@ -16,3 +17,5 @@ export default async function handler(req: Request): Promise<Response> {
     return errorResponse(err);
   }
 }
+
+export default nodeHandler(handle);
