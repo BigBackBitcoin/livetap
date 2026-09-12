@@ -24,12 +24,18 @@ test.describe('screens', () => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await freshFirstRun(page);
 
+      /*
+       * The landing is a fixed live surface driven by scroll, so a full-page capture of an
+       * 11,500px document is mostly empty. One viewport, with the automatic story stopped the
+       * way a visitor stops it, is the frame a person actually judges the page by.
+       */
       await page.goto('/');
-      await page.waitForLoadState('networkidle');
-      await page.screenshot({
-        path: `e2e/__screenshots__/landing-${viewport.name}.png`,
-        fullPage: true,
+      await page.waitForSelector('html.sc-ready');
+      await page.evaluate(() => {
+        (document.querySelector('[data-lt-format-set="16:9"]') as HTMLElement).click();
       });
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: `e2e/__screenshots__/landing-${viewport.name}.png` });
 
       await page.goto('/app');
       await page.getByRole('heading', { name: 'What are you making?' }).waitFor();
@@ -78,10 +84,23 @@ test.describe('screens', () => {
 test.describe('visual baselines', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  /**
+   * The landing's baseline is shot under reduced motion with the automatic story stopped and one
+   * destination connected by hand, because the page is a running surface: without those two
+   * things the baseline would be a different frame every run. Reduced motion is also the
+   * accessibility path, so the frame that is frozen here is the one that has to keep working.
+   */
   test('landing at desktop', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await expect(page).toHaveScreenshot('baseline-landing-desktop.png', { fullPage: true });
+    await page.waitForSelector('html.sc-ready');
+    await page.locator('[data-lt-dest="youtube"] [data-lt-pick]').click();
+    await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute(
+      'data-lt-state',
+      'READY',
+    );
+    await page.waitForTimeout(400);
+    await expect(page).toHaveScreenshot('baseline-landing-desktop.png');
   });
 
   test('studio at desktop', async ({ page }) => {

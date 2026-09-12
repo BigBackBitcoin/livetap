@@ -16,6 +16,19 @@ export default tseslint.config(
       'apps/mobile/android/**',
       '**/playwright-report/**',
       '**/test-results/**',
+      '.agents/**',
+      '.claude/**',
+      'scrollcraft/**',
+      /*
+       * The Scroll Craft engine, vendored verbatim.
+       *
+       * `apps/web/src/public/scrollcraft.js` is a byte-for-byte copy of the skill's
+       * `engine/scrollcraft.js`. It is the mechanism the public experience is built on and it is
+       * never edited per project — a lint fix here would fork it, and the fork would drift. A
+       * unit test asserts the copy still matches the source, which is a stronger guarantee than
+       * a style rule.
+       */
+      'apps/web/src/public/scrollcraft.js',
     ],
   },
   ...tseslint.configs.recommended,

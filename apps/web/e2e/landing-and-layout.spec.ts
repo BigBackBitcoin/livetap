@@ -8,35 +8,71 @@ const VIEWPORTS = [
 ] as const;
 
 test.describe('landing', () => {
-  test('renders the promise, and every internal link resolves', async ({ page }) => {
+  test('is the product running, with the six facts on its face', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Tap GO LIVE');
-    await expect(page.getByText('Free. Open source. No account needed.')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'What LIVETAP is' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Why it is easier' })).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: /How going live in several places/ }),
-    ).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Get LIVETAP' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Why open source matters here' })).toBeVisible();
-    await expect(
-      page.getByRole('link', { name: 'GitHub' }),
-    ).toHaveAttribute('href', 'https://github.com/BigBackBitcoin/livetap');
+    await page.waitForSelector('html.sc-ready');
 
-    // The diagram is a real image with a real description, not decoration. There are two
-    // drawings (wide and tall) and CSS shows one, so exactly one is in the accessibility tree.
-    await expect(page.getByRole('img', { name: /LIVETAP composes your Moment/ })).toHaveCount(1);
-    await expect(page.getByRole('img', { name: /LIVETAP composes your Moment/ })).toBeVisible();
-
-    // Every internal link goes somewhere that is not the not-found page.
-    const hrefs = await page.locator('a[href^="/"]').evaluateAll((links) =>
-      Array.from(new Set(links.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? ''))),
+    /*
+     * The heading order is real and the `<h1>` makes no claim: the largest type on the page is
+     * either a number the surface is counting or a sentence the surface is reporting about
+     * itself (LIVETAP_VISUAL_DIRECTION.md §3.2).
+     */
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      'LIVETAP, a live production surface you can operate',
     );
-    expect(hrefs.length).toBeGreaterThan(2);
+
+    // Fact 6 is the only one carried by words, and it is six of them.
+    await expect(page.getByText('Free. Open source. Runs on your machine.')).toBeVisible();
+    // The honesty contract, non-dismissible, at first paint.
+    await expect(page.getByText('Demo surface. Nothing is broadcast anywhere.')).toBeVisible();
+
+    // Facts 1 to 4 are state on a surface: six destinations, six Moments, three shapes, one
+    // dominant action.
+    await expect(page.locator('[data-lt-dest]')).toHaveCount(6);
+    await expect(page.locator('[data-lt-moment]')).toHaveCount(6);
+    await expect(page.locator('[data-lt-format-set]')).toHaveCount(3);
+    await expect(page.locator('[data-lt-golive]')).toBeVisible();
+
+    // The platform honesty nobody else in the category states out loud, in one line.
+    await expect(
+      page.getByText('TikTok, Instagram and X publish no live chat API, so nothing from them appears here.'),
+    ).toBeVisible();
+
+    // Eight acts and two declared silences, all real sections with real headings.
+    await expect(page.locator('[data-sc-act]')).toHaveCount(10);
+    await expect(page.getByRole('heading', { name: 'Break it yourself' })).toBeAttached();
+
+    await expect(page.getByRole('link', { name: 'GitHub' }).first()).toHaveAttribute(
+      'href',
+      'https://github.com/BigBackBitcoin/livetap',
+    );
+  });
+
+  test('hands the visitor to the real onboarding route, and every link resolves', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    // ACT 8 is the app's own first question, and its answer travels with the visitor.
+    await expect(page.locator('[data-lt-open]')).toHaveAttribute('href', './app/start');
+
+    const hrefs = await page
+      .locator('a[href]')
+      .evaluateAll((links) =>
+        Array.from(
+          new Set(
+            links
+              .map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')
+              .filter((h) => h && !h.startsWith('#')),
+          ),
+        ),
+      );
+    expect(hrefs).toContain('./app/start');
+    expect(hrefs.length).toBeGreaterThan(4);
+
     for (const href of hrefs) {
-      await page.goto(href);
-      await expect(page.getByText('That page moved')).toHaveCount(0);
-      await page.goto('/');
+      if (href.startsWith('http')) continue; // third-party, not ours to assert
+      const response = await page.request.get(new URL(href, 'http://localhost:4173/').toString());
+      expect(response.status(), `${href} should resolve`).toBe(200);
     }
   });
 
@@ -44,55 +80,80 @@ test.describe('landing', () => {
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto('/');
-      await page.waitForTimeout(150);
+      await page.waitForSelector('html.sc-ready');
+      await page.waitForTimeout(300);
       expect(await hasHorizontalOverflow(page), `landing overflows at ${viewport.name}`).toBe(false);
     }
   });
 
   /**
-   * The landing carries no framework.
+   * The page's budget, asserted rather than recorded in a document that can go stale.
    *
-   * This is the assertion behind the budget in `docs/qa/FRICTION_BENCHMARK.md` §6: a React
-   * landing cannot meet 60 KB gzipped however well it is split, because React 19's DOM renderer
-   * alone is 69.2 KB. If a script ever creeps back onto `/`, the page has quietly lost its
-   * budget again and this fails rather than a number in a document going stale.
+   * `/` carries two scripts and no framework: the classic pre-paint theme carrier, and the
+   * page's own module. React 19's DOM renderer alone is 69.2 KB gzipped
+   * (`docs/qa/FRICTION_BENCHMARK.md` §6), so the 60 KB budget is only reachable without it.
    */
-  test('ships no framework: one 1 KB script, and nothing rendered by JavaScript', async ({
+  test('ships two scripts, no framework, and stays inside the JavaScript budget', async ({
     page,
   }) => {
-    await page.goto('/');
-    const scripts = await page
-      .locator('script')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => ({
-          src: (node as HTMLScriptElement).getAttribute('src') ?? '',
-          type: (node as HTMLScriptElement).getAttribute('type') ?? '',
-          inline: ((node as HTMLScriptElement).textContent ?? '').trim().length,
-        })),
-      );
-    expect(scripts).toHaveLength(1);
-    expect(scripts[0]?.src).toBe('/theme.js');
-    // Not a module: it has to run before first paint so a chosen theme never flashes.
-    expect(scripts[0]?.type).toBe('');
-    // Inline script would be blocked by the deployed CSP (`script-src 'self'`).
-    expect(scripts[0]?.inline).toBe(0);
+    const transferred = new Map<string, number>();
+    page.on('response', async (response) => {
+      const type = response.headers()['content-type'] ?? '';
+      if (!type.includes('javascript')) return;
+      try {
+        transferred.set(new URL(response.url()).pathname, (await response.body()).length);
+      } catch {
+        /* A response with no body is not a cost. */
+      }
+    });
 
-    // The whole page is in the served HTML, not built by a renderer.
+    await page.goto('/');
+    await page.waitForSelector('html.sc-ready');
+
+    const scripts = await page.locator('script').evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        src: (node as HTMLScriptElement).getAttribute('src') ?? '',
+        type: (node as HTMLScriptElement).getAttribute('type') ?? '',
+        inline: ((node as HTMLScriptElement).textContent ?? '').trim().length,
+      })),
+    );
+    // Inline script would be blocked by the deployed CSP (`script-src 'self'`).
+    expect(scripts.every((s) => s.inline === 0)).toBe(true);
+    // The theme carrier is a classic script in `<head>`, so a chosen theme never flashes.
+    expect(scripts.find((s) => s.src === '/theme.js')?.type).toBe('');
+    expect(scripts.filter((s) => s.type === 'module').length).toBeGreaterThan(0);
+
+    const raw = Array.from(transferred.values()).reduce((a, b) => a + b, 0);
+    /*
+     * The served bytes are uncompressed here (the preview server does not gzip), so this guards
+     * the raw figure at roughly three times the gzipped budget. The exact gzipped number comes
+     * from `vite build --reportCompressedSize`, which is what the build report quotes.
+     */
+    expect(raw, `JS transferred on / was ${raw} bytes`).toBeLessThan(180_000);
+    expect(page.url()).toBe('http://localhost:4173/');
+
+    // No React on the marketing document, and nothing built by a renderer.
     const served = await (await page.request.get('/')).text();
-    expect(served).toContain('Connect your accounts.');
-    expect(served).toContain('Why open source matters here');
     expect(served).not.toContain('id="root"');
+    expect(served).toContain('What are you making?');
+    expect(served).toContain('Free. Open source. Runs on your machine.');
   });
 
   /**
-   * A theme chosen inside the app is honoured on the marketing page too — the one thing on `/`
-   * that needs a script, and the reason `theme.js` exists.
+   * A theme chosen inside the app is honoured on the marketing page too, and the page's own
+   * toggle writes the same key.
    */
-  test('carries a theme the visitor chose in the app', async ({ page }) => {
+  test('carries a theme the visitor chose in the app, and can change it', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => window.localStorage.setItem('livetap.theme', 'light'));
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+    await page.waitForSelector('html.sc-ready');
+    await page.locator('[data-lt-theme]').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     await page.evaluate(() => window.localStorage.setItem('livetap.theme', 'system'));
     await page.reload();
@@ -114,7 +175,7 @@ test.describe('landing', () => {
     await expect(page.getByRole('link', { name: 'Go to Studio' })).toBeVisible();
 
     // A known application route is still a 200, at every prefix the app owns.
-    for (const route of ['/app', '/privacy', '/terms', '/oauth/callback']) {
+    for (const route of ['/app', '/app/start', '/privacy', '/terms', '/oauth/callback']) {
       const ok = await page.goto(route);
       expect(ok?.status(), `${route} should be rewritten to the application document`).toBe(200);
     }

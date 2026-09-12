@@ -28,9 +28,11 @@ changes only grammar and world will fail it.
 
 | Build | Grammar | Nav treatment | Hero device | Act-sequence shape | Close pattern | Signature move | World | Port |
 |---|---|---|---|---|---|---|---|---|
+| `livetap-public` | Live surface | The product's own app chrome: an 88px labelled left rail plus a bottom status bar carrying live session state, both real enough to navigate with; no marketing bar | One fixed live surface, mounted at first paint and already telling its own 17-step story on its own clock, seen through a collapsing lattice of six duplicated control panels | `pin` > rest > `pan` > `pin` > `reveal` > `count` > rest > bespoke pointer > `parallax` > `tilt`; 8 acts plus 2 declared rests; 12.8vh; peak at 2.8 against a next-largest of 1.6 | The product's real first-run question, "What are you making?", with six operable intent cards that re-compose the fixed stage and hand the chosen intent to `/app/start` | Drag a `LIVE` destination off the stage with the pointer: its connection path strains and snaps, it counts down and heals, and no sibling flickers | Drawn signal field. No photography, no footage, no generated imagery; the product is the picture | Web, `/` in `apps/web`, dark default with a first-class light theme |
 
-*(empty: your first build has nothing to clear, so build whatever the interview
-points at. From the second onwards, this table is the constraint.)*
+*(The first row was appended on 2026-09-12. The registry was empty before it, so the gate was
+vacuously satisfied and is recorded as such rather than reported as a pass against a table that
+did not exist. From the second build onwards, this table is the constraint.)*
 
 ---
 
@@ -41,7 +43,20 @@ reusing: a grammar, a nav treatment, a close pattern, a signature move, an
 act-count-and-length band. The shared columns are what the next build inherits
 as a constraint, so writing them down is the whole point.
 
-Nothing is taken yet.
+- **Live surface** as a grammar.
+- **App chrome as nav**, specifically a labelled left rail plus a live status bar carrying
+  session state.
+- **The fixed-surface-plus-flow-markers structure**: one `position: fixed` product surface for
+  the whole page, with the act stack driving it, rather than one pinned stage per act. The act
+  band is the one region of the viewport the surface leaves free.
+- **A collapsing lattice of duplicated controls** as a hero device, where each duplicate
+  converges on the position of the surface's own single instance of that control.
+- **A real first-run question as the close**, with the answer carried into the app as a query
+  parameter.
+- **Drag-to-break-a-live-destination** as a signature move, and per-item failure isolation as
+  the peak.
+- **The act-count-and-length band**: 8 acts plus 2 declared rests at 12.8vh with the peak at
+  2.8.
 
 ---
 

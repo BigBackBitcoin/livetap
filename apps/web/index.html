@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>LIVETAP — Connect your accounts. Pick where you want to go live. Tap GO LIVE.</title>
+    <title>LIVETAP, a live production surface you can operate</title>
     <meta
       name="description"
-      content="LIVETAP is the easiest way to go live. Connect your accounts, pick where you want to broadcast, tap GO LIVE. Free, open source, multistreaming to every destination at once."
+      content="Pick where you are going live, compose what viewers see, go live everywhere at once, and break it yourself to watch it recover. Free, open source, runs on your machine."
     />
     <meta name="theme-color" content="#0A0B0D" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#F4F6F8" media="(prefers-color-scheme: light)" />
@@ -17,571 +17,672 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Crect x='2.5' y='2.5' width='27' height='27' rx='8.5' stroke='%23F2F4F7' stroke-width='2'/%3E%3Ccircle cx='12.5' cy='16' r='3' fill='%23FF4D3F'/%3E%3Cpath d='M15.94 20.91A6 6 0 0 0 15.94 11.09' stroke='%23F2F4F7' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22' stroke='%23F2F4F7' stroke-width='2' stroke-linecap='round' opacity='.55'/%3E%3C/svg%3E"
     />
     <link rel="apple-touch-icon" href="/brand/hero-a.webp" />
-    <meta property="og:title" content="LIVETAP — go live everywhere, in one tap" />
+    <meta property="og:title" content="LIVETAP, go live everywhere in one tap" />
     <meta
       property="og:description"
-      content="Connect your accounts. Pick where you want to go live. Tap GO LIVE. Free and open source."
+      content="Break your own live stream and watch it survive. Free and open source."
     />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/brand/hero-a.webp" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="stylesheet" href="./src/landing.css" />
+
     <!--
-      The marketing page carries no framework.
+      One webfont, self-hosted, preloaded.
 
-      It used to be a React screen, which meant a visitor who read it and left downloaded React
-      19's DOM renderer — 69.2 KB gzipped before a word of LIVETAP's own code — and the page
-      could not meet its 60 KB budget however well it was split
-      (`docs/qa/FRICTION_BENCHMARK.md` §6). Nothing on this page needs JavaScript: it has no
-      state, no carousel, no autoplaying video, no cookie banner, and its one interaction is a
-      link. So it ships as HTML and the design system's stylesheet, and the 4 KB script below
-      exists only to carry a theme the visitor already chose inside the app.
+      The deployed CSP is `font-src 'self' data:`, so a hosted font service would be blocked
+      with no visible error. Archivo carries the display slot only; text, metadata, status and
+      navigation stay on the app's own stack so the site and the product render identically on
+      the same machine.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/archivo-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="./src/landing.css" />
 
-      It is a plain classic script in `<head>`, not a module, so it runs before first paint and
-      a user who chose dark never sees a flash of light. It is a separate file rather than an
-      inline `<script>` because the deployed CSP is `script-src 'self'`.
+    <!--
+      The theme carrier: a classic script in `<head>` so a visitor who chose dark inside the
+      app never sees a flash of light. Separate file rather than inline, because the deployed
+      CSP is `script-src 'self'`.
     -->
     <script src="/theme.js"></script>
   </head>
-  <body>
-    <div class="lt-landing">
-      <a class="lt-skip-link" href="#lt-get">Skip to download</a>
 
-      <header class="lt-landing__bar">
-        <a href="/" class="lt-landing__brand" aria-label="LIVETAP home">
-          <svg viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true">
-            <rect
-              x="2.5"
-              y="2.5"
-              width="27"
-              height="27"
-              rx="8.5"
-              stroke="currentColor"
-              stroke-width="2"
-            />
-            <circle cx="12.5" cy="16" r="3" fill="var(--lt-accent-live-solid)" />
-            <path
-              d="M15.94 20.91A6 6 0 0 0 15.94 11.09"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-            <path
-              d="M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              opacity="0.55"
-            />
-          </svg>
-          <span class="lt-landing__wordmark">LIVETAP</span>
-        </a>
-        <nav aria-label="Sections">
-          <a href="#lt-how">How it works</a>
-          <a href="#lt-open">Open source</a>
-          <a class="lt-btn lt-btn--secondary lt-btn--md" href="/app">Open LIVETAP</a>
-        </nav>
-      </header>
+  <body id="lt-page" data-lt-demo="true">
+    <a class="lt-skip-link" href="#surface">Skip to the live surface</a>
+    <div class="sc-grain" aria-hidden="true"></div>
 
-      <section class="lt-hero" aria-labelledby="lt-hero-heading">
-        <img
-          class="lt-hero__plate"
-          src="/brand/hero-a.webp"
-          alt=""
-          width="1536"
-          height="864"
-          loading="eager"
-          decoding="async"
+    <h1 class="lt-sr-only">LIVETAP, a live production surface you can operate</h1>
+
+    <!--
+      The icon set, once.
+
+      These are the path bodies from `packages/ui/src/components/Icons.tsx`, so a glyph change
+      changes both surfaces. Stroke, cap, join and fill are set in CSS on `.lt-icon`, which are
+      inherited SVG properties and therefore cross into every `<use>` instance: the grid is
+      24x24, the stroke is 1.75, and the colour is always `currentColor`.
+      `src/__tests__/public-data.test.ts` re-extracts them and fails if this copy drifts.
+    -->
+    <svg class="ltp-sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-camera" viewBox="0 0 24 24">
+        <path d="M2.75 7.75a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2Z" />
+        <path d="m14.75 10.5 5.5-3.25v9.5l-5.5-3.25Z" />
+      </symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24">
+        <path d="M12 3.75a3 3 0 0 1 3 3v4.5a3 3 0 0 1-6 0v-4.5a3 3 0 0 1 3-3Z" />
+        <path d="M5.75 11.5a6.25 6.25 0 0 0 12.5 0" />
+        <path d="M12 17.75v2.5" />
+        <path d="M9 20.25h6" />
+      </symbol>
+      <symbol id="i-mic-off" viewBox="0 0 24 24">
+        <path d="M15 7.5v-.75a3 3 0 0 0-5.66-1.4" />
+        <path d="M9 10.5v1.25a3 3 0 0 0 4.9 2.32" />
+        <path d="M5.75 11.5a6.25 6.25 0 0 0 9.6 5.27" />
+        <path d="M18.25 11.5v.25" />
+        <path d="M12 17.75v2.5" />
+        <path d="M9 20.25h6" />
+        <path d="M3.75 3.75 20.25 20.25" />
+      </symbol>
+      <symbol id="i-screen" viewBox="0 0 24 24">
+        <path
+          d="M3.25 5.75a1.5 1.5 0 0 1 1.5-1.5h14.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5Z"
         />
-        <div class="lt-hero__copy">
-          <h1 id="lt-hero-heading">
-            Connect your accounts.<br />Pick where you want to go live.<br />Tap GO LIVE.
-          </h1>
-          <p class="lt-hero__sub">
-            That is the whole product. LIVETAP is the easiest way to go live — not a prettier
-            version of broadcasting software, but a shorter road to being on air.
-          </p>
-          <div class="lt-hero__actions">
-            <a class="lt-btn lt-btn--primary lt-btn--lg" href="/app">Open LIVETAP</a>
-            <a class="lt-textlink" href="#lt-get">Desktop and mobile</a>
-          </div>
-          <p class="lt-hero__note">
-            Free. Open source. No account needed.<!--lt:demo-hero-->
-          </p>
-        </div>
-      </section>
+        <path d="M12 16.25v3.5" />
+        <path d="M9 19.75h6" />
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path
+          d="M19.25 13a1.75 1.75 0 0 1-1.75 1.75H9.25L5 18.25V6.5A1.75 1.75 0 0 1 6.75 4.75h10.75A1.75 1.75 0 0 1 19.25 6.5Z"
+        />
+      </symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24">
+        <path d="M3.75 19.5h16.5" />
+        <path d="M6.5 16.75V13M11 16.75V8.5M15.5 16.75v-5M20 16.75V5.5" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path d="M12 4.75 20.5 19.25H3.5Z" />
+        <path d="M12 10v3.75" />
+        <path d="M12 16.5h.01" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m5.25 12.5 4.5 4.5 9-9.5" />
+      </symbol>
+      <symbol id="i-x" viewBox="0 0 24 24">
+        <path d="m6.25 6.25 11.5 11.5M17.75 6.25 6.25 17.75" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <path d="M19.25 12a7.25 7.25 0 1 1-2.4-5.4" />
+        <path d="M19.25 4.75V9.5h-4.75" />
+      </symbol>
+      <symbol id="i-play" viewBox="0 0 24 24">
+        <path d="M8.25 5.5 18.75 12 8.25 18.5Z" />
+      </symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24">
+        <path d="M6.75 7.75a1 1 0 0 1 1-1h8.5a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1Z" />
+      </symbol>
+      <symbol id="i-record" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="7.75" />
+        <circle class="lt-ink" cx="12" cy="12" r="3.5" />
+      </symbol>
+      <symbol id="i-users" viewBox="0 0 24 24">
+        <circle cx="10.25" cy="8" r="3.25" />
+        <path d="M15.75 19.25v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4a3.5 3.5 0 0 0-3.5 3.5v1.5" />
+        <path d="M16.75 5.2a3.25 3.25 0 0 1 0 5.6" />
+        <path d="M19.75 19.25v-1.5a3.5 3.5 0 0 0-2.6-3.38" />
+      </symbol>
+      <symbol id="i-tv" viewBox="0 0 24 24">
+        <path
+          d="M3.75 8.5a1.75 1.75 0 0 1 1.75-1.75h13A1.75 1.75 0 0 1 20.25 8.5v8a1.75 1.75 0 0 1-1.75 1.75h-13A1.75 1.75 0 0 1 3.75 16.5Z"
+        />
+        <path d="m8.5 3.75 3.5 3 3.5-3" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.25" />
+        <path d="M3.75 12h16.5" />
+        <path d="M12 3.75c2.5 2.6 2.5 13.9 0 16.5-2.5-2.6-2.5-13.9 0-16.5Z" />
+      </symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24">
+        <path d="M4.25 7.5h15.5M4.25 12h15.5M4.25 16.5h15.5" />
+        <circle cx="9" cy="7.5" r="1.75" />
+        <circle cx="15" cy="12" r="1.75" />
+        <circle cx="7.5" cy="16.5" r="1.75" />
+      </symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24">
+        <path d="m6.5 9.75 5.5 5.5 5.5-5.5" />
+      </symbol>
+      <symbol id="i-external-link" viewBox="0 0 24 24">
+        <path d="M14 4.75h5.25V10" />
+        <path d="M19.25 4.75 11.5 12.5" />
+        <path
+          d="M18 14.5v3.75a1.5 1.5 0 0 1-1.5 1.5H5.75a1.5 1.5 0 0 1-1.5-1.5V7.5A1.5 1.5 0 0 1 5.75 6H9.5"
+        />
+      </symbol>
+      <symbol id="i-spinner" viewBox="0 0 24 24">
+        <path d="M12 3.75a8.25 8.25 0 1 0 8.25 8.25" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3.75" />
+        <path d="M12 3.75v1.5M12 18.75v1.5M3.75 12h1.5M18.75 12h1.5" />
+        <path d="m6.4 6.4 1.05 1.05M16.55 16.55l1.05 1.05M17.6 6.4l-1.05 1.05M7.45 16.55 6.4 17.6" />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24">
+        <path d="M20 14.5A8.25 8.25 0 0 1 9.5 4a8.25 8.25 0 1 0 10.5 10.5Z" />
+      </symbol>
 
-      <section class="lt-section" aria-labelledby="lt-what">
-        <h2 id="lt-what">What LIVETAP is</h2>
-        <div class="lt-cols">
-          <article>
-            <h3>One app</h3>
-            <p>
-              Camera, screen, microphone, overlays and recording in one place. Nothing to install
-              on top of it, and no plugin to keep alive between updates.
-            </p>
-          </article>
-          <article>
-            <h3>Every destination</h3>
-            <p>
-              Go live on several places at the same time. LIVETAP makes the picture once and opens
-              a separate connection to each one, so they cannot take each other down.
-            </p>
-          </article>
-          <article>
-            <h3>Yours</h3>
-            <p>
-              Free forever, open source, and it runs on your machine. Your stream never passes
-              through our servers, because we do not have any in the path.
-            </p>
-          </article>
-        </div>
-      </section>
+      <!-- Moment glyphs. Main Camera, Screen Share and Guest reuse the system drawings. -->
+      <symbol id="m-starting-soon" viewBox="0 0 24 24">
+        <path d="M6.75 3.75h10.5M6.75 20.25h10.5" />
+        <path d="M8.5 3.75v3.6a2 2 0 0 0 .58 1.4L12 12l2.92-3.25a2 2 0 0 0 .58-1.4V3.75" />
+        <path d="M8.5 20.25v-3.6a2 2 0 0 1 .58-1.4L12 12l2.92 3.25a2 2 0 0 1 .58 1.4v3.6" />
+      </symbol>
+      <symbol id="m-break" viewBox="0 0 24 24">
+        <path d="M4.75 6.75h11.5v6a4.5 4.5 0 0 1-4.5 4.5h-2.5a4.5 4.5 0 0 1-4.5-4.5Z" />
+        <path d="M16.25 8.25h1.25a2.5 2.5 0 0 1 0 5h-1.25" />
+        <path d="M3.75 20.25h13.5" />
+      </symbol>
+      <symbol id="m-ending" viewBox="0 0 24 24">
+        <path d="M17.25 11V6.25a1.75 1.75 0 0 0-3.5 0" />
+        <path d="M13.75 10V4.5a1.75 1.75 0 0 0-3.5 0v1.75" />
+        <path d="M10.25 10.25V6.25a1.75 1.75 0 0 0-3.5 0v7.5" />
+        <path
+          d="M17.25 8.25a1.75 1.75 0 0 1 3.5 0v5.5a7 7 0 0 1-7 7h-1.5c-2.1 0-3.6-.8-5-2.2l-2.9-2.9a1.75 1.75 0 0 1 2.5-2.45l1.4 1.3"
+        />
+        <path d="M4.5 5.5 3.25 4.25M4 9.25H2.5" />
+      </symbol>
 
-      <section class="lt-section" aria-labelledby="lt-why">
-        <h2 id="lt-why">Why it is easier</h2>
-        <div class="lt-pairs">
-          <article>
-            <h3>Nothing to configure</h3>
-            <p>
-              LIVETAP measures your connection and your computer, picks the settings, and keeps
-              adjusting while you stream. You will never meet a quality field unless you go looking
-              for one.
-            </p>
-          </article>
-          <article>
-            <h3>Six Moments, not a tree of panels</h3>
-            <p>
-              Starting Soon, Main Camera, Screen Share, Guest, Break, Ending. Tap one to change what
-              viewers see. There is one thing to name and one thing to switch.
-            </p>
-          </article>
-          <article>
-            <h3>Errors that tell you what to do</h3>
-            <p>
-              When something breaks, LIVETAP says what happened, why, what it is already doing about
-              it, and the one thing you can do. No codes, no log files to upload to a second website.
-            </p>
-          </article>
-          <article>
-            <h3>It tells you the truth about each platform</h3>
-            <p>
-              Some platforms let an app go live for you. Some only accept a key you paste. One does
-              not allow third-party apps at all. LIVETAP says which before you spend an hour finding
-              out, and never pretends to a capability it does not have.
-            </p>
-          </article>
-          <article>
-            <h3>One destination failing is one destination&rsquo;s problem</h3>
-            <p>
-              Each place you send to has its own connection, its own state and its own reconnect. A
-              platform having a bad night does not end your show everywhere else.
-            </p>
-          </article>
-          <article>
-            <h3>Nothing is paywalled</h3>
-            <p>
-              Streaming to several places at once, 1080p, unlimited destinations and unlimited
-              recording are all in the free app. There is no paid tier to find.
-            </p>
-          </article>
-        </div>
-      </section>
+      <!-- Intent glyphs, one per content type. -->
+      <symbol id="n-talking" viewBox="0 0 24 24">
+        <path
+          d="M3.25 5.25a1.5 1.5 0 0 1 1.5-1.5h14.5a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5Z"
+        />
+        <circle cx="12" cy="10.25" r="2.5" />
+        <path d="M7.75 18.25a4.25 4.25 0 0 1 8.5 0" />
+      </symbol>
+      <symbol id="n-gaming" viewBox="0 0 24 24">
+        <path d="M2.75 13.5a5.25 5.25 0 0 1 5.25-5.25h8a5.25 5.25 0 0 1 0 10.5H8a5.25 5.25 0 0 1-5.25-5.25Z" />
+        <path d="M7.75 11.5v4M5.75 13.5h4" />
+        <path d="M15.25 12h.01M17.5 14.25h.01" />
+      </symbol>
+      <symbol id="n-podcast" viewBox="0 0 24 24">
+        <path d="M8.5 4.75a1.5 1.5 0 0 1 1.5-1.5h4a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5Z" />
+        <path d="M10.5 6.25h3M10.5 8.75h3M10.5 11.25h3" />
+        <path d="M6 11.25v1a6 6 0 0 0 12 0v-1" />
+        <path d="M12 18.25v2.5M9 20.75h6" />
+      </symbol>
+      <symbol id="n-presentation" viewBox="0 0 24 24">
+        <path d="M4.75 15.25V6.25a1.5 1.5 0 0 1 1.5-1.5h11.5a1.5 1.5 0 0 1 1.5 1.5v9" />
+        <path d="M7.75 8.5h8.5M7.75 11.5h5" />
+        <path d="M3.25 15.25h17.5l1.1 2.4a1 1 0 0 1-.9 1.45H3.05a1 1 0 0 1-.9-1.45Z" />
+      </symbol>
+      <symbol id="n-event" viewBox="0 0 24 24">
+        <circle cx="12" cy="5.75" r="2.75" />
+        <path d="M12 8.5v7.75" />
+        <path d="M7.25 20.25 12 16.25l4.75 4" />
+      </symbol>
+      <symbol id="n-vertical" viewBox="0 0 24 24">
+        <path d="M7.25 4.75a2 2 0 0 1 2-2h5.5a2 2 0 0 1 2 2v14.5a2 2 0 0 1-2 2h-5.5a2 2 0 0 1-2-2Z" />
+        <path d="M10.5 5.25h3" />
+        <path d="M11 18.5h2" />
+      </symbol>
 
-      <section class="lt-section" aria-labelledby="lt-how-heading" id="lt-how">
-        <h2 id="lt-how-heading">How going live in several places at once works</h2>
-        <p class="lt-section__lede">
-          Your camera and screen go into LIVETAP. LIVETAP composes your Moment and makes the picture
-          once for each shape you need. Then it opens a separate connection to each destination you
-          picked and sends the same show to all of them.
-        </p>
+      <!-- The mark. Its ripples never animate here. -->
+      <symbol id="i-mark" viewBox="0 0 32 32">
+        <rect x="2.5" y="2.5" width="27" height="27" rx="8.5" stroke-width="2" />
+        <circle class="ltp-mark__dot" cx="12.5" cy="16" r="3" />
+        <path d="M15.94 20.91A6 6 0 0 0 15.94 11.09" stroke-width="2" />
+        <path d="M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22" stroke-width="2" opacity="0.55" />
+      </symbol>
+    </svg>
 
-        <!--
-          Two drawings, not one scaled drawing.
+    <!-- LAYER 7 · FOREGROUND · fixed, outside the act stack, never parallaxed. -->
+    <header class="ltp-rail" role="banner">
+      <a class="ltp-rail__brand" href="/" aria-label="LIVETAP home">
+        <svg class="ltp-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <use href="#i-mark" />
+        </svg>
+        <span class="ltp-rail__wordmark">LIVETAP</span>
+      </a>
 
-          A single 720-unit-wide SVG scaled into a 343px phone viewport shrinks every label with
-          it: 12px type rendered at about 6px, which is what PRODUCT_REVIEW P2-10 measured. The
-          narrow drawing is a vertical diagram in a 320-unit viewBox capped at 320px, so at 375
-          it renders 1:1 and its text is exactly the 12 and 15px the design system specifies.
-          Both carry the same role and the same aria-label and CSS shows exactly one, so
-          whichever is on screen is the one in the accessibility tree.
-        -->
-        <figure class="lt-diagram">
-          <svg
-            viewBox="0 0 720 260"
-            class="lt-diagram__svg lt-diagram__svg--wide"
-            role="img"
-            aria-label="Your camera and screen go into LIVETAP. LIVETAP composes your Moment and makes the picture once for each shape you need — widescreen, vertical and square. Then it opens a separate connection to each destination you picked."
-          >
-            <defs>
-              <marker
-                id="lt-arrow"
-                viewBox="0 0 8 8"
-                refX="7"
-                refY="4"
-                markerWidth="6"
-                markerHeight="6"
-                orient="auto"
-              >
-                <path d="M0 0 L8 4 L0 8 z" fill="currentColor" />
-              </marker>
-            </defs>
+      <nav class="ltp-rail__nav" aria-label="Sections">
+        <a class="ltp-rail__item" href="#act-stage">
+          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-tv" /></svg>
+          <span>Stage</span>
+        </a>
+        <a class="ltp-rail__item" href="#act-connect">
+          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-globe" /></svg>
+          <span>Destinations</span>
+        </a>
+        <a class="ltp-rail__item" href="#act-produce">
+          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-camera" /></svg>
+          <span>Moments</span>
+        </a>
+        <a class="ltp-rail__item" href="#act-formats">
+          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-chart" /></svg>
+          <span>Formats</span>
+        </a>
+      </nav>
 
-            <g class="lt-diagram__stage">
-              <rect x="8" y="94" width="150" height="72" rx="12" />
-              <text x="83" y="124" text-anchor="middle" class="lt-diagram__title">Your camera</text>
-              <text x="83" y="146" text-anchor="middle" class="lt-diagram__sub">
-                and your screen
-              </text>
-            </g>
+      <div class="ltp-rail__foot">
+        <button
+          class="lt-iconbtn lt-iconbtn--md ltp-rail__theme"
+          type="button"
+          data-lt-theme
+          aria-label="Switch to the light theme"
+        >
+          <svg class="lt-icon lt-icon--24 ltp-rail__sun" aria-hidden="true" focusable="false"><use href="#i-sun" /></svg>
+          <svg class="lt-icon lt-icon--24 ltp-rail__moon" aria-hidden="true" focusable="false"><use href="#i-moon" /></svg>
+        </button>
+        <button class="ltp-rail__item ltp-rail__tour" type="button" data-lt-tour-open aria-expanded="false">
+          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-check" /></svg>
+          <span>Tour</span>
+        </button>
+        <a class="ltp-rail__item" href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener">
+          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-external-link" /></svg>
+          <span>GitHub</span>
+        </a>
+      </div>
+    </header>
 
-            <line
-              x1="162"
-              y1="130"
-              x2="210"
-              y2="130"
-              marker-end="url(#lt-arrow)"
-              class="lt-diagram__link"
-            />
-
-            <g class="lt-diagram__stage lt-diagram__stage--core">
-              <rect x="214" y="78" width="164" height="104" rx="12" />
-              <text x="296" y="112" text-anchor="middle" class="lt-diagram__title">LIVETAP</text>
-              <text x="296" y="134" text-anchor="middle" class="lt-diagram__sub">
-                One production,
-              </text>
-              <text x="296" y="152" text-anchor="middle" class="lt-diagram__sub">
-                made once on your machine
-              </text>
-            </g>
-
-            <g>
-              <line
-                x1="382"
-                y1="130"
-                x2="436"
-                y2="52"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__shape">
-                <rect x="440" y="34" width="70" height="36" rx="8" />
-                <text x="475" y="58" text-anchor="middle" class="lt-diagram__sub">16:9</text>
-              </g>
-            </g>
-            <g>
-              <line
-                x1="382"
-                y1="130"
-                x2="436"
-                y2="130"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__shape">
-                <rect x="440" y="112" width="70" height="36" rx="8" />
-                <text x="475" y="136" text-anchor="middle" class="lt-diagram__sub">9:16</text>
-              </g>
-            </g>
-            <g>
-              <line
-                x1="382"
-                y1="130"
-                x2="436"
-                y2="208"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__shape">
-                <rect x="440" y="190" width="70" height="36" rx="8" />
-                <text x="475" y="214" text-anchor="middle" class="lt-diagram__sub">1:1</text>
-              </g>
-            </g>
-
-            <g>
-              <line
-                x1="514"
-                y1="52"
-                x2="562"
-                y2="50"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__dest">
-                <rect x="566" y="34" width="146" height="32" rx="8" />
-                <text x="580" y="55" class="lt-diagram__sub">YouTube</text>
-              </g>
-            </g>
-            <g>
-              <line
-                x1="514"
-                y1="52"
-                x2="562"
-                y2="94"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__dest">
-                <rect x="566" y="78" width="146" height="32" rx="8" />
-                <text x="580" y="99" class="lt-diagram__sub">Twitch</text>
-              </g>
-            </g>
-            <g>
-              <line
-                x1="514"
-                y1="130"
-                x2="562"
-                y2="138"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__dest">
-                <rect x="566" y="122" width="146" height="32" rx="8" />
-                <text x="580" y="143" class="lt-diagram__sub">TikTok</text>
-              </g>
-            </g>
-            <g>
-              <line
-                x1="514"
-                y1="130"
-                x2="562"
-                y2="182"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__dest">
-                <rect x="566" y="166" width="146" height="32" rx="8" />
-                <text x="580" y="187" class="lt-diagram__sub">Instagram</text>
-              </g>
-            </g>
-            <g>
-              <line
-                x1="514"
-                y1="208"
-                x2="562"
-                y2="226"
-                marker-end="url(#lt-arrow)"
-                class="lt-diagram__link"
-              />
-              <g class="lt-diagram__dest">
-                <rect x="566" y="210" width="146" height="32" rx="8" />
-                <text x="580" y="231" class="lt-diagram__sub">Anywhere else</text>
-              </g>
-            </g>
-          </svg>
-
-          <svg
-            viewBox="0 0 320 512"
-            class="lt-diagram__svg lt-diagram__svg--tall"
-            role="img"
-            aria-label="Your camera and screen go into LIVETAP. LIVETAP composes your Moment and makes the picture once for each shape you need — widescreen, vertical and square. Then it opens a separate connection to each destination you picked."
-          >
-            <defs>
-              <marker
-                id="lt-arrow-down"
-                viewBox="0 0 8 8"
-                refX="7"
-                refY="4"
-                markerWidth="6"
-                markerHeight="6"
-                orient="auto"
-              >
-                <path d="M0 0 L8 4 L0 8 z" fill="currentColor" />
-              </marker>
-            </defs>
-
-            <g class="lt-diagram__stage">
-              <rect x="40" y="0" width="240" height="60" rx="12" />
-              <text x="160" y="26" text-anchor="middle" class="lt-diagram__title">Your camera</text>
-              <text x="160" y="46" text-anchor="middle" class="lt-diagram__sub">
-                and your screen
-              </text>
-            </g>
-
-            <line
-              x1="160"
-              y1="60"
-              x2="160"
-              y2="86"
-              marker-end="url(#lt-arrow-down)"
-              class="lt-diagram__link"
-            />
-
-            <g class="lt-diagram__stage lt-diagram__stage--core">
-              <rect x="16" y="90" width="288" height="82" rx="12" />
-              <text x="160" y="118" text-anchor="middle" class="lt-diagram__title">LIVETAP</text>
-              <text x="160" y="139" text-anchor="middle" class="lt-diagram__sub">
-                One production, made once
-              </text>
-              <text x="160" y="157" text-anchor="middle" class="lt-diagram__sub">
-                on your machine
-              </text>
-            </g>
-
-            <line
-              x1="160"
-              y1="172"
-              x2="160"
-              y2="198"
-              marker-end="url(#lt-arrow-down)"
-              class="lt-diagram__link"
-            />
-
-            <g class="lt-diagram__shape">
-              <rect x="12" y="202" width="92" height="36" rx="8" />
-              <text x="58" y="226" text-anchor="middle" class="lt-diagram__sub">16:9</text>
-            </g>
-            <g class="lt-diagram__shape">
-              <rect x="114" y="202" width="92" height="36" rx="8" />
-              <text x="160" y="226" text-anchor="middle" class="lt-diagram__sub">9:16</text>
-            </g>
-            <g class="lt-diagram__shape">
-              <rect x="216" y="202" width="92" height="36" rx="8" />
-              <text x="262" y="226" text-anchor="middle" class="lt-diagram__sub">1:1</text>
-            </g>
-
-            <line
-              x1="160"
-              y1="238"
-              x2="160"
-              y2="264"
-              marker-end="url(#lt-arrow-down)"
-              class="lt-diagram__link"
-            />
-
-            <g class="lt-diagram__dest">
-              <rect x="40" y="268" width="240" height="36" rx="8" />
-              <text x="160" y="291" text-anchor="middle" class="lt-diagram__sub">YouTube</text>
-            </g>
-            <g class="lt-diagram__dest">
-              <rect x="40" y="312" width="240" height="36" rx="8" />
-              <text x="160" y="335" text-anchor="middle" class="lt-diagram__sub">Twitch</text>
-            </g>
-            <g class="lt-diagram__dest">
-              <rect x="40" y="356" width="240" height="36" rx="8" />
-              <text x="160" y="379" text-anchor="middle" class="lt-diagram__sub">TikTok</text>
-            </g>
-            <g class="lt-diagram__dest">
-              <rect x="40" y="400" width="240" height="36" rx="8" />
-              <text x="160" y="423" text-anchor="middle" class="lt-diagram__sub">Instagram</text>
-            </g>
-            <g class="lt-diagram__dest">
-              <rect x="40" y="444" width="240" height="36" rx="8" />
-              <text x="160" y="467" text-anchor="middle" class="lt-diagram__sub">Anywhere else</text>
-            </g>
-          </svg>
-
-          <ol class="lt-sr-only">
-            <li>Your camera and your screen go into LIVETAP.</li>
-            <li>LIVETAP composes your Moment and makes the picture once for each shape you need.</li>
-            <li>
-              It opens a separate connection to each destination you picked and sends to all of them.
-            </li>
-          </ol>
-
-          <figcaption class="lt-diagram__caption">
-            Made once on your machine. Sent straight to each platform. No relay in the middle to
-            fail — so one platform having a bad night does not touch the others.
-          </figcaption>
-        </figure>
-      </section>
-
-      <section class="lt-section" aria-labelledby="lt-get-heading" id="lt-get">
-        <h2 id="lt-get-heading">Get LIVETAP</h2>
-        <p class="lt-section__lede">Free, no account, and no tracking by default.</p>
-        <div class="lt-cols">
-          <article class="lt-getcard">
-            <h3>In your browser</h3>
-            <p>
-              Nothing to install. This is the build you are one tap away from right
-              now.<!--lt:demo-browser-->
-            </p>
-            <a class="lt-btn lt-btn--secondary lt-btn--md" href="/app">Open LIVETAP</a>
-          </article>
-          <article class="lt-getcard">
-            <h3>Desktop</h3>
-            <p>
-              Windows, macOS and Linux builds are coming soon — they are not published yet, so there
-              is nothing to download here today.
-            </p>
-            <a
-              class="lt-btn lt-btn--secondary lt-btn--md"
-              href="https://github.com/BigBackBitcoin/livetap/releases"
-              rel="noreferrer noopener"
-              >Watch for releases</a
-            >
-          </article>
-          <article class="lt-getcard">
-            <h3>Phone</h3>
-            <p>
-              iOS and Android are in preparation. There is no store listing yet, and we would rather
-              say so than collect an email address about it.
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <section class="lt-section lt-section--split" aria-labelledby="lt-open-heading" id="lt-open">
-        <h2 id="lt-open-heading">Why open source matters here</h2>
-        <p class="lt-section__lede">
-          You are about to hand a piece of software your streaming accounts. You should be able to
-          read what it does with them. LIVETAP is MIT-licensed, developed in public, and its
-          credential handling is documented line by line. If we ever stopped working on it, you
-          would still have it — unlike the simple streaming tools that have been switched off before.
-        </p>
-        <ul class="lt-linklist">
-          <li>
-            <a href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener"
-              >Read the code</a
-            >
-          </li>
-          <li>
-            <a
-              href="https://github.com/BigBackBitcoin/livetap/blob/main/SECURITY.md"
-              rel="noreferrer noopener"
-              >Security policy</a
-            >
-          </li>
-          <li><a href="/privacy">What LIVETAP never collects</a></li>
-        </ul>
-      </section>
-
-      <footer class="lt-landing__foot">
-        <div class="lt-landing__brand">
-          <svg viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true">
-            <rect
-              x="2.5"
-              y="2.5"
-              width="27"
-              height="27"
-              rx="8.5"
-              stroke="currentColor"
-              stroke-width="2"
-            />
-            <circle cx="12.5" cy="16" r="3" fill="var(--lt-accent-live-solid)" />
-            <path
-              d="M15.94 20.91A6 6 0 0 0 15.94 11.09"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-            <path
-              d="M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              opacity="0.55"
-            />
-          </svg>
-          <span class="lt-landing__wordmark">LIVETAP</span>
-        </div>
-        <nav aria-label="Footer">
-          <a href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener">GitHub</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/terms">Terms</a>
-        </nav>
-        <p>No tracking cookies. Nothing to accept. Built in public.</p>
-      </footer>
+    <div class="ltp-statusbar" role="status" aria-live="off">
+      <span class="lt-badge lt-badge--info ltp-statusbar__demo">Demo surface. Nothing is broadcast anywhere.</span>
+      <span class="ltp-statusbar__readout"><output id="st-dests" data-lt-out="dests">0 destinations</output></span>
+      <span class="ltp-statusbar__readout"><output id="st-formats" data-lt-out="formats">1 format</output></span>
+      <span class="ltp-statusbar__readout">
+        <span class="lt-pill lt-pill--unknown" data-lt-health>
+          <span class="lt-dot" aria-hidden="true"></span>
+          <output id="st-health" data-lt-out="health">Idle</output>
+        </span>
+      </span>
+      <span class="ltp-statusbar__readout ltp-statusbar__clock">
+        <output id="st-clock" class="lt-num" data-lt-out="clock" aria-label="Live for 0 minutes">0:00</output>
+      </span>
+      <span class="ltp-statusbar__free">Free. Open source. Runs on your machine.</span>
     </div>
+
+    <!-- LAYERS 1-6 · the one fixed live surface. Mounted at first paint, never unmounted. -->
+    <section
+      id="surface"
+      class="ltp-surface"
+      data-lt-surface
+      data-sc-verify-state="16:9|------|0|0|simple"
+      aria-labelledby="surface-h"
+    >
+      <h2 id="surface-h" class="lt-sr-only">The live surface, a demo you can operate</h2>
+
+      <canvas class="ltp-atmos" data-lt-atmos aria-hidden="true"></canvas>
+
+      <svg class="ltp-signal" data-lt-signal aria-hidden="true" focusable="false">
+        <path data-lt-path="youtube" />
+        <path data-lt-path="twitch" />
+        <path data-lt-path="tiktok" />
+        <path data-lt-path="instagram" />
+        <path data-lt-path="x" />
+        <path data-lt-path="facebook" />
+      </svg>
+
+      <div class="ltp-monitor">
+        <div class="ltp-stagewrap">
+          <div class="ltp-stage" data-lt-stage data-lt-format="16:9" data-lt-active-moment="main-camera">
+            <div class="ltp-stage__frame" data-lt-frame>
+              <div class="ltp-stage__canvas" data-lt-canvas>
+                <img
+                  class="ltp-stage__plate"
+                  src="/brand/hero-a.webp"
+                  alt=""
+                  width="1536"
+                  height="864"
+                  loading="eager"
+                  decoding="async"
+                  fetchpriority="high"
+                />
+                <div class="ltp-layer" data-lt-layer="color"></div>
+                <div class="ltp-layer" data-lt-layer="screen"><span>Screen</span></div>
+                <div class="ltp-layer" data-lt-layer="camera"><span>Camera</span></div>
+                <div class="ltp-layer" data-lt-layer="guest"><span>Guest</span></div>
+                <p class="ltp-layer ltp-layer--text" data-lt-layer="text"></p>
+                <div class="ltp-guides" data-lt-guides aria-hidden="true">
+                  <span class="ltp-guides__box"></span>
+                </div>
+              </div>
+              <span class="ltp-stage__shape lt-num" data-lt-shape>16:9</span>
+            </div>
+          </div>
+          <p class="ltp-stage__state" data-lt-stateline>Nothing is connected yet.</p>
+          <p class="ltp-stage__detail" data-lt-statedetail>Tap a destination to open its own connection.</p>
+        </div>
+
+        <ul class="ltp-dests" data-lt-dests>
+          <!-- six tiles, one per destination, built from DESTINATIONS in document order -->
+        </ul>
+      </div>
+
+      <div class="ltp-desk">
+        <div class="ltp-toolbar">
+          <div class="ltp-toolbar__golive">
+            <button class="lt-golive" type="button" data-lt-golive aria-live="off">
+              <span class="lt-golive__label" data-lt-golive-label>GO LIVE (DEMO)</span>
+              <span class="lt-golive__count lt-num" data-lt-golive-count hidden></span>
+              <span class="lt-golive__cancel" data-lt-golive-cancel hidden>Cancel</span>
+            </button>
+            <p class="ltp-toolbar__sub" data-lt-golive-sub>No destination is ready</p>
+          </div>
+
+          <div class="ltp-toolbar__formats" role="radiogroup" aria-label="Canvas shape" data-lt-formats>
+            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="true" data-lt-format-set="16:9">16:9</button>
+            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-format-set="9:16">9:16</button>
+            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-format-set="1:1">1:1</button>
+          </div>
+
+          <div class="ltp-toolbar__inputs">
+            <span class="ltp-input" data-lt-indicator="camera">
+              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-camera" /></svg>
+              <span class="ltp-input__name">Camera</span>
+              <span class="ltp-input__state" data-lt-indicator-state>Off</span>
+            </span>
+            <span class="ltp-input" data-lt-indicator="mic">
+              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-mic" /></svg>
+              <span class="ltp-input__name">Microphone</span>
+              <span class="ltp-input__state" data-lt-indicator-state>Off</span>
+              <span class="lt-meter ltp-input__meter" data-lt-meter>
+                <span class="lt-meter__track">
+                  <span class="lt-meter__fill" data-lt-meter-fill></span>
+                  <span class="lt-meter__peak" data-lt-meter-peak></span>
+                </span>
+              </span>
+            </span>
+            <span class="ltp-input" data-lt-indicator="screen">
+              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-screen" /></svg>
+              <span class="ltp-input__name">Screen</span>
+              <span class="ltp-input__state" data-lt-indicator-state>Off</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="ltp-desk__row">
+          <div class="ltp-moments" role="group" aria-label="Moments" data-lt-moments>
+            <!-- six Moment cards, built from MOMENTS -->
+          </div>
+
+          <section class="ltp-chat" data-lt-chat aria-labelledby="chat-h">
+            <h3 class="ltp-chat__title" id="chat-h">
+              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-chat" /></svg>
+              Chat
+            </h3>
+            <ol class="ltp-chat__log" data-lt-chatlog role="log" aria-live="polite" aria-relevant="additions" tabindex="0">
+              <li class="ltp-chat__empty" data-lt-chatempty>Chat arrives once you are live.</li>
+            </ol>
+            <p class="ltp-chat__note">
+              TikTok, Instagram and X publish no live chat API, so nothing from them appears here.
+            </p>
+          </section>
+        </div>
+      </div>
+
+      <!-- LAYER 6 · INTERACTION · populated only while something is happening. -->
+      <div class="ltp-interaction" data-lt-interaction></div>
+
+      <!-- Four live regions, one per concern. A page with ten announces nothing. -->
+      <div class="lt-live-region" aria-live="polite" data-lt-say="dest"></div>
+      <div class="lt-live-region" aria-live="assertive" data-lt-say="broadcast"></div>
+      <div class="lt-live-region" aria-live="polite" data-lt-say="tour"></div>
+    </section>
+
+    <!--
+      The act stack: ten transparent sections whose only job is to own scroll and drive the
+      surface. Eight acts and two declared silences, 12.8 viewport-heights.
+    -->
+    <main class="ltp-acts">
+      <!-- ACT 1 · CHAOS · pin · 1.3 -->
+      <section
+        id="act-stage"
+        class="ltp-act ltp-act--chaos"
+        data-sc-act="pin"
+        data-sc-span="1.3"
+        data-sc-drift="#0a0b0d"
+        aria-labelledby="a1-h"
+      >
+        <h2 id="a1-h" class="lt-sr-only">Six destinations, six of everything</h2>
+        <div data-sc-stage class="ltp-act__stage">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-lattice" data-lt-lattice>
+            <div class="ltp-dup" data-lt-dup="key">
+              <div class="ltp-dup__copy">
+                <span class="lt-field">
+                  <span class="lt-field__label">Stream key</span>
+                  <input class="lt-input lt-input--mono lt-touch" type="text" value="demo.livetap.invalid" aria-label="Stream key" />
+                </span>
+              </div>
+            </div>
+            <div class="ltp-dup" data-lt-dup="quality">
+              <div class="ltp-dup__copy">
+                <span class="lt-field">
+                  <span class="lt-field__label">Quality</span>
+                  <input class="lt-input lt-num lt-touch" type="number" value="1080" min="720" max="2160" step="360" aria-label="Quality, picture height" />
+                </span>
+              </div>
+            </div>
+            <div class="ltp-dup" data-lt-dup="clock">
+              <div class="ltp-dup__copy">
+                <span class="ltp-dup__label">Elapsed</span>
+                <output class="ltp-dup__clock lt-num" data-lt-dupclock>0:00</output>
+              </div>
+            </div>
+            <div class="ltp-dup" data-lt-dup="golive">
+              <div class="ltp-dup__copy">
+                <button class="lt-btn lt-btn--secondary lt-btn--md lt-touch" type="button" data-lt-dupgolive>GO LIVE</button>
+              </div>
+            </div>
+            <div class="ltp-dup" data-lt-dup="meter">
+              <div class="ltp-dup__copy">
+                <span class="ltp-dup__label">Mic</span>
+                <span class="lt-meter">
+                  <span class="lt-meter__track"><span class="lt-meter__fill" data-lt-dupfill></span></span>
+                </span>
+                <input class="ltp-dup__fader lt-touch" type="range" min="0" max="100" value="72" aria-label="Mic level" />
+              </div>
+            </div>
+            <div class="ltp-dup" data-lt-dup="dests">
+              <div class="ltp-dup__copy">
+                <span class="ltp-dup__label">Destination</span>
+                <span class="lt-chip lt-chip--disconnected">
+                  <span class="lt-dot lt-dot--ring" aria-hidden="true"></span>
+                  <span class="lt-chip__text"><span class="lt-chip__label">Not connected</span></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ltp-act__copy ltp-act__copy--lead">
+            <p class="sc-body" data-sc-cue="0 0.58 0">Six destinations. Six of everything.</p>
+            <p class="sc-body" data-sc-cue="0.5 1">One surface. One of each.</p>
+            <output class="ltp-act__note" data-lt-dupsay></output>
+          </div>
+        </div>
+      </section>
+
+      <!-- REST A · flow · authored silence -->
+      <section class="ltp-rest" data-sc-act="flow" data-lt-rest="a" aria-hidden="true"></section>
+
+      <!-- ACT 2 · CONNECT · pan · 1.6 -->
+      <section
+        id="act-connect"
+        class="ltp-act"
+        data-sc-act="pan"
+        data-sc-span="1.6"
+        aria-labelledby="a2-h"
+      >
+        <h2 id="a2-h" class="lt-sr-only">Pick where you are going live</h2>
+        <div data-sc-stage class="ltp-act__stage">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-shelf" data-sc-pan="0.06" data-lt-shelf>
+            <div class="ltp-shelf__lead">
+              <p class="sc-body">Tap the places you want to go live. Each one is its own connection.</p>
+            </div>
+            <!-- six shelf cards, built from DESTINATIONS -->
+            <div class="ltp-shelf__trail">
+              <p class="sc-body">LIVETAP opens a separate connection to each one, so they cannot take each other down.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 3 · PRODUCE · pin · 1.4 -->
+      <section
+        id="act-produce"
+        class="ltp-act"
+        data-sc-act="pin"
+        data-sc-span="1.4"
+        aria-labelledby="a3-h"
+      >
+        <h2 id="a3-h" class="lt-sr-only">Camera, microphone, screen, and six Moments</h2>
+        <div data-sc-stage class="ltp-act__stage">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-act__copy ltp-act__copy--split">
+            <div class="ltp-inputs" data-lt-inputs>
+              <div class="ltp-inputs__list" data-sc-in data-sc-stagger="70">
+              <button class="ltp-inputrow lt-touch" type="button" aria-pressed="false" data-lt-input="camera">
+                <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-camera" /></svg>
+                <span class="ltp-inputrow__name">Camera</span>
+                <span class="ltp-inputrow__state" data-lt-input-state>Off</span>
+              </button>
+              <button class="ltp-inputrow lt-touch" type="button" aria-pressed="false" data-lt-input="mic">
+                <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-mic" /></svg>
+                <span class="ltp-inputrow__name">Microphone</span>
+                <span class="ltp-inputrow__state" data-lt-input-state>Off</span>
+              </button>
+              <button class="ltp-inputrow lt-touch" type="button" aria-pressed="false" data-lt-input="screen">
+                <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-screen" /></svg>
+                <span class="ltp-inputrow__name">Screen</span>
+                <span class="ltp-inputrow__state" data-lt-input-state>Off</span>
+              </button>
+              </div>
+            </div>
+            <p class="sc-body" data-sc-cue="0.42 1">Tap a Moment to change what viewers see.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 4 · ADAPT · flow · reveal -->
+      <section id="act-formats" class="ltp-act ltp-act--flow" data-sc-act="flow" aria-labelledby="a4-h">
+        <h2 id="a4-h" class="lt-sr-only">One production, three shapes</h2>
+        <div class="ltp-act__flow">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-act__copy ltp-act__copy--centre" data-sc-in data-sc-stagger="60">
+            <p class="sc-body">Change the canvas shape in the toolbar. The stage re-flows where it stands.</p>
+            <div class="ltp-guidelegend" data-sc-reveal="iris" data-sc-reveal-at="0.18 0.62">
+              <p class="sc-body">9:16 keeps the bottom 28% and the right 16% clear for chat.</p>
+              <p class="ltp-act__note" data-lt-formattable></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 5 · MULTISTREAM · pin · count · 1.4 -->
+      <section id="act-live" class="ltp-act" data-sc-act="pin" data-sc-span="1.4" aria-labelledby="a5-h">
+        <h2 id="a5-h" class="lt-sr-only">Going live everywhere at once</h2>
+        <div data-sc-stage class="ltp-act__stage">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-act__copy ltp-act__copy--trail" data-lt-countwrap>
+            <div data-sc-cue="0.06 0.44">
+              <p class="sc-body ltp-act__counts">
+                Going live on
+                <span class="sc-nums lt-num" data-sc-count="0 0" data-sc-count-at="0.08 0.22" data-lt-count="dests">0</span>
+                destinations, in
+                <span class="sc-nums lt-num" data-sc-count="0 0" data-sc-count-at="0.1 0.24" data-lt-count="formats">0</span>
+                formats.
+              </p>
+              <p class="sc-body ltp-act__nocounts">Nothing is connected. Pick a destination and this counts it.</p>
+            </div>
+            <p class="sc-body" data-sc-cue="0.36 1">Every connection is separate. That is the whole point.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- REST B · flow · authored silence, and the silence before the peak -->
+      <section class="ltp-rest ltp-rest--b" data-sc-act="flow" data-lt-rest="b" aria-hidden="true"></section>
+
+      <!-- ACT 6 · RESILIENCE · pin · 2.8 · the peak -->
+      <section
+        id="act-break"
+        class="ltp-act ltp-act--peak"
+        data-sc-act="pin"
+        data-sc-span="2.8"
+        data-sc-drift="#07080a"
+        aria-labelledby="a6-h"
+        data-lt-peak
+      >
+        <h2 id="a6-h" class="lt-sr-only">Break it yourself</h2>
+        <div data-sc-stage class="ltp-act__stage">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-act__copy ltp-act__copy--lead">
+            <p class="sc-body" data-sc-cue="0.06 0.34">Drag a live destination off the stage.</p>
+            <p class="sc-body" data-sc-cue="0.3 0.66">Its connection snaps. The others do not notice.</p>
+            <p class="sc-body" data-sc-cue="0.6 1">LIVETAP pulls it back on its own.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 7 · POWER · flow · parallax -->
+      <section id="act-pro" class="ltp-act ltp-act--flow" data-sc-act="flow" aria-labelledby="a7-h">
+        <h2 id="a7-h" class="lt-sr-only">The depth underneath</h2>
+        <div class="ltp-act__flow">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-act__copy ltp-act__copy--split">
+            <button class="lt-toggle lt-touch ltp-protoggle" type="button" role="switch" aria-checked="false" data-lt-pro-toggle>
+              <span class="lt-toggle__track" aria-hidden="true"><span class="lt-toggle__knob"></span></span>
+              <span>Pro</span>
+            </button>
+            <div class="ltp-prolayers" data-sc-parallax="-0.6" data-lt-prolayers hidden>
+              <div class="ltp-prorow" data-lt-prorow="quality"></div>
+              <div class="ltp-prorow" data-lt-prorow="ceiling"></div>
+              <div class="ltp-prorow" data-lt-prorow="audio"></div>
+              <div class="ltp-prorow" data-lt-prorow="log"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 8 · ACTION · pin · tilt · 1.2 · the last element on the page -->
+      <section id="act-start" class="ltp-act ltp-act--close" data-sc-act="pin" data-sc-span="1.2" aria-labelledby="a8-h">
+        <div data-sc-stage class="ltp-act__stage">
+          <span class="ltp-act__plate" aria-hidden="true"></span>
+          <div class="ltp-close" data-sc-cue="0.02 1 0 0">
+            <h2 id="a8-h" class="ltp-close__q">What are you making?</h2>
+
+            <div class="ltp-intents" role="group" aria-labelledby="a8-h" data-lt-intents>
+              <!-- six intent cards, built from INTENTS -->
+            </div>
+
+            <div class="ltp-close__bar">
+              <a class="lt-btn lt-btn--primary lt-btn--lg" href="./app/start" data-lt-open>Open LIVETAP</a>
+              <a class="lt-btn lt-btn--secondary lt-btn--md" href="https://github.com/BigBackBitcoin/livetap/releases" rel="noreferrer noopener">Download</a>
+              <a class="lt-btn lt-btn--ghost lt-btn--md" href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener">
+                <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-external-link" /></svg>
+                GitHub
+              </a>
+            </div>
+
+            <footer class="ltp-foot">
+              <svg class="ltp-mark ltp-mark--sm" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><use href="#i-mark" /></svg>
+              <p class="ltp-foot__note">
+                Desktop builds are not published yet, so Download watches GitHub Releases for
+                them.<!--lt:demo-hero-->
+              </p>
+              <nav class="ltp-foot__nav" aria-label="Footer">
+                <a href="./app">Try demo</a>
+                <a href="/privacy">Privacy</a>
+                <a href="/terms">Terms</a>
+              </nav>
+              <p class="ltp-foot__note">No tracking cookies. Nothing to accept.<!--lt:demo-browser--></p>
+            </footer>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/public/main.ts"></script>
   </body>
 </html>
