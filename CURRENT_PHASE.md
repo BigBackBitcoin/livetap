@@ -1,14 +1,8 @@
 # CURRENT PHASE
 
-PHASE 0 — Environment Discovery: COMPLETE
-PHASE 1 — Research: MOSTLY COMPLETE (6/7 artifacts done; SWITCHING_TRIGGERS + MEDIA_ENGINE_EVALUATION + synthesis in progress)
-PHASE 2 — Architecture: COMPLETE for core (ADR-001..012); ADR-005 media engine to be confirmed by MEDIA_ENGINE_EVALUATION + desktop on-host verification
-PHASE 3 — Product / Design System: IN PROGRESS (UI team) — needs north-star revision pass (intent-first onboarding)
-PHASE 4 — Core Web Experience: NOT STARTED (waits for packages/ui + PRODUCT_SPEC)
-PHASE 5 — Media Engine: IN PROGRESS (media team: BrowserEngine/WHIP/Mock; desktop team: FfmpegEngine)
-PHASE 6 — Platform Integrations: IN PROGRESS (adapters team)
-PHASE 7 — Desktop: IN PROGRESS
-PHASE 8 — Mobile: NOT STARTED
-PHASE 9..11: NOT STARTED
+PHASE 0-8: COMPLETE (research, architecture, design, web, media, integrations, desktop, mobile) — see IMPLEMENTATION_STATUS.md for honest per-area labels
+PHASE 9 — Security / QA / Hardening: IN PROGRESS (adversarial security review + ruthless product review agents running; all suites green: 910 unit + 19 E2E + 33 relay)
+PHASE 10 — Deployment: WEB DONE (https://livetap.vercel.app production, mock mode); desktop unsigned Windows package built; mobile projects generated (builds need CI/macOS)
+PHASE 11 — Release Audit: NOT STARTED (after reviews land: apply fixes, final npm run check, HANDOFF.md, final report)
 
-Next action on resume: collect team outputs (packages/adapters, packages/media, packages/ui, apps/desktop), run root `npm run check`, then launch web-app build per PRODUCT_SPEC with intent-first onboarding.
+Next action on resume: collect docs/qa/SECURITY_REVIEW.md and docs/qa/PRODUCT_REVIEW.md, apply/verify fixes, redeploy, write HANDOFF.md, produce the final MVP report.

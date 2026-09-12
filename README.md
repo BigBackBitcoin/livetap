@@ -14,6 +14,10 @@ destination isolated so one failure never kills the rest, and explains problems 
 | Mobile | Capacitor iOS/Android projects with a native streaming plugin contract |
 | Core | TypeScript domain: destination state machine, orchestrator, Moments, Automatic Production |
 
+## Live
+
+Web app (mock mode, no credentials needed): **https://livetap.vercel.app**
+
 ## Status
 
 Release-candidate work in progress. `IMPLEMENTATION_STATUS.md` is the honest per-area status
