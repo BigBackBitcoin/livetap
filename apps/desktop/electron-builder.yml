@@ -1,0 +1,151 @@
+# LIVETAP desktop packaging (electron-builder).
+#
+# Signing and notarization are BLOCKED_EXTERNAL_DEPENDENCY: they need a Windows code-signing
+# certificate and an Apple Developer Program membership, neither of which exists on the build host.
+# The exact environment variables electron-builder expects are documented in
+# docs/release/DESKTOP_RELEASE.md. Unsigned builds are produced and are usable for internal testing.
+#
+# FFmpeg is NOT bundled in this repository (GPL binaries, ~80 MB each). The `extraResources` entries
+# below place them where ffmpegPath.ts looks; see docs/architecture/DESKTOP_ARCHITECTURE.md for the
+# licensing decision and docs/release/DESKTOP_RELEASE.md for where to drop the binaries.
+
+appId: app.livetap.desktop
+productName: LIVETAP
+copyright: Copyright (c) 2026 LIVETAP
+
+# electron-builder downloads the platform binaries for one exact Electron release, so it refuses a
+# semver range. In an npm workspace `electron` is hoisted to the repo root, which electron-builder
+# does not look in, so the version is stated here instead. Keep this in step with the `electron`
+# devDependency in package.json when bumping.
+electronVersion: 38.8.6
+
+directories:
+  output: release
+  buildResources: packaging
+
+# Only the built output ships. Source, tests and configs stay out of the bundle.
+files:
+  - dist/main/**/*
+  - dist/preload/**/*
+  - dist/renderer/**/*
+  - package.json
+  - '!dist/types/**/*'
+  - '!dist/verify/**/*'
+  - '!**/*.map'
+  - '!**/*.test.*'
+
+# The FFmpeg binary lives OUTSIDE the asar so it can be exec'd directly, and is looked up at
+# `process.resourcesPath/ffmpeg/<platform>/ffmpeg(.exe)`.
+#
+# Where to put the binaries before packaging:
+#   Windows  →  apps/desktop/resources/ffmpeg/win/ffmpeg.exe   (+ ffprobe.exe)
+#   macOS    →  apps/desktop/resources/ffmpeg/mac/ffmpeg       (+ ffprobe)
+extraResources:
+  - from: resources/ffmpeg
+    to: ffmpeg
+    filter:
+      - '**/*'
+
+asar: true
+# Nothing in the app needs to be unpacked today (FFmpeg is an extraResource, not an asar member),
+# but native modules added later must be, so the pattern is declared rather than discovered later.
+asarUnpack:
+  - '**/*.node'
+  - 'dist/main/**/*.node'
+
+# ----------------------------------------------------------------------------- Windows
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+  # Signing: set CSC_LINK + CSC_KEY_PASSWORD (or use Azure Trusted Signing via azureSignOptions).
+  # Absent → unsigned; electron-builder skips signing rather than failing the build.
+  # `publisherName` moved under signtoolOptions in electron-builder 26; it must match the CN of the
+  # signing certificate, so it is only meaningful once a certificate exists.
+  # signtoolOptions:
+  #   publisherName: REPLACE_WITH_CERTIFICATE_COMMON_NAME
+  # Camera/microphone/screen capture need no Windows manifest entries; the OS prompts per use.
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: LIVETAP
+  # Registers the livetap:// scheme in the installer as well as at runtime, so an OAuth callback
+  # works before the app has ever been launched.
+  include: packaging/installer.nsh
+
+protocols:
+  - name: LIVETAP
+    schemes:
+      - livetap
+
+# ------------------------------------------------------------------------------- macOS
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.video
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+  # Hardened runtime is required for notarization; the entitlements below re-open exactly the two
+  # holes a streaming app needs (camera, microphone) plus JIT for Chromium.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: packaging/entitlements.mac.plist
+  entitlementsInherit: packaging/entitlements.mac.plist
+  # Usage strings are what macOS shows in the permission prompt. Vague strings get apps rejected.
+  extendInfo:
+    NSCameraUsageDescription: >-
+      LIVETAP uses your camera so you can appear in your live stream and recordings.
+    NSMicrophoneUsageDescription: >-
+      LIVETAP uses your microphone so your audience can hear you in your live stream and recordings.
+    NSScreenCaptureUsageDescription: >-
+      LIVETAP records your screen or a chosen window so you can share it in your live stream.
+    NSAppleEventsUsageDescription: >-
+      LIVETAP does not control other apps; this permission is only requested by the system framework.
+    # Screen Recording is granted through System Settings > Privacy & Security, not an Info.plist
+    # key, so there is nothing further to declare for it.
+    LSMinimumSystemVersion: '11.0'
+  # Notarization placeholder. Flip to `true` (or the teamId form) once an Apple Developer Program
+  # membership exists, and export APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID.
+  # See docs/release/DESKTOP_RELEASE.md.
+  notarize: false
+  # notarize:
+  #   teamId: REPLACE_WITH_APPLE_TEAM_ID
+
+dmg:
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+  contents:
+    - x: 140
+      y: 200
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+
+
+# ------------------------------------------------------------------------------ Linux
+# Not a launch target, but the config costs nothing and keeps CI honest if someone tries.
+linux:
+  target:
+    - AppImage
+  category: AudioVideo
+
+# ----------------------------------------------------------------------------- Updates
+# electron-updater reads this block from app-update.yml inside the packaged app.
+# owner/repo are placeholders until the release repository is decided.
+publish:
+  - provider: github
+    owner: REPLACE_WITH_GITHUB_OWNER
+    repo: REPLACE_WITH_GITHUB_REPO
+    releaseType: release
+    # Updates are only fetched from published releases; drafts are ignored.
+    publishAutoUpdate: true

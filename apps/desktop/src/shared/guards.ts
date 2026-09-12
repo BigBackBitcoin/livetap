@@ -82,7 +82,8 @@ export function isSafeRelativePath(value: unknown): value is string {
   if (value.includes('\0')) return false;
   if (value.startsWith('/') || value.startsWith('\\')) return false;
   if (/^[A-Za-z]:/.test(value)) return false;
-  const segments = value.split(/[\\/]+/);
+  // Split WITHOUT collapsing runs of separators, so `a//b` is rejected for its empty segment.
+  const segments = value.split(/[\\/]/);
   for (const segment of segments) {
     if (segment === '..' || segment === '.') return false;
     if (segment.length === 0) return false;
@@ -99,7 +100,9 @@ export function isHttpsUrl(value: unknown): value is string {
   } catch {
     return false;
   }
-  return parsed.protocol === 'https:';
+  // An https URL with no host ("HTTPS:/malformed") parses fine but is meaningless, and would be
+  // handed straight to shell.openExternal. Require a real hostname.
+  return parsed.protocol === 'https:' && parsed.hostname.length > 0;
 }
 
 const PROTOCOLS: readonly IngestTarget['protocol'][] = ['rtmp', 'rtmps', 'srt', 'whip'];

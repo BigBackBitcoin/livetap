@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "rootDir": "src",
+    // rootDir is the package root, not src/, because the build config files (tsup, vitest) and the
+    // verification harness under scripts/ are type-checked too and a composite project requires
+    // rootDir to contain every file in the program.
+    "rootDir": ".",
     "outDir": "dist/types",
     "emitDeclarationOnly": true,
     "declaration": true,
@@ -12,6 +15,7 @@
     "types": ["node"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "scripts", "tsup.config.ts", "vitest.config.ts"],
+  "include": ["src", "scripts", "tsup.config.ts", "tsup.verify.config.ts", "vitest.config.ts"],
+  "exclude": ["dist", "node_modules", "release", "resources"],
   "references": [{ "path": "../../packages/core" }]
 }

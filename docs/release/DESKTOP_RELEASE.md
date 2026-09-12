@@ -22,9 +22,16 @@ npm run package:win    -w @livetap/desktop    # → apps/desktop/release/LIVETAP
 npm run package:mac    -w @livetap/desktop    # → LIVETAP-<v>-mac-arm64.dmg and -x64.dmg
 ```
 
-If `dist/renderer` is missing, packaging still succeeds and ships a placeholder page that says the
-renderer is not built — deliberately, so the packaging pipeline can be exercised independently of
-the web team's build.
+If `dist/renderer` is missing, the `prepackage` step (`scripts/ensure-renderer.mjs`) copies
+`packaging/renderer-placeholder.html` into place, so packaging still succeeds and ships a page that
+says the renderer is not built. This is deliberate: the Electron shell and the whole electron-builder
+pipeline can be exercised independently of the web team's build. The step **never** overwrites a real
+renderer — it only writes when the file is missing.
+
+Packaging inputs that must be committed live in `apps/desktop/packaging/`
+(`entitlements.mac.plist`, `installer.nsh`, `renderer-placeholder.html`) rather than the
+conventional `build/`, because the repo-wide `.gitignore` ignores every directory named `build/` and
+these are source files, not artefacts.
 
 ### Drop the FFmpeg binaries first
 
@@ -181,7 +188,7 @@ when 2FA prompts.
 ### What is already configured
 
 - `hardenedRuntime: true` — required for notarization.
-- `build/entitlements.mac.plist` — `com.apple.security.device.camera`,
+- `packaging/entitlements.mac.plist` — `com.apple.security.device.camera`,
   `com.apple.security.device.audio-input`, JIT and unsigned-executable-memory (Chromium needs both),
   `network.client` + `network.server` (the OAuth loopback listener), `files.user-selected.read-write`
   (recording folder), and `com.apple.security.inherit` so the spawned FFmpeg child inherits the
@@ -234,7 +241,7 @@ signature does not match the running app; Windows `NsisUpdater` verifies the pub
 1. Bump `version` in `apps/desktop/package.json`.
 2. Confirm `electronVersion` in `electron-builder.yml` matches the installed Electron.
 3. Drop the FFmpeg binaries (§1) and refresh `THIRD_PARTY_NOTICES.md` with the exact version.
-4. `npx vitest run --project desktop` — 270 tests, must be green.
+4. `npx vitest run --project desktop` — 275 tests, must be green.
 5. `node apps/desktop/dist/verify/verify-engine.cjs` — 9/9 steps, must exit 0.
 6. `npm run package:win` and `npm run package:mac` with the signing variables exported.
 7. `codesign -dv --verbose=4` the mac app **and** the nested ffmpeg; `signtool verify /pa` the exe.

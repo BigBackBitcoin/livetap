@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Hardened runtime entitlements for LIVETAP.
+
+      The hardened runtime is required for notarization and closes everything by default. Each
+      entitlement below re-opens exactly one thing LIVETAP cannot work without, and nothing else.
+      In particular there is NO com.apple.security.cs.disable-library-validation and NO
+      com.apple.security.cs.allow-dyld-environment-variables: those are the two that most often
+      turn a signed app into a code-injection target.
+    -->
+
+    <!-- Camera: the creator appears in their own stream. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+
+    <!-- Microphone: the creator is heard. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!--
+      Chromium's JavaScript engine compiles code at runtime. Without these two, the renderer
+      crashes immediately under the hardened runtime. They are required by every Electron app.
+    -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!--
+      LIVETAP spawns the bundled FFmpeg binary as a child process. Under the hardened runtime a
+      signed app may only launch code signed by the same team unless this is granted.
+    -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <false/>
+    <key>com.apple.security.inherit</key>
+    <true/>
+
+    <!-- Outbound network: RTMP/RTMPS/SRT ingest and platform APIs. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!--
+      Inbound: the OAuth loopback listener binds 127.0.0.1 on an ephemeral port. Required even for
+      loopback-only servers when the app sandbox is in play.
+    -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- Writing recordings to a folder the user picked through the native dialog. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!--
+      NOT requested, deliberately:
+        com.apple.security.device.usb            - LIVETAP never talks to USB devices directly
+        com.apple.security.personal-information.* - no contacts, calendars, photos or location
+        com.apple.security.automation.apple-events - LIVETAP does not script other apps
+      Screen Recording is not an entitlement at all: macOS grants it per-app through
+      System Settings > Privacy & Security > Screen Recording, prompted on first getDisplayMedia.
+    -->
+</dict>
+</plist>

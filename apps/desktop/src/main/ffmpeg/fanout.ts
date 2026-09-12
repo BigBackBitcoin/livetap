@@ -159,12 +159,23 @@ export class TsFanout {
       alive: true,
       detach: () => undefined,
     };
+    /**
+     * The `error` listener is attached for the LIFE OF THE STREAM and is never removed — not on
+     * `removeSink`, not on `end()`, not after the sink is already dead.
+     *
+     * A child's stdin can emit EPIPE asynchronously, well after the write that caused it and well
+     * after we stopped caring about the sink. With no listener attached at that moment, Node turns
+     * that into an unhandled `error` event and takes the whole main process down — i.e. one dead
+     * destination kills the broadcast, the exact failure this class exists to prevent. (Observed on
+     * this host: the mp4 recorder rejected a packet, we tore the sink down, and the trailing EPIPE
+     * crashed the process. See DESKTOP_ENGINE_VERIFICATION.md.)
+     */
     const onError = (error: Error): void => this.killSink(sink, error, 'error');
     const onClose = (): void => this.killSink(sink, undefined, 'closed');
     stream.on('error', onError);
     stream.on('close', onClose);
+    // Only the `close` listener is detachable; `error` stays so late failures stay swallowed.
     sink.detach = () => {
-      stream.off('error', onError);
       stream.off('close', onClose);
     };
     this.sinks.set(id, sink);

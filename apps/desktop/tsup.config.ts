@@ -14,6 +14,8 @@ export default defineConfig([
     target: 'node20',
     outExtension: () => ({ js: '.cjs' }),
     external: ['electron', 'electron-log', 'electron-updater'],
+    // @livetap/core ships TypeScript source, so it must be bundled, not left as a runtime require.
+    noExternal: [/^@livetap\//],
     sourcemap: true,
     clean: false,
     splitting: false,
@@ -27,6 +29,8 @@ export default defineConfig([
     target: 'node20',
     outExtension: () => ({ js: '.cjs' }),
     external: ['electron'],
+    // @livetap/core ships TypeScript source, so it must be bundled, not left as a runtime require.
+    noExternal: [/^@livetap\//],
     sourcemap: true,
     clean: false,
     splitting: false,
