@@ -16,7 +16,7 @@ const capabilities: CapabilityMatrix = {
   start: 'NATIVE_API', // liveBroadcasts.transition -> live
   stop: 'NATIVE_API', // liveBroadcasts.transition -> complete
   metadata: 'NATIVE_API', // liveBroadcasts.insert/update
-  thumbnail: 'NATIVE_API', // thumbnails.set (broadcastId === videoId)
+  thumbnail: 'EXPERIMENTAL', // thumbnails.set (broadcastId === videoId)
   chatRead: 'NATIVE_API', // liveChatMessages.list (polling, pollingIntervalMillis)
   chatWrite: 'NATIVE_API', // liveChatMessages.insert
   moderation: 'NATIVE_API', // liveChatMessages.delete, liveChatBans.insert

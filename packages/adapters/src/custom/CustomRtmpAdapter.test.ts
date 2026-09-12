@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DestinationConfig, IngestTarget } from '@livetap/core';
 import { CustomRtmpAdapter, CustomRtmpConfigError } from './CustomRtmpAdapter.js';
-import { customProfile } from '../profiles/index.js';
+import { customProfile, getProfile } from '../profiles/index.js';
 
 function config(ingest: Partial<IngestTarget> | undefined): DestinationConfig {
   return {
@@ -95,4 +95,32 @@ describe('CustomRtmpAdapter', () => {
     // Structural guarantee: the adapter takes no fetch and holds no client.
     expect(Object.keys(adapter)).toEqual(['profile']);
   });
+});
+
+describe('CustomRtmpAdapter serving a paste-the-key platform', () => {
+  // This is how Instagram, TikTok and X ship: no control plane exists, so the platform's own
+  // honest profile is served by the custom ingest adapter and registered under its platform id.
+  it.each(['instagram', 'tiktok', 'x'] as const)(
+    'validates a pasted %s ingest and keeps that platform\'s capabilities',
+    async (platform) => {
+      const adapter = new CustomRtmpAdapter(getProfile(platform));
+      expect(adapter.profile.id).toBe(platform);
+      expect(adapter.profile.capabilities.streamKey).toBe('USER_ASSISTED');
+      // Nothing is claimed beyond pushing bytes.
+      expect(adapter.supports('broadcastCreation')).toBe(false);
+      expect(adapter.supports('chatRead')).toBe(false);
+      expect(adapter.supports('metadata')).toBe(false);
+
+      const ingest: IngestTarget = {
+        protocol: 'rtmp',
+        url: `rtmp://push.${platform}.example/live`,
+        streamKey: 'single-use-key',
+      };
+      const cfg: DestinationConfig = { ...config(ingest), platform };
+      const result = await adapter.validate(cfg);
+      expect(result.ok).toBe(true);
+      const handle = await adapter.createBroadcast(cfg);
+      expect(handle.ingest).toEqual(ingest);
+    },
+  );
 });
