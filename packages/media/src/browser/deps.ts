@@ -84,6 +84,12 @@ export interface RelayOptions {
   whipBaseUrl: string;
   /** Bearer token for the relay. Never logged. */
   token?: string;
+  /**
+   * Exact WHIP endpoint for a relay SESSION created through infra/relay's session API
+   * (`POST /sessions` -> `{ whipUrl }`). When set, every output shares ONE WHIP session and the
+   * relay derives 9:16 / 1:1 formats server-side; `whipBaseUrl` is ignored for endpoint building.
+   */
+  whipUrl?: string;
 }
 
 export interface BrowserEngineOptions {

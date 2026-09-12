@@ -260,3 +260,7 @@ signature does not match the running app; Windows `NsisUpdater` verifies the pub
 | App icon | NOT STARTED — default Electron icon in use |
 | `publish.owner` / `publish.repo` | placeholders |
 | `electron-builder` pinned to `~26.12.0` | revisit when the host moves to Node ≥ 22.12 |
+
+## Addendum 2026-09-11 — Electron 44.3.0 / electron-builder 26.15.3
+
+Bumped for security (Electron ≤40.10.2 carried 19 advisories incl. a context-isolation bypass; `builder-util-runtime` <9.7.0 leaked tokens on cross-origin redirects). After the bump: `npm audit` reports 0 high/critical (4 dev-only moderate/low in vitest/esbuild). Desktop suite 275/275, `tsc` clean, `tsup` build OK. `npm run package:win` executed with a portable Node 22.23.2 (electron-builder 26.15 needs Node ≥20.19; host Node is 20.11) → `release/LIVETAP-0.1.0-win-x64.exe` 93.9 MB, unsigned: **PASS**.

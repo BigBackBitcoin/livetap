@@ -432,7 +432,12 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
     const relayOptions = this.relay;
     if (!relayOptions) return;
     const session = blankSession(output, 'relay');
-    session.relayAspect = output.aspectRatio;
+    // Session-mode relay (exact whipUrl): one WHIP session for every output, keyed by the first
+    // aspect ratio that opened it; the relay produces the other formats server-side.
+    const relayKey: AspectRatio = relayOptions.whipUrl
+      ? (this.relays.keys().next().value ?? output.aspectRatio)
+      : output.aspectRatio;
+    session.relayAspect = relayKey;
     this.sessions.set(output.destinationId, session);
 
     if (!this.deps.RTCPeerConnectionCtor || !this.deps.fetch) {
@@ -444,7 +449,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       return;
     }
 
-    const existing = this.relays.get(output.aspectRatio);
+    const existing = this.relays.get(relayKey);
     if (existing) {
       existing.destinationIds.add(output.destinationId);
       if (existing.connected) {
@@ -454,9 +459,9 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       return;
     }
 
-    const format = this.formatFor(output.aspectRatio);
+    const format = this.formatFor(relayKey);
     const client = new WhipClient({
-      endpoint: relayEndpoint(relayOptions.whipBaseUrl, output.aspectRatio),
+      endpoint: relayOptions.whipUrl ?? relayEndpoint(relayOptions.whipBaseUrl, relayKey),
       token: relayOptions.token,
       stream: this.previewStreamValue,
       tracks: this.previewStreamValue?.getTracks() ?? [],
@@ -468,12 +473,12 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       now: this.deps.now,
     });
     const relay: RelaySession = {
-      aspect: output.aspectRatio,
+      aspect: relayKey,
       client,
       destinationIds: new Set([output.destinationId]),
       connected: false,
     };
-    this.relays.set(output.aspectRatio, relay);
+    this.relays.set(relayKey, relay);
 
     session.offs.push(
       client.on('connected', () => {
