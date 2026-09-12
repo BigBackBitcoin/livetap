@@ -29,3 +29,16 @@ Evidence: prompt pack §8, §9; platform APIs differ wildly.
 
 ## ADR-008 | ACCEPTED | Destination lifecycle is an explicit state machine
 States: DISCONNECTED, AUTHENTICATING, READY, STARTING, LIVE, DEGRADED, RECONNECTING, FAILED, STOPPING, ENDED. Transitions are validated in packages/core and unit-tested. One destination failing never transitions the production or sibling destinations.
+
+## ADR-009 | ACCEPTED | LIVETAP CORE vs LIVETAP CLOUD boundary
+CORE (open source, MIT): desktop-first local production, local recording, core adapters, self-hostable relay config. CLOUD (future, optional, may be paid): managed relay/transcoding, cloud recording, remote guests, CDN, analytics, AI, teams. Boundary: everything that needs a server lives behind explicit interfaces (RelayProvider, TokenBroker for OAuth secret exchange, CloudRecordingSink) with self-hosted defaults; the UI never assumes cloud exists. No monetization code in MVP.
+
+## ADR-010 | ACCEPTED (provisional; validated by docs/research/SWITCHING_TRIGGERS.md section 6 when available) | MVP destination set
+Launch set: YouTube (deep API: create/bind/transition, chat, analytics), Twitch (Helix stream key + metadata, EventSub chat; device-code auth), TikTok (USER_ASSISTED stream key from LIVE Studio; 9:16), plus Custom RTMP/RTMPS/SRT/WHIP. Kick, Facebook, Instagram, X, LinkedIn ship as honest "paste stream key"/"unavailable" cards via the same adapter contract; real API adapters for Kick/Facebook are scaffolded and tested against fakes but not enabled in the UI until credentials/app review exist.
+Evidence: PLATFORM_* research - YouTube is the only full control plane; Twitch/Kick auto-start on ingest; TikTok/Instagram have no public live API; Facebook requires Business Verification for Live Video API.
+
+## ADR-011 | ACCEPTED | Automatic Production driven by content intent
+packages/core/src/production/intents.ts: six content types (talking, gaming, podcast, presentation, event, vertical). buildAutomaticProduction(intent, destinations) picks per-destination aspect (intent preference intersected with platform support), the master canvas, quality preset, audio defaults, Moment order/layout and safe areas (9:16 keeps text out of chat/action zones). Pure, deterministic, unit-tested. Onboarding asks WHAT -> WHERE -> camera/mic/screen -> GO LIVE.
+
+## ADR-012 | ACCEPTED | Universal transport for MVP = H.264 + AAC over RTMP/RTMPS
+Evidence: 2026 ingest matrix (docs/research/PLATFORM_X_LINKEDIN_OTHERS.md section 4): no major social platform accepts WHIP or SRT; HEVC/AV1 only on YouTube/Twitch via Enhanced RTMP. WHIP is used only for LIVETAP web->relay (MediaMTX) and custom destinations. HEVC/AV1 and SRT are Pro-mode, per-profile options.

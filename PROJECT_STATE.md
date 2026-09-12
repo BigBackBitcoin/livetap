@@ -7,6 +7,13 @@
 Build LIVETAP: open-source, free, professional live broadcasting.
 "Connect your accounts. Pick where you want to go live. Tap GO LIVE."
 
+## STRATEGIC PRINCIPLE (north-star correction, 2026-09-11 - docs/prompt-pack/09_LIVETAP_NORTH_STAR_CORRECTION.md)
+**LIVETAP is an easy live-production operating system, not merely an OBS replacement.**
+Journey: "I want to go live" -> What am I making? -> Where do I want to broadcast? -> Here is the best setup -> GO LIVE -> LIVE.
+Rules: better workflow > more features; better reliability > more integrations; better automation > more configuration; better hierarchy > decoration.
+Forbidden: "OBS but prettier". Simple Mode never exposes scenes/sources/bitrate/RTMP/codecs.
+Product review at every milestone: could a first-timer do it? would an expert trust it? faster? power only when needed? different from OBS? would someone switch?
+
 ## Environment truth (probed 2026-09-11)
 | Item | Status |
 |---|---|
