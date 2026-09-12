@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist/types",
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": true,
+    "types": ["node"]
+  },
+  "include": ["src", "capacitor.config.ts", "vitest.config.ts"],
+  "exclude": ["ios", "android", "www", "dist", "node_modules"],
+  "references": [{ "path": "../../packages/core" }]
+}

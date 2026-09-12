@@ -42,3 +42,14 @@ packages/core/src/production/intents.ts: six content types (talking, gaming, pod
 
 ## ADR-012 | ACCEPTED | Universal transport for MVP = H.264 + AAC over RTMP/RTMPS
 Evidence: 2026 ingest matrix (docs/research/PLATFORM_X_LINKEDIN_OTHERS.md section 4): no major social platform accepts WHIP or SRT; HEVC/AV1 only on YouTube/Twitch via Enhanced RTMP. WHIP is used only for LIVETAP web->relay (MediaMTX) and custom destinations. HEVC/AV1 and SRT are Pro-mode, per-profile options.
+
+## ADR-005 | ACCEPTED (2026-09-11, evidence: docs/research/MEDIA_ENGINE_EVALUATION.md sections 5, 9) | Layered media engine - confirmed
+- Web/mobile WebView: BrowserEngine (getUserMedia/getDisplayMedia -> canvas compositor -> captureStream -> WHIP RFC 9725 -> self-hosted MediaMTX relay -> pass-through fan-out to RTMP/RTMPS). Browsers cannot speak RTMP; this is not fixable.
+- Desktop: renderer composites; FFmpeg 9 child process (argv arrays, pipes; never linked) encodes once per aspect ratio; tee muxer with per-slave onfail=ignore + use_fifo=1 + fifo_options=attempt_recovery=1 gives per-output reconnect without disturbing siblings or the recording (VERIFIED-HOST 9.6). Rules learned by testing: an "anchor" slave (recording or [f=null]-) is mandatory because FFmpeg aborts if every slave fails to open (9.7a); hardware-encoder probes must assert packets were produced because failing h264_nvenc/qsv/amf still exit 0 (9.3). The desktop team may alternatively use an encoder -> N sender-process topology; whichever passes on-host isolation/reconnect tests ships.
+- Rejected: GStreamer (dead Node bindings), libobs/obs-studio-node (GPL in-process relicenses LIVETAP; stale public releases), OvenMediaEngine (AGPL, no Windows).
+- Hardware encoders: NVENC/QSV/AMF/VideoToolbox = UNVERIFIED on this host (no GPU); h264_mf (MediaFoundation) encodes on this GPU-less host (VERIFIED-HOST) - viable LGPL-profile fallback.
+
+## ADR-013 | ACCEPTED (owner may revisit - see HANDOFF) | LIVETAP license = MIT; FFmpeg shipped as a separate GPLv3 executable
+- MIT chosen for simplicity and adoption; all packages declare MIT. FFmpeg is spawned, never linked (FSF "mere aggregation"), so LIVETAP stays permissive, BUT the desktop bundle still owes GPLv3 obligations for the FFmpeg binary: license texts, build configuration, and a source offer/mirror - captured in THIRD_PARTY_NOTICES.md and required before first binary release.
+- Research recommends Apache-2.0 instead (express patent grant + retaliation clause matters for H.264/HEVC/AV1-adjacent code). Because the choice is legally material and owner-only, it is recorded as a HANDOFF decision rather than changed unilaterally. Switching later is a one-file change plus package.json fields while the contributor base is small.
+- An LGPL FFmpeg build profile (openh264 / MediaFoundation / VideoToolbox / hardware encoders, no libx264) is a credible escape hatch for app-store or OEM distribution (research 7.4).
