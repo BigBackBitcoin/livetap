@@ -10,7 +10,7 @@ Legend: PASS | FAIL | SIMULATED | UNAVAILABLE | EXTERNALLY BLOCKED | UNVERIFIED 
 | packages/adapters (real) | SIMULATED | YouTube/Twitch/Kick/Facebook adapters verified against recorded fake fetch only; no live credentials on host |
 | packages/media | SIMULATED | compositor/WHIP/BrowserEngine/MockEngine, 200 tests with fakes; real capture UNVERIFIED (no camera/GPU) |
 | packages/ui | PASS | 22 components, computed WCAG token tests, 123 tests |
-| apps/web landing | PASS | https://livetap.vercel.app — honest demo statement, one accent CTA; 90 KB gz JS (target 60 KB missed: React DOM alone is 69 KB) |
+| apps/web public experience | PASS | https://livetap.vercel.app — Live-surface scroll experience (8 acts + 2 rests, 12.8 vh), interactive playgrounds, drag-to-disconnect peak; 46 KB gz JS, 14 KB gz CSS, one font; CLS 0.005, no console errors, 40 E2E incl. 17 experience specs; Scroll Craft harness 3 passes clean |
 | apps/web studio | PASS (mock mode) | intent-first onboarding, 6 taps to 2-platform LIVE, humane error cards, failure isolation demo; 57 unit + 20 E2E; real-platform go-live UNVERIFIED (no credentials) |
 | apps/desktop | PASS (Windows, unsigned) / UNVERIFIED (macOS) | Electron 44 shell + FFmpeg engine; 9/9 on-host engine verifications; 275 tests; Playwright Electron smoke PASS (opens in onboarding); NSIS installer 94 MB; signing BLOCKED (B-004); hardware encoders UNVERIFIED (B-007) |
 | apps/mobile | STRUCTURALLY COMPLETE / EXTERNALLY BLOCKED | Capacitor 7 iOS+Android projects, plugin package discovered by cap sync (26 tests); native code never compiled (no macOS/JDK/SDK, B-005) |

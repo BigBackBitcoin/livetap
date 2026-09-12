@@ -68,3 +68,17 @@ The autonomous portion of the mission is exhausted: every remaining item is gate
 owner-only dependency (accounts, certificates, credentials, hardware, a Linux/macOS host) or is
 polish. The release candidate is RESEARCHED → ARCHITECTED → IMPLEMENTED → TESTED → SECURED →
 DEPLOYED → COMMITTED → RELEASE-AUDITED, with the honest labels above.
+
+## Addendum 2026-09-12 — Public experience redesign (directive docs/prompt-pack/10)
+
+| Check | Result | Evidence |
+|---|---|---|
+| Grammar / structure | Live surface, 8 acts + 2 rests, 12.8 viewport-heights, signature move (drag-to-disconnect) | scrollcraft/builds/livetap-public/REPORT.md, docs/design/LIVETAP_SCROLL_STORY.md |
+| Budget | JS 46.0 KB gz (engine + anime.js + page), CSS 14.4 KB gz, one 28.9 KB font, one 8.5 KB plate | vite build output; deployed transfer JS 48.3 KB |
+| Deployed review (desktop 1440, mobile 390, reduced motion) | PASS: 0 console errors, 0 failed requests, no horizontal overflow, all internal links 200, `/nope` 404 | docs/qa/deployed-review/review.json + screenshots |
+| CLS | 0.005 desktop, 0.002 reduced (was 0.30 before pre-sizing pinned acts) | apps/web/scripts/cls-trace.mjs against production |
+| LCP element | stage plate image (`img.ltp-stage__plate`); 364 ms warm, 1.76 s on a cold CDN fetch | same trace |
+| E2E | 40/40 Playwright incl. 17 experience specs | `npm run e2e -w @livetap/web` |
+| Scroll Craft harness | 3 passes x 61 samples: no dead scroll, every cue peaks, contrast >= 4.5:1 at worst frame | scrollcraft/builds/livetap-public/REPORT.md |
+| 15-second test / cheap-website tests / category test | answered with screenshot evidence | docs/qa/EXPERIENCE_REVIEW.md |
+| Not verified | throttled LCP/INP on a real device; Windows High Contrast; atmosphere canvas profiled against its 2 ms ceiling | - |

@@ -29,6 +29,10 @@ human dependency queue.
 - B-004/B-005 signing certificates and store accounts → signed desktop releases, TestFlight/Play testing.
 - B-007 run `npm run verify:engine -w @livetap/desktop` on a machine with a GPU and camera → hardware PASS labels.
 
+## Public experience (2026-09-12)
+
+https://livetap.vercel.app/ is an interactive product surface, not a marketing page: scroll operates one fixed LIVETAP console through eight acts (chaos, connect, produce, adapt, multistream, resilience, power, action). Try: tap destinations, switch 16:9 / 9:16 / 1:1, change a Moment, GO LIVE (DEMO), then drag a live tile off the stage (or focus it and press Delete) and watch it reconnect while the others stay live. The close is the app's real first question and links into `/app/start`. Design docs: docs/design/LIVETAP_*.md; build report: scrollcraft/builds/livetap-public/REPORT.md; review: docs/qa/EXPERIENCE_REVIEW.md; deployed review: docs/qa/deployed-review/.
+
 ## How to test (mock mode, no credentials)
 
 1. Open https://livetap.vercel.app → Open LIVETAP.

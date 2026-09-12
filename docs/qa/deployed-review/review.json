@@ -1,0 +1,75 @@
+{
+  "base": "https://livetap.vercel.app",
+  "results": [
+    {
+      "name": "desktop",
+      "status": 200,
+      "docH": 11520,
+      "viewportHeights": 12.8,
+      "overflow": false,
+      "jsBytes": 49485,
+      "cssBytes": 16078,
+      "lcp": 3064,
+      "cls": 0.303,
+      "liveCount": 7,
+      "links": [
+        "/",
+        "./app/start",
+        "./app",
+        "/privacy",
+        "/terms"
+      ],
+      "errors": [],
+      "ms": 12391
+    },
+    {
+      "name": "mobile",
+      "status": 200,
+      "docH": 9824,
+      "viewportHeights": 11.6,
+      "overflow": false,
+      "jsBytes": 49485,
+      "cssBytes": 16078,
+      "lcp": 288,
+      "cls": 0,
+      "liveCount": 7,
+      "links": [
+        "/",
+        "./app/start",
+        "./app",
+        "/privacy",
+        "/terms"
+      ],
+      "errors": [],
+      "ms": 8009
+    },
+    {
+      "name": "reduced",
+      "status": 200,
+      "docH": 11520,
+      "viewportHeights": 12.8,
+      "overflow": false,
+      "jsBytes": 49485,
+      "cssBytes": 16078,
+      "lcp": 232,
+      "cls": 0.573,
+      "liveCount": 7,
+      "links": [
+        "/",
+        "./app/start",
+        "./app",
+        "/privacy",
+        "/terms"
+      ],
+      "errors": [],
+      "ms": 7695
+    }
+  ],
+  "linkStatus": {
+    "/": 200,
+    "./app/start": 200,
+    "./app": 200,
+    "/privacy": 200,
+    "/terms": 200
+  }
+}
