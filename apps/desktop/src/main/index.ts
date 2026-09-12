@@ -124,6 +124,24 @@ async function main(): Promise<void> {
   }
   logger.info('ffmpeg resolved', { path: ffmpeg.path, source: ffmpeg.source });
 
+  // Signed-update check. Only meaningful in a packaged, signed build with a publish config
+  // (docs/release/DESKTOP_RELEASE.md). electron-updater verifies the publisher signature before
+  // applying anything; on an unsigned build the check fails closed and is logged, never applied.
+  if (app.isPackaged) {
+    try {
+      const { autoUpdater } = await import('electron-updater');
+      autoUpdater.autoDownload = false;
+      autoUpdater.allowDowngrade = false;
+      autoUpdater.allowPrerelease = false;
+      autoUpdater.on('error', (error: unknown) => logger.warn('update check failed', { error: String(error) }));
+      void autoUpdater.checkForUpdatesAndNotify().catch((error: unknown) => {
+        logger.warn('update check failed', { error: String(error) });
+      });
+    } catch (error) {
+      logger.warn('electron-updater unavailable', { error: String(error) });
+    }
+  }
+
   const engine = new FfmpegEngine({ ffmpegPath: ffmpeg.path, recordingsDir, logger });
   const vault = new SecretVault({ userDataDir, safeStorage: await loadSafeStorage(), logger });
   const oauth = new LoopbackOAuthServer();
