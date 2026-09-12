@@ -232,7 +232,7 @@ describe('MockEngine', () => {
 
     expect(engine.previewStream).toBeNull();
     expect(engine.previewCanvas).toBe(fake.canvas);
-    expect(fake.texts()).toContain('MOCK PREVIEW');
+    expect(fake.texts()).toContain('DEMO PREVIEW');
     expect(fake.texts()).toContain(moment.name);
 
     const framesBefore = fake.ops('fillRect').length;

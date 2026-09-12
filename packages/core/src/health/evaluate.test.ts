@@ -47,3 +47,19 @@ describe('evaluateHealth', () => {
     expect(h.suggestion).toBe('none');
   });
 });
+
+describe('evaluateHealth with destination state', () => {
+  it('never says excellent while a destination is reconnecting', () => {
+    const h = evaluateHealth(base(), 1000, { reconnecting: 1, degraded: 0, failed: 0 });
+    expect(h.level).toBe('poor');
+    expect(h.headline).toBe('One destination is reconnecting');
+    expect(h.detail).toMatch(/other destinations keep streaming/);
+  });
+  it('caps at fair while a destination is degraded and keeps worse engine levels', () => {
+    expect(evaluateHealth(base(), 1000, { reconnecting: 0, degraded: 2, failed: 0 }).level).toBe('fair');
+    expect(evaluateHealth(base({ networkDroppedPct: 6, encodedKbps: 1500 }), 1000, { reconnecting: 0, degraded: 1, failed: 0 }).level).toBe('critical');
+  });
+  it('is unchanged when every destination is healthy', () => {
+    expect(evaluateHealth(base(), 1000, { reconnecting: 0, degraded: 0, failed: 0 }).level).toBe('excellent');
+  });
+});

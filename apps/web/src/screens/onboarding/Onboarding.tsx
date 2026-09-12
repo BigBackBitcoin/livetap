@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Badge, Button, Logo, Select, Spinner, VisuallyHidden } from '@livetap/ui';
+import { Badge, Banner, Button, Logo, Select, Spinner, VisuallyHidden } from '@livetap/ui';
 import { CONTENT_TYPES, INTENT_PROFILES } from '@livetap/core';
 import type { AspectRatio, ContentType, PlatformId } from '@livetap/core';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
@@ -71,6 +71,21 @@ export function Onboarding(): ReactElement {
           <span key={n} className={n <= step ? 'is-done' : ''} />
         ))}
       </span>
+
+      {/*
+        PRODUCT_SPEC §4.4 puts the honesty banner on every app route, and onboarding is the one
+        route where it was missing — so the user chose YouTube and TikTok believing they had
+        connected accounts, and only met the word "demo" in grey type below the grid they had
+        already used. Stated here before the first choice, not after it.
+      */}
+      {mockMode ? (
+        <div className="lt-bannerslot">
+          <Banner tone="info" className="lt-mockbanner">
+            Demo mode — this build simulates every destination. Nothing you connect here is
+            broadcast anywhere, so you can try the whole thing safely.
+          </Banner>
+        </div>
+      ) : null}
 
       <main className="lt-onboarding__main">
         <h1 className="lt-onboarding__heading" tabIndex={-1} ref={heading}>
@@ -233,7 +248,7 @@ function PlatformStep({
                 <span className="lt-platformcard__name">{status.profile.displayName}</span>
                 <span className="lt-platformcard__badges">
                   <Badge tone={status.tone}>{label}</Badge>
-                  {mockMode && !status.blocked ? <Badge tone="info">Mock</Badge> : null}
+                  {mockMode && !status.blocked ? <Badge tone="info">{COPY.demo}</Badge> : null}
                   {pending === id ? <Spinner size={20} label="Connecting" /> : null}
                 </span>
                 <span className="lt-platformcard__summary">{status.summary}</span>
@@ -248,11 +263,12 @@ function PlatformStep({
         })}
       </ul>
 
-      <p className="lt-onboarding__note">
-        {mockMode
-          ? 'This build runs in demo mode, so every destination you pick is simulated and nothing is broadcast anywhere.'
-          : 'LIVETAP never sees your password. Sign-in happens on the platform’s own page.'}
-      </p>
+      {/* Demo mode is stated by the banner above the grid; this line is for a real deployment. */}
+      {mockMode ? null : (
+        <p className="lt-onboarding__note">
+          LIVETAP never sees your password. Sign-in happens on the platform’s own page.
+        </p>
+      )}
 
       <div className="lt-onboarding__actions">
         <Button variant="ghost" onClick={onBack}>

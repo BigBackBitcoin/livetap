@@ -13,7 +13,7 @@ import {
   VisuallyHidden,
 } from '@livetap/ui';
 import { evaluateHealth } from '@livetap/core';
-import type { AspectRatio } from '@livetap/core';
+import type { AspectRatio, HealthAssessment, HealthLevel } from '@livetap/core';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
 import { DestinationChips, chipLabel, statusText } from '../components/DestinationChips.js';
 import { DeviceControls } from '../components/DeviceControls.js';
@@ -65,6 +65,8 @@ export function Studio(): ReactElement {
   const live = production.state === 'LIVE' || production.state === 'STOPPING';
   const elapsedMs = useElapsed(production.startedAt, live);
   const graceLeft = useGrace(endingAt);
+  const goLiveRef = useRef<HTMLDivElement | null>(null);
+  const [preflightOpen, setPreflightOpen] = useState(false);
 
   const preflight = useMemo(
     () =>
@@ -81,8 +83,35 @@ export function Studio(): ReactElement {
     [destinations, cameras.length, microphones.length, unsupported, micMuted, production.recording],
   );
 
-  const health = useMemo(() => evaluateHealth(metrics), [metrics]);
+  const destinationHealth = useMemo(
+    () => ({
+      reconnecting: destinations.filter((d) => d.state === 'RECONNECTING').length,
+      degraded: destinations.filter((d) => d.state === 'DEGRADED').length,
+      failed: destinations.filter((d) => d.state === 'FAILED').length,
+    }),
+    [destinations],
+  );
+  const health = useMemo(
+    () => humaneHealth(evaluateHealth(metrics, Date.now(), destinationHealth)),
+    [metrics, destinationHealth],
+  );
   const allMock = destinations.length > 0 && destinations.every((d) => d.config.mock);
+
+  /*
+   * Pre-flight answers "can this stream start?", so it only means anything before one has.
+   * Once destinations leave READY it necessarily reports red — and a red row beside the words
+   * "Stream is excellent", on top of a GO LIVE button disabled into an END button that cannot
+   * end anything, is how the single worst bug in this product happened. While live, the row is
+   * driven by health instead, and the button is never disabled.
+   */
+  const rowLevel: 'green' | 'amber' | 'red' = live ? healthLevel(health.level) : preflight.level;
+  const rowHeadline = live ? `${health.headline} — ${health.detail}` : preflight.headline;
+  /*
+   * Amber collapses; red never does. Red means the stream cannot start, so the reason has to be
+   * on the screen without a click — and amber is the level that carries three sentences of
+   * consequence and pushed the button off a phone.
+   */
+  const collapsible = !live && rowLevel === 'amber' && preflight.items.length > 0;
 
   // The END grace elapsing is what actually stops the broadcast.
   useEffect(() => {
@@ -100,6 +129,20 @@ export function Studio(): ReactElement {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [endingAt, undoEnd]);
+
+  /*
+   * GO LIVE holds initial focus on Studio (PRODUCT_SPEC §4.3). Without this it is the 27th tab
+   * stop, which makes the product's one dominant action the least reachable control on the
+   * screen for a keyboard user. It runs once, on an idle mount only, so it can never take focus
+   * away from something the user is already using — and `preventScroll` keeps it from yanking
+   * the page down past the preview.
+   */
+  useEffect(() => {
+    if (goLive !== 'idle') return;
+    const button = goLiveRef.current?.querySelector<HTMLButtonElement>('.lt-golive');
+    button?.focus({ preventScroll: true });
+    // Deliberately empty: this is a first-mount-only effect, not a reaction to `goLive`.
+  }, []);
 
   // The tab title is the one place a backgrounded live stream can still announce itself.
   useEffect(() => {
@@ -161,40 +204,43 @@ export function Studio(): ReactElement {
         </div>
       </section>
 
-      <section className="lt-studio__moments" aria-label="Moments">
-        <h2 className="lt-sr-only">Moments</h2>
-        <ul className="lt-momentstrip">
-          {moments.map((moment) => (
-            <li key={moment.id}>
-              <MomentCard
-                icon={<span aria-hidden="true">{moment.icon}</span>}
-                name={moment.name}
-                active={production.activeMomentId === moment.id}
-                onSelect={() => void setMoment(moment.id)}
-                meta={production.activeMomentId === moment.id ? 'Viewers see this' : undefined}
-              />
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="lt-studio__devices" aria-label="Camera, microphone and screen">
-        <h2 className="lt-sr-only">Camera, microphone and screen</h2>
-        <DeviceControls live={live} />
-      </section>
-
       <section className="lt-studio__go" aria-label="Going live">
         <DestinationChips />
 
-        <div
-          className={['lt-preflight', `lt-preflight--${preflight.level}`].join(' ')}
-          aria-live="polite"
-        >
+        {/*
+          Amber is "expandable" in PRODUCT_SPEC §4.5, and it was always expanded — which put
+          three sentences of consequence between the chips and the button and, on a phone, pushed
+          GO LIVE off the screen. Collapsed by default, with the count in the headline so nothing
+          is hidden; `aria-expanded` plus a caret carry the state without relying on colour.
+        */}
+        {/*
+          The pre-flight row, the button and its subtitle travel together: on a phone they are
+          pinned above the tab bar (PRODUCT_SPEC §5c, mobile: "64px, full width minus space-4,
+          pinned above nav"), which is the only way the product's one dominant action is on the
+          screen when Studio opens.
+        */}
+        <div className="lt-golivebar">
+          <div
+            className={['lt-preflight', `lt-preflight--${rowLevel}`].join(' ')}
+            aria-live="polite"
+          >
           <span className="lt-preflight__dot" aria-hidden="true" />
-          <span className="lt-preflight__headline">
-            {live ? `${health.headline} — ${health.detail}` : preflight.headline}
-          </span>
-          {!live && preflight.items.length > 0 ? (
+          {collapsible ? (
+            <button
+              type="button"
+              className="lt-preflight__toggle lt-touch"
+              aria-expanded={preflightOpen}
+              onClick={() => setPreflightOpen((open) => !open)}
+            >
+              <span className="lt-preflight__headline">{rowHeadline}</span>
+              <span className="lt-preflight__caret" aria-hidden="true">
+                {preflightOpen ? '⌃' : '⌄'}
+              </span>
+            </button>
+          ) : (
+            <span className="lt-preflight__headline">{rowHeadline}</span>
+          )}
+          {!live && preflight.items.length > 0 && (!collapsible || preflightOpen) ? (
             <ul className="lt-preflight__items">
               {preflight.items.map((item) => (
                 <li key={item.id}>
@@ -221,30 +267,57 @@ export function Studio(): ReactElement {
             <p className="lt-endgrace__hint">Say your goodbyes.</p>
           </div>
         ) : (
-          <>
+          <div ref={goLiveRef}>
             <GoLiveButton
               state={goLive}
               elapsedMs={elapsedMs}
-              disabled={preflight.level === 'red'}
+              // Never disabled while live: a stream you cannot stop is worse than no stream.
+              disabled={!live && preflight.level === 'red'}
               disabledReason={
-                preflight.items[0]?.text ??
-                'Connect a destination first — that is the one thing LIVETAP cannot do for you.'
+                live
+                  ? undefined
+                  : (preflight.items[0]?.text ??
+                    'Connect a destination first — that is the one thing LIVETAP cannot do for you.')
               }
               onGoLive={startCountdown}
               onCancel={cancelCountdown}
               onCountdownComplete={() => void commitGoLive()}
               onEnd={requestEnd}
+              demo={allMock}
               className={allMock ? 'lt-golive--demo' : undefined}
             />
             <p className="lt-golive__subtitle">
               {live
-                ? `Live on ${production.liveCount}`
+                ? liveSubtitle(production.liveCount, production.enabledCount, allMock)
                 : allMock && preflight.readyCount > 0
                   ? `Demo — going live on ${preflight.readyCount}, and nothing is broadcast anywhere`
                   : goLiveSubtitle(preflight)}
             </p>
-          </>
+          </div>
         )}
+        </div>
+      </section>
+
+      <section className="lt-studio__moments" aria-label="Moments">
+        <h2 className="lt-sr-only">Moments</h2>
+        <ul className="lt-momentstrip">
+          {moments.map((moment) => (
+            <li key={moment.id}>
+              <MomentCard
+                icon={<span aria-hidden="true">{moment.icon}</span>}
+                name={moment.name}
+                active={production.activeMomentId === moment.id}
+                onSelect={() => void setMoment(moment.id)}
+                meta={production.activeMomentId === moment.id ? 'Viewers see this' : undefined}
+              />
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="lt-studio__devices" aria-label="Camera, microphone and screen">
+        <h2 className="lt-sr-only">Camera, microphone and screen</h2>
+        <DeviceControls live={live} />
       </section>
 
       <aside className="lt-studio__dock" aria-label="Chat, destinations and health">
@@ -252,6 +325,52 @@ export function Studio(): ReactElement {
       </aside>
     </div>
   );
+}
+
+/**
+ * `evaluateHealth`'s own copy for the `unknown` level is "Health appears once the encoder starts
+ * sending" — engineering vocabulary, on the largest status line in Simple mode, which tenet 1
+ * forbids. The assessment is correct; only the sentence is wrong, so the sentence is replaced
+ * here rather than the measurement anywhere. (`reasons` stays untouched: it is Pro-only and is
+ * meant to be technical.)
+ */
+export function humaneHealth(health: HealthAssessment): HealthAssessment {
+  if (health.level !== 'unknown') return health;
+  return {
+    ...health,
+    headline: 'Checking your picture and sound',
+    detail: 'Quality readings appear a few seconds after you go live.',
+  };
+}
+
+/**
+ * The health scale collapses onto the three levels the pre-flight row can paint. `unknown` is
+ * amber rather than red: "we do not know yet" is a thing to know, not a failure.
+ */
+function healthLevel(level: HealthLevel): 'green' | 'amber' | 'red' {
+  switch (level) {
+    case 'excellent':
+    case 'good':
+      return 'green';
+    case 'poor':
+    case 'critical':
+      return 'red';
+    default:
+      return 'amber';
+  }
+}
+
+/**
+ * What the button says under itself while live. `liveCount` is 0 for the second or two every
+ * destination spends in STARTING, and "Live on 0" during a live broadcast is a lie the user can
+ * see, so that window says what is actually happening instead.
+ */
+export function liveSubtitle(liveCount: number, enabledCount: number, allMock: boolean): string {
+  const demo = allMock ? ' · nothing is broadcast anywhere' : '';
+  if (liveCount === 0) {
+    return `Starting on ${enabledCount}${demo}`;
+  }
+  return `Live on ${liveCount}${demo}`;
 }
 
 /* ------------------------------------------------------------------ the dock */
@@ -264,7 +383,18 @@ function StudioDock({ live, showDemoPanel }: { live: boolean; showDemoPanel: boo
   const mode = useAppStore((s) => s.mode);
   const stopOne = useAppStore((s) => s.stopOne);
   const retry = useAppStore((s) => s.retry);
-  const health = useMemo(() => evaluateHealth(metrics), [metrics]);
+  const destinationHealth = useMemo(
+    () => ({
+      reconnecting: destinations.filter((d) => d.state === 'RECONNECTING').length,
+      degraded: destinations.filter((d) => d.state === 'DEGRADED').length,
+      failed: destinations.filter((d) => d.state === 'FAILED').length,
+    }),
+    [destinations],
+  );
+  const health = useMemo(
+    () => humaneHealth(evaluateHealth(metrics, Date.now(), destinationHealth)),
+    [metrics, destinationHealth],
+  );
 
   const demoDrop = useAppStore((s) => s.demoDropDestination);
   const demoDegrade = useAppStore((s) => s.demoDegradeDestination);

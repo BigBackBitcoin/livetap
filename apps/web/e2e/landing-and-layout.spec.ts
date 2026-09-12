@@ -49,7 +49,7 @@ test.describe('landing', () => {
 
   test('the not-found page names itself and offers the way back', async ({ page }) => {
     await page.goto('/definitely-not-a-page');
-    await expect(page.getByText('That page moved')).toBeVisible();
+    await expect(page.getByText('There is nothing at this address')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Go to Studio' })).toBeVisible();
   });
 

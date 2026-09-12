@@ -331,7 +331,7 @@ export class MockEngine extends TypedEmitter<EngineEvents> implements MediaEngin
 
   /**
    * Draw a generated test pattern so the UI has something to show with no camera:
-   * a moving gradient, "MOCK PREVIEW", and the active Moment's name.
+   * a moving gradient, "DEMO PREVIEW", and the active Moment's name.
    */
   attachPreview(videoEl: HTMLVideoElement | null | undefined): void {
     this.startPattern();
@@ -417,11 +417,11 @@ export class MockEngine extends TypedEmitter<EngineEvents> implements MediaEngin
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = `800 ${Math.round(h * 0.1)}px Inter, system-ui, sans-serif`;
-      ctx.fillText('MOCK PREVIEW', w / 2, h / 2 - h * 0.06, w * 0.9);
+      ctx.fillText('DEMO PREVIEW', w / 2, h / 2 - h * 0.06, w * 0.9);
       ctx.font = `500 ${Math.round(h * 0.05)}px Inter, system-ui, sans-serif`;
       ctx.fillText(this.activeMoment?.name ?? 'No Moment', w / 2, h / 2 + h * 0.07, w * 0.9);
       ctx.font = `400 ${Math.round(h * 0.032)}px Inter, system-ui, sans-serif`;
-      ctx.fillText('Simulated engine - no camera, no encoder', w / 2, h - h * 0.08, w * 0.9);
+      ctx.fillText('Simulated picture — this build is not broadcasting', w / 2, h - h * 0.08, w * 0.9);
     } catch {
       /* a partial 2D context must not break the demo */
     }

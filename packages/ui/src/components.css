@@ -685,9 +685,10 @@
   gap: var(--lt-space-2);
   padding: var(--lt-space-1) var(--lt-space-3);
   border-radius: var(--lt-radius-md);
-  background: var(--lt-chip-bg);
+  /* Outlined by default; only LIVE carries a fill (see .lt-chip--live). */
+  background: transparent;
   color: var(--lt-chip-fg);
-  border: 1px solid transparent;
+  border: 1px solid var(--lt-border-control);
   font-size: var(--lt-text-12);
   line-height: var(--lt-leading-12);
   letter-spacing: var(--lt-tracking-12);
@@ -736,6 +737,8 @@
 .lt-chip--live {
   --lt-chip-fg: var(--lt-state-live-on);
   --lt-chip-bg: var(--lt-state-live-tint);
+  background: var(--lt-chip-bg);
+  border-color: transparent;
   font-weight: var(--lt-weight-bold);
 }
 

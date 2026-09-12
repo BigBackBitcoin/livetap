@@ -620,8 +620,10 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
 
   private ctx(rec: Record_, technical?: string) {
     const adapter = this.registry.get(rec.snapshot.config.platform);
+    const displayName = adapter?.profile.displayName ?? rec.snapshot.config.platform;
+    const label = rec.snapshot.config.label;
     return {
-      target: `${adapter?.profile.displayName ?? rec.snapshot.config.platform} · ${rec.snapshot.config.label}`,
+      target: !label || label === displayName ? displayName : `${displayName} · ${label}`,
       platform: adapter?.profile.displayName,
       autoReconnect: this.settings.reconnect.enabled,
       technical,

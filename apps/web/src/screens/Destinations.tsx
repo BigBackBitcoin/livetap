@@ -17,6 +17,15 @@ import { useAppStore } from '../state/store.js';
  * LinkedIn it means "not possible". Every badge is derived from the capability matrix, so the
  * screen cannot drift from what the adapters can actually do (tenet 8).
  */
+/**
+ * "YouTube · YouTube". A destination connected without an account name defaults its label to the
+ * platform's own display name, and concatenating the two produced a title that reads like a bug.
+ * One name when they are the same name.
+ */
+export function destinationTitle(displayName: string, label: string): string {
+  return label.trim() === displayName ? displayName : `${displayName} · ${label}`;
+}
+
 export function Destinations(): ReactElement {
   const destinations = useAppStore((s) => s.destinations);
   const mockMode = useAppStore((s) => s.mockMode);
@@ -67,7 +76,7 @@ export function Destinations(): ReactElement {
                   className={snap.config.mock ? 'lt-destcard lt-destcard--demo' : 'lt-destcard'}
                   title={
                     <span className="lt-destcard__title">
-                      {`${profile.displayName} · ${snap.config.label}`}
+                      {destinationTitle(profile.displayName, snap.config.label)}
                       {snap.config.mock ? <Badge tone="info">{COPY.demo}</Badge> : null}
                     </span>
                   }
@@ -202,7 +211,7 @@ export function Destinations(): ReactElement {
                     <span className="lt-addrow__name">{status.profile.displayName}</span>
                     <span className="lt-addrow__badges">
                       <Badge tone={status.tone}>{status.actionLabel}</Badge>
-                      {mockMode && !status.blocked ? <Badge tone="info">Mock</Badge> : null}
+                      {mockMode && !status.blocked ? <Badge tone="info">{COPY.demo}</Badge> : null}
                     </span>
                     <span className="lt-addrow__summary">{status.summary}</span>
                     {status.blocked ? (

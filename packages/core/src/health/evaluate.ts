@@ -4,7 +4,51 @@ import type { EngineMetrics, HealthAssessment, HealthLevel } from '../types/heal
  * Turn raw engine metrics into a beginner-readable assessment.
  * Thresholds follow common streaming guidance: >1% dropped frames is noticeable, >5% is serious.
  */
-export function evaluateHealth(m: EngineMetrics | undefined, now = Date.now()): HealthAssessment {
+export interface DestinationHealthSummary {
+  reconnecting: number;
+  degraded: number;
+  failed: number;
+}
+
+export function evaluateHealth(
+  m: EngineMetrics | undefined,
+  now = Date.now(),
+  destinations?: DestinationHealthSummary,
+): HealthAssessment {
+  const base = evaluateEngineHealth(m, now);
+  if (!destinations) return base;
+  const { reconnecting, degraded, failed } = destinations;
+  if (reconnecting > 0) {
+    return {
+      ...base,
+      level: worseOf(base.level, 'poor'),
+      headline: reconnecting === 1 ? 'One destination is reconnecting' : `${reconnecting} destinations are reconnecting`,
+      detail: 'Your other destinations keep streaming. LIVETAP is bringing this one back automatically.',
+      reasons: [...base.reasons, `${reconnecting} destination(s) reconnecting`],
+    };
+  }
+  if (degraded > 0) {
+    return {
+      ...base,
+      level: worseOf(base.level, 'fair'),
+      headline: degraded === 1 ? 'One destination is struggling' : `${degraded} destinations are struggling`,
+      detail: 'Viewers there may see stutter. Everything else is unaffected.',
+      reasons: [...base.reasons, `${degraded} destination(s) degraded`],
+    };
+  }
+  if (failed > 0) {
+    return { ...base, reasons: [...base.reasons, `${failed} destination(s) stopped`] };
+  }
+  return base;
+}
+
+const ORDER: HealthLevel[] = ['excellent', 'good', 'fair', 'poor', 'critical'];
+function worseOf(a: HealthLevel, b: HealthLevel): HealthLevel {
+  if (a === 'unknown') return b;
+  return ORDER.indexOf(a) >= ORDER.indexOf(b) ? a : b;
+}
+
+function evaluateEngineHealth(m: EngineMetrics | undefined, now: number): HealthAssessment {
   if (!m || now - m.updatedAt > 10_000) {
     return {
       level: 'unknown',

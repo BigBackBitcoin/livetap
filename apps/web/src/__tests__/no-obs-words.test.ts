@@ -38,9 +38,16 @@ const EXEMPT = [
   '__tests__' + sep,
 ];
 
-/** The words a Simple-mode user must never meet. */
+/**
+ * The words a Simple-mode user must never meet.
+ *
+ * `encoder`, `encoding`, `mock` and `simulated engine` were added after a product review found
+ * all four shipping in Simple mode — "MOCK PREVIEW" over the preview, "Health appears once the
+ * encoder starts sending" under it, a "Mock" badge on every platform, and an error card
+ * recommending "Software encoding". Not one was caught, because the guard did not look for them.
+ */
 const BANNED =
-  /\b(rtmps?|srt|whip|ingest|cbr|vbr|rate control|keyframe|gop|bitrate|kbps|codec|h\.?264|hevc|av1|nvenc|qsv|videotoolbox|x264|encoder preset|scenes?|sources?|scene collection|z-order|compositor|oauth|refresh token|webhook|rtt|dropped frames|skipped frames|lagged frames|remux)\b/i;
+  /\b(rtmps?|srt|whip|ingest|cbr|vbr|rate control|keyframe|gop|bitrate|kbps|codec|h\.?264|hevc|av1|nvenc|qsv|videotoolbox|x264|encoders?|encoding|mocks?|simulated engine|muxing|transcod\w*|scenes?|sources?|scene collection|z-order|compositor|oauth|refresh token|webhook|rtt|dropped frames|skipped frames|lagged frames|remux)\b/i;
 
 /** Matches single-quoted, double-quoted and backtick string literals. */
 const STRING_LITERAL = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;

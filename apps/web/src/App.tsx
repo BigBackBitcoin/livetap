@@ -1,6 +1,15 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router';
+import { BrowserRouter, HashRouter, Route, Routes } from 'react-router';
+
+/**
+ * The desktop shell loads the bundle from file:// (and Capacitor from a custom scheme), where
+ * history-based routing has no server fallback. A hash router keeps every route reachable there.
+ */
+const useHashRouting =
+  typeof window !== 'undefined' &&
+  (window.location.protocol === 'file:' || 'livetap' in window || window.location.protocol === 'capacitor:');
+const Router = useHashRouting ? HashRouter : BrowserRouter;
 import { Spinner } from '@livetap/ui';
 import { Landing } from './screens/Landing.js';
 
@@ -61,7 +70,7 @@ function Loading({ label }: { label: string }): ReactElement {
 
 export function App(): ReactElement {
   return (
-    <BrowserRouter>
+    <Router>
       <Suspense fallback={<Loading label="Opening LIVETAP…" />}>
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -84,6 +93,6 @@ export function App(): ReactElement {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </Router>
   );
 }

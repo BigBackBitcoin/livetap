@@ -41,6 +41,7 @@ import { demoIngest } from '../lib/mockIngest.js';
 import { platformStatus } from '../lib/platformStatus.js';
 import * as persist from './persist.js';
 import { DEFAULT_SETTINGS } from './persist.js';
+import type { StorageLike } from './persist.js';
 import { envMockMode } from './mockMode.js';
 import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
 
@@ -173,6 +174,37 @@ function uid(prefix: string): string {
 }
 
 /**
+ * A reload kills a browser broadcast, and the app used to come back to a clean idle Studio
+ * without ever saying so — the user's only evidence that the stream had ended was that it had.
+ * State honesty means the machine names what it did, so the fact is carried across the reload in
+ * `sessionStorage` (this tab only, nothing sensitive) and read once on the next boot.
+ */
+const WAS_LIVE_KEY = 'livetap.wasLive';
+
+function markLive(live: boolean): void {
+  try {
+    const s = (globalThis as { sessionStorage?: StorageLike }).sessionStorage;
+    if (!s) return;
+    if (live) s.setItem(WAS_LIVE_KEY, '1');
+    else s.removeItem(WAS_LIVE_KEY);
+  } catch {
+    // Storage disabled. The notice is a courtesy, never a requirement.
+  }
+}
+
+function takeWasLive(): boolean {
+  try {
+    const s = (globalThis as { sessionStorage?: StorageLike }).sessionStorage;
+    if (!s) return false;
+    const had = s.getItem(WAS_LIVE_KEY) !== null;
+    s.removeItem(WAS_LIVE_KEY);
+    return had;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * `MediaEngine` only declares `on`, but every engine in this repo extends core's
  * `TypedEmitter`, which is how the demo controls can raise a genuine engine event rather than
  * fake a UI state. Feature-detected, so a future engine without an emitter degrades to a no-op.
@@ -222,8 +254,10 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
     const mirror = (): void => {
       const r = runtime;
       if (!r) return;
+      const production = r.orchestrator.getProduction();
+      markLive(production.state === 'LIVE');
       set({
-        production: r.orchestrator.getProduction(),
+        production,
         destinations: r.orchestrator.listDestinations(),
         moments: [...r.orchestrator.moments],
       });
@@ -350,13 +384,33 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         // so a paste-key destination comes back needing its key again — and says so.
         for (const config of persist.readDestinations()) {
           try {
-            orchestrator.addDestination(config);
+            /*
+             * A demo destination's ingest key is redacted on write like every other key, which
+             * is right — but it is also a fake, so restoring it without one left the user with
+             * "TikTok is missing something. / The stream URL or key is empty or malformed." and
+             * a button asking them to paste a key they never had, after nothing more than a page
+             * reload. Re-derive the demo target instead. Nothing secret is being recovered here.
+             */
+            const restored: DestinationConfig =
+              config.mock && platformStatus(config.platform).method === 'key'
+                ? { ...config, ingest: demoIngest(config.platform) }
+                : config;
+            orchestrator.addDestination(restored);
           } catch {
             // A duplicate id in storage is not worth failing a cold start over.
           }
         }
+        const wasLive = takeWasLive();
         set({ ready: true, mockMode, engineKind: engine.kind });
         mirror();
+
+        if (wasLive) {
+          notice({
+            level: 'warning',
+            message:
+              'Your broadcast ended when this page reloaded. Nothing is going out now — tap GO LIVE when you are ready to start again.',
+          });
+        }
 
         for (const snap of orchestrator.listDestinations()) {
           const needsKey = platformStatus(snap.config.platform).method === 'key';

@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import type { ReactElement } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useLocation } from 'react-router';
 import { Icons, Logo, Toggle, VisuallyHidden } from '@livetap/ui';
 import { useAppStore } from '../state/store.js';
 import { MockBanner } from './MockBanner.js';
@@ -27,6 +28,17 @@ const NAV: readonly NavItem[] = [
 export function AppShell(): ReactElement {
   const mode = useAppStore((s) => s.mode);
   const setMode = useAppStore((s) => s.setMode);
+  const { pathname } = useLocation();
+
+  /*
+   * A router does not reset the scroll position on its own, so arriving at Studio from a
+   * scrolled onboarding screen landed 67px down the page with the demo banner already clipped,
+   * and every move between app screens inherited wherever the last one had been left. Each
+   * screen starts at its own top.
+   */
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   return (
     <div className="lt-shell">
@@ -77,7 +89,7 @@ export function AppShell(): ReactElement {
             Pro mode
           </Toggle>
           <VisuallyHidden>
-            Pro mode adds encoder, layer and diagnostic controls. Nothing is hidden.
+            Pro mode adds the controls LIVETAP normally decides for you, and diagnostics. Nothing is hidden.
           </VisuallyHidden>
         </div>
       </nav>

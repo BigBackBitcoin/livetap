@@ -187,6 +187,54 @@ body {
   }
 }
 
+/*
+ * The navigation has to stay on screen. `position: sticky` inside an auto-height grid row has
+ * no travel, so on a phone the bottom tab bar sat at document y=1535 of a 1923px page — never
+ * visible while Studio was in use — and the tablet top bar scrolled away entirely. Fixed, with
+ * a deterministic height that the sticky GO LIVE bar above it can offset against.
+ */
+@media (max-width: 1024.98px) {
+  .lt-shell {
+    --lt-navbar-h: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  .lt-shell__nav {
+    position: fixed;
+    inset-inline: 0;
+    z-index: 11;
+    block-size: var(--lt-navbar-h);
+  }
+}
+
+@media (max-width: 639.98px) {
+  .lt-shell__nav {
+    inset-block-end: 0;
+    inset-block-start: auto;
+  }
+
+  .lt-shell__main {
+    padding-block-end: calc(var(--lt-navbar-h) + var(--lt-space-4));
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1024.98px) {
+  .lt-shell {
+    /* Top bar: the GO LIVE bar sticks to the bottom of the window, with nothing under it. */
+    --lt-navbar-h: 0px;
+    --lt-topbar-h: 64px;
+  }
+
+  .lt-shell__nav {
+    inset-block-start: 0;
+    inset-block-end: auto;
+    block-size: 64px;
+  }
+
+  .lt-shell__main {
+    padding-block-start: calc(64px + var(--lt-space-4));
+  }
+}
+
 /* ------------------------------------------------------------------ screens */
 
 .lt-screen {
@@ -201,6 +249,23 @@ body {
   margin-inline: auto;
   gap: var(--lt-space-4);
   text-align: start;
+}
+
+/*
+ * The not-found page has no shell around it, so without this it rendered flush against the top
+ * edge of the window with no padding and no wordmark — the one screen a user reaches by
+ * accident, looking like something had crashed.
+ */
+.lt-notfound {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 100dvh;
+  padding: var(--lt-space-6);
+}
+
+.lt-notfound .lt-btn {
+  align-self: flex-start;
 }
 
 .lt-screen__head {
@@ -230,8 +295,28 @@ body {
   font-weight: var(--lt-weight-semibold);
 }
 
+/*
+ * The honesty banner has to be on screen at the moment it matters, and the moment it matters is
+ * the moment the user has scrolled down to GO LIVE. Before this it lived in the normal flow of
+ * the scrolling main column, so going live scrolled "LIVETAP is not broadcasting anywhere" off
+ * the top of the window (PRODUCT_SPEC §4.4: pinned directly under the navigation chrome).
+ */
 .lt-bannerslot {
+  position: sticky;
+  inset-block-start: var(--lt-topbar-h, 0px);
+  z-index: 9;
   margin-block-end: var(--lt-space-4);
+  padding-block: var(--lt-space-2);
+  background: var(--lt-bg-0);
+}
+
+/* The banner's own link is a control, not prose: give it a real target on touch. */
+@media (max-width: 1024.98px) {
+  .lt-bannerslot a {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 44px;
+  }
 }
 
 .lt-noticecards {
@@ -242,11 +327,39 @@ body {
 
 /* ------------------------------------------------------------------ studio */
 
+/*
+ * `notices` is a named area on purpose. `<NoticeCards/>` is the first child of this grid, and
+ * with no area of its own it was auto-placed into an implicit row *after* every named one —
+ * measured at 288px below the fold on a 1440x900 laptop. A camera-lost card the user cannot see
+ * is a silent failure, which is the one thing tenet 6 forbids.
+ */
+/*
+ * GO LIVE sits directly under the preview.
+ *
+ * The documented stack in PRODUCT_SPEC §5c put it last, below the Moment strip and the device
+ * cards, and the same section's first requirement is that Studio "answers the five Simple-mode
+ * questions on one screen without scrolling at any breakpoint". Measured, it did not: the button
+ * was 271px below the fold at 1440x900, ~90px at 834x1194 and ~590px at 375x812. Making
+ * everything fit needs the dock to become a Sheet on tablet and the device cards to lose half
+ * their height; putting the product's one dominant action immediately beneath what viewers see
+ * gets there today, and reads better — preview, then the button, then the things you adjust.
+ * DOM order matches, so the tab order and the screen-reader order agree with the picture.
+ */
 .lt-studio {
   display: grid;
-  gap: var(--lt-space-5);
-  grid-template-areas: 'stage' 'moments' 'devices' 'go' 'dock';
+  gap: var(--lt-space-4);
+  grid-template-areas: 'notices' 'stage' 'go' 'moments' 'devices' 'dock';
   min-inline-size: 0;
+}
+
+@media (min-width: 640px) {
+  .lt-studio {
+    gap: var(--lt-space-5);
+  }
+}
+
+.lt-studio > .lt-noticecards {
+  grid-area: notices;
 }
 
 .lt-studio__stage {
@@ -265,6 +378,7 @@ body {
   flex-direction: column;
   gap: var(--lt-space-3);
 }
+
 .lt-studio__dock {
   grid-area: dock;
   min-inline-size: 0;
@@ -273,14 +387,23 @@ body {
 @media (min-width: 1025px) {
   .lt-studio {
     grid-template-areas:
+      'notices notices'
       'stage dock'
+      'go dock'
       'moments dock'
-      'devices dock'
-      'go dock';
+      'devices dock';
     grid-template-columns: minmax(0, 1fr) 380px;
-    grid-template-rows: auto auto auto 1fr;
+    grid-template-rows: auto auto auto auto 1fr;
     align-items: start;
     column-gap: var(--lt-space-6);
+  }
+
+  /* The preview gives up height before the button gives up its place on the screen. */
+  .lt-studio__stage .lt-preview {
+    max-block-size: 46dvh;
+    inline-size: auto;
+    max-inline-size: 100%;
+    margin-inline: auto;
   }
 }
 
@@ -360,6 +483,22 @@ body {
   cursor: not-allowed;
 }
 
+/*
+ * 44px minimum on anything a finger has to hit. The stream-shape control is the one a vertical
+ * creator touches most, and it measured 46x32 / 44x32 at 375 and 834.
+ */
+@media (max-width: 1024.98px) {
+  .lt-segmented__item {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+    padding-inline: var(--lt-space-4);
+  }
+
+  .lt-toggle {
+    min-block-size: 44px;
+  }
+}
+
 .lt-momentstrip {
   display: flex;
   gap: var(--lt-space-3);
@@ -374,6 +513,18 @@ body {
 .lt-momentstrip > li {
   scroll-snap-align: start;
   flex: 0 0 auto;
+}
+
+/*
+ * Two of the six Moments were clipped mid-card at every width with nothing to say the strip
+ * scrolled — including Ending, the one a show needs last. A fade at the trailing edge is the
+ * affordance the spec's own layout implies ("horizontal scroll"), and it disappears once the
+ * strip has been scrolled to its end.
+ */
+.lt-momentstrip {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 40px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 40px), transparent 100%);
+  scroll-padding-inline: var(--lt-space-3);
 }
 
 .lt-devices {
@@ -465,6 +616,24 @@ body {
   font-weight: var(--lt-weight-semibold);
 }
 
+.lt-preflight__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lt-preflight__caret {
+  color: var(--lt-text-tertiary);
+  font-size: var(--lt-text-14);
+}
+
 .lt-preflight__items {
   flex-basis: 100%;
   margin: var(--lt-space-2) 0 0;
@@ -473,6 +642,35 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--lt-space-1);
+}
+
+.lt-golivebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+}
+
+/*
+ * PRODUCT_SPEC §5c, mobile: the button is "64px, full width minus space-4, pinned above nav".
+ * On a phone the column above it — banner, preview, stage bar, chips — is 640px before the
+ * button starts, so in flow it landed behind the tab bar. Pinned, it is the first thing a thumb
+ * finds, which is the whole point of the screen.
+ */
+@media (max-width: 639.98px) {
+  .lt-golivebar {
+    position: fixed;
+    inset-inline: var(--lt-space-4);
+    inset-block-end: calc(var(--lt-navbar-h) + var(--lt-space-2));
+    z-index: 9;
+    gap: var(--lt-space-2);
+    padding-block: var(--lt-space-2);
+    background: var(--lt-bg-0);
+  }
+
+  /* Room for the pinned bar, so the Moment strip and the dock can still be scrolled to. */
+  .lt-shell__main {
+    padding-block-end: calc(var(--lt-navbar-h) + 220px);
+  }
 }
 
 .lt-golive__subtitle {
@@ -486,6 +684,31 @@ body {
   background: var(--lt-info);
   color: var(--lt-bg-0);
   box-shadow: none;
+}
+
+/*
+ * The countdown, starting and stopping states own their own surface. The demo tint used to
+ * repaint all of them, so a demo countdown rendered the numeral in `--lt-accent-live` and the
+ * word Cancel in `--lt-text-secondary` on top of `--lt-info` — about 1.3:1, unreadable.
+ */
+.lt-golive--demo.lt-golive--countdown {
+  background: var(--lt-bg-2);
+  color: var(--lt-text-primary);
+  border-color: var(--lt-info);
+}
+
+.lt-golive--demo.lt-golive--countdown .lt-golive__count {
+  color: var(--lt-info);
+}
+
+.lt-golive--demo.lt-golive--countdown .lt-golive__cancel {
+  color: var(--lt-text-primary);
+}
+
+.lt-golive--demo.lt-golive--starting,
+.lt-golive--demo.lt-golive--stopping {
+  background: var(--lt-bg-3);
+  color: var(--lt-text-secondary);
 }
 
 .lt-endgrace {

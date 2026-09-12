@@ -19,27 +19,38 @@ export function Recordings(): ReactElement {
 
   return (
     <div className="lt-screen">
+      {/*
+        One statement of fact, derived from the switch. This screen used to say "Every stream is
+        recorded on this device unless you turn it off", "Recording is currently off" and
+        "LIVETAP records every stream so you always have your own copy" at the same time, two of
+        which were false — on the one screen whose entire job is to be believed.
+      */}
       <header className="lt-screen__head">
         <div>
           <h1>Recordings</h1>
-          <p>Every stream is recorded on this device unless you turn it off.</p>
+          <p>
+            {recordEveryStream
+              ? 'Every stream is recorded on this device until you turn it off.'
+              : 'Recording is off, so nothing is being kept on this device.'}
+          </p>
         </div>
       </header>
 
       {!recordEveryStream ? (
         <p className="lt-screen__note">
-          Recording is currently off.{' '}
           <Link className="lt-textlink" to="/app/settings">
-            Turn it on
-          </Link>
+            Record every stream
+          </Link>{' '}
+          keeps a copy of your next one.
         </p>
       ) : null}
 
       {recordings.length === 0 ? (
         <Card title="No recordings yet">
           <p>
-            LIVETAP records every stream so you always have your own copy. Your first recording will
-            appear here.
+            {recordEveryStream
+              ? 'Your first recording will appear here as soon as a stream ends.'
+              : 'Nothing has been recorded on this device. Turn recording on and your next stream is kept here.'}
           </p>
           <Link className="lt-btn lt-btn--primary lt-btn--md" to="/app/studio">
             Go to Studio

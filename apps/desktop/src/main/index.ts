@@ -252,7 +252,8 @@ function createWindow(): void {
     void window.loadURL(DEV_SERVER_ORIGIN);
     window.webContents.openDevTools({ mode: 'detach' });
   } else {
-    void window.loadFile(RENDERER_INDEX);
+    // The desktop app opens in the studio, not the marketing landing (hash routing under file://).
+    void window.loadFile(RENDERER_INDEX, { hash: '/app' });
   }
 
   window.webContents.on('did-finish-load', () => {

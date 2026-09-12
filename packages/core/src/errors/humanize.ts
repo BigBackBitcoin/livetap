@@ -105,10 +105,10 @@ const TEMPLATES: Record<ErrorCode, Template> = {
     recoverable: true,
   },
   ENCODER_FAILED: {
-    what: () => 'The video encoder stopped.',
-    why: () => 'The encoder crashed or is unavailable on this device.',
-    doing: () => 'LIVETAP is restarting the encoder with safe settings.',
-    youCan: () => 'If it happens again, switch to Software encoding in Pro settings.',
+    what: () => 'Your device could not keep making the picture.',
+    why: () => 'Something in the video pipeline stopped on this device.',
+    doing: () => 'LIVETAP is restarting it at a safer quality and keeping you live.',
+    youCan: () => 'Close other apps, or choose a lower quality in Settings.',
     recoverable: true,
   },
   ENCODER_OVERLOADED: {

@@ -34,8 +34,8 @@ export function Settings(): ReactElement {
           Pro mode
         </Toggle>
         <p className="lt-screen__note">
-          Adds encoder, arrangement and diagnostic controls. Nothing is hidden — everything you can
-          see now stays exactly where it is.
+          Adds the controls LIVETAP normally decides for you, the arrangement of each Moment, and
+          diagnostics. Nothing is hidden — everything you can see now stays exactly where it is.
         </p>
       </Card>
 

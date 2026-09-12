@@ -103,3 +103,39 @@ test('keyboard only: tab to GO LIVE and press Enter', async ({ page }) => {
     page.getByLabel('Where this stream is going').getByText('YouTube · Live'),
   ).toBeVisible({ timeout: 25_000 });
 });
+
+/**
+ * Ending a stream.
+ *
+ * This test exists because nothing tested it, and so LIVETAP shipped a build in which END was
+ * rendered `aria-disabled` the instant a broadcast started and did nothing when pressed: pre-flight
+ * necessarily reports red once destinations leave READY, and that red was wired to the button's
+ * `disabled` prop. A stream you cannot stop is worse than a stream you cannot start.
+ */
+test('a live stream can be ended, and the 5-second grace can be undone', async ({ page }) => {
+  await freshFirstRun(page);
+  const taps = new Taps(page);
+  await reachStudio(page, taps);
+
+  await page.getByRole('button', { name: 'Go live', exact: true }).click();
+  const chips = page.getByLabel('Where this stream is going');
+  await expect(chips.getByText('YouTube · Live')).toBeVisible({ timeout: 25_000 });
+
+  const end = page.getByRole('button', { name: /End broadcast/ });
+  await expect(end).toBeVisible();
+  await expect(end).toBeEnabled();
+  // While live the readiness row reports health, not "no destination is ready".
+  await expect(page.locator('.lt-preflight--red')).toHaveCount(0);
+
+  // Tap END: nothing is told to any platform yet, and the grace is undoable.
+  await end.click();
+  await expect(page.getByRole('button', { name: /UNDO/ })).toBeVisible();
+  await page.getByRole('button', { name: /UNDO/ }).click();
+  await expect(chips.getByText('YouTube · Live')).toBeVisible();
+
+  // Tap END again and let the grace elapse.
+  await page.getByRole('button', { name: /End broadcast/ }).click();
+  await expect(page.getByRole('button', { name: 'Go live', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+});

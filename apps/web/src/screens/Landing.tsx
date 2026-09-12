@@ -1,6 +1,17 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router';
 import { MultistreamDiagram } from '../components/MultistreamDiagram.js';
+import { envMockMode } from '../state/mockMode.js';
+
+/**
+ * Whether the build behind the button can actually broadcast.
+ *
+ * The page used to sell "Tap GO LIVE" and "This is the build you are one tap away from right
+ * now" with no hint that the hosted deployment is simulated — the first thing a visitor met was
+ * an over-claim, in a category whose incumbents' chief failing is exactly that. Read from the
+ * build-time flag so the marketing chunk still imports nothing from core, adapters or media.
+ */
+const DEMO_BUILD = envMockMode();
 
 /**
  * The marketing page.
@@ -28,7 +39,7 @@ export function Landing(): ReactElement {
         <nav aria-label="Sections">
           <a href="#lt-how">How it works</a>
           <a href="#lt-open">Open source</a>
-          <Link className="lt-btn lt-btn--live lt-btn--md" to="/app">
+          <Link className="lt-btn lt-btn--secondary lt-btn--md" to="/app">
             Open LIVETAP
           </Link>
         </nav>
@@ -57,14 +68,17 @@ export function Landing(): ReactElement {
             version of broadcasting software, but a shorter road to being on air.
           </p>
           <div className="lt-hero__actions">
-            <Link className="lt-btn lt-btn--live lt-btn--lg" to="/app">
+            <Link className="lt-btn lt-btn--primary lt-btn--lg" to="/app">
               Open LIVETAP
             </Link>
             <a className="lt-textlink" href="#lt-get">
               Desktop and mobile
             </a>
           </div>
-          <p className="lt-hero__note">Free. Open source. No account needed.</p>
+          <p className="lt-hero__note">
+            Free. Open source. No account needed.
+            {DEMO_BUILD ? ' This hosted build is a demo: every destination is simulated and nothing is broadcast anywhere.' : ''}
+          </p>
         </div>
       </section>
 
@@ -161,8 +175,13 @@ export function Landing(): ReactElement {
         <div className="lt-cols">
           <article className="lt-getcard">
             <h3>In your browser</h3>
-            <p>Nothing to install. This is the build you are one tap away from right now.</p>
-            <Link className="lt-btn lt-btn--live lt-btn--md" to="/app">
+            <p>
+              Nothing to install. This is the build you are one tap away from right now.
+              {DEMO_BUILD
+                ? ' It runs in demo mode, so you can walk the whole product end to end without broadcasting to anyone.'
+                : ''}
+            </p>
+            <Link className="lt-btn lt-btn--secondary lt-btn--md" to="/app">
               Open LIVETAP
             </Link>
           </article>

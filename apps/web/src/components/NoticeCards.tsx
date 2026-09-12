@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { ErrorCard } from '@livetap/ui';
+import { Banner, ErrorCard } from '@livetap/ui';
 import type { ErrorCardAction } from '@livetap/ui';
 import type { DestinationSnapshot, HumaneError } from '@livetap/core';
 import { useAppStore } from '../state/store.js';
@@ -17,7 +17,13 @@ export function NoticeCards(): ReactElement | null {
   const dismiss = useAppStore((s) => s.dismissNotice);
 
   const production = notices.filter((n) => n.destinationId === undefined && n.error);
-  if (production.length === 0) return null;
+  /*
+   * A production notice without a HumaneError used to render nowhere at all: `NoticeCards`
+   * required `error`, and the only other consumer is a screen-reader-only live region. So a
+   * sighted user was told nothing. Anything addressed to the whole production gets a Banner.
+   */
+  const plain = notices.filter((n) => n.destinationId === undefined && !n.error);
+  if (production.length === 0 && plain.length === 0) return null;
 
   return (
     <div className="lt-noticecards">
@@ -29,6 +35,19 @@ export function NoticeCards(): ReactElement | null {
           tone={notice.level === 'error' ? 'danger' : 'warning'}
           onDismiss={() => dismiss(notice.id)}
         />
+      ))}
+      {plain.map((notice) => (
+        <Banner
+          key={notice.id}
+          tone={notice.level === 'info' ? 'info' : 'warning'}
+          action={
+            <button type="button" className="lt-textlink" onClick={() => dismiss(notice.id)}>
+              Hide this message
+            </button>
+          }
+        >
+          {notice.message}
+        </Banner>
       ))}
     </div>
   );

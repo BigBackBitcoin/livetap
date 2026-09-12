@@ -25,6 +25,8 @@ export interface GoLiveButtonProps {
   disabled?: boolean;
   /** Why it is disabled, e.g. "Connect a destination first". Announced, not shown. */
   disabledReason?: string;
+  /** Every destination is a demo: the label must say so at any glance distance. */
+  demo?: boolean;
   className?: string;
 }
 
@@ -60,6 +62,7 @@ export function GoLiveButton({
   countdownSeconds = 3,
   disabled = false,
   disabledReason,
+  demo = false,
   className,
 }: GoLiveButtonProps): ReactElement {
   const [remaining, setRemaining] = useState(countdownSeconds);
@@ -142,7 +145,7 @@ export function GoLiveButton({
         aria-describedby={disabled && disabledReason ? reasonId : undefined}
         onClick={handleClick}
       >
-        {state === 'idle' ? <span className="lt-golive__label">GO LIVE</span> : null}
+        {state === 'idle' ? <span className="lt-golive__label">{demo ? 'GO LIVE (DEMO)' : 'GO LIVE'}</span> : null}
 
         {state === 'countdown' ? (
           <>
