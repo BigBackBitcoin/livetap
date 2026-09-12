@@ -42,7 +42,8 @@ The complete transitive list with license texts is generated at release time int
 
 ## Fonts and assets
 
-- Inter is referenced via the system font stack; no font files are bundled in the MVP.
+- Inter is referenced via the system font stack (no Inter files bundled).
+- Archivo (display face on the public page): SIL Open Font License 1.1, Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo). Bundled as a latin subset `apps/web/public/fonts/archivo-latin.woff2`; the license text ships alongside as `ARCHIVO-OFL.txt`.
 - No proprietary UI, branding, or assets from other products are used.
 
 ## Process controls
