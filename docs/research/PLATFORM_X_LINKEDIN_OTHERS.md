@@ -324,3 +324,49 @@ This is a **business blocker, not an engineering one**, and should be escalated 
 - Ship the **secondary ingest URL** as an optional advanced feature only — LinkedIn says it needs a separate time-synced encoder, which LIVETAP is unlikely to provide honestly at v1.
 
 ---
+
+## 3. Secondary destinations survey (2026-09-11, official docs; sub-team result)
+
+| Platform | Status 2026 | RTMP(S) | Ingest URL documented | Stream key via API | OAuth | Chat API | Gate |
+|---|---|---|---|---|---|---|---|
+| **Trovo** | **DEAD** — live streaming decommissioned 2026-06-30 (Tencent) | — | — | — | — | — | Do not build |
+| **DLive** | **DEAD** — closed 2026-04-27; dlive.tv title reads "DLive Service Discontinued" | — | — | (was) | (was) | (was GraphQL WSS) | Do not build |
+| **Vimeo Live** | Alive; UI live streaming needs Advanced/Premium/Enterprise+Events; **Live API needs Enterprise + allowlist** (contact support with client ID) | RTMPS/RTMP/SRT | not published (read from event Stream panel) | UNVERIFIED (note: `stream_key`/`stream_url` in docs are *simulcast-destination outputs*, not inbound ingest) | OAuth 2.0 | toggle only (`chat_enabled`), no message API | PARTNER_APPROVAL_REQUIRED |
+| **Dailymotion** | Alive; new API v2 (docs updated mid-2026) | RTMP + SRT: `rtmp://publish.dailymotion.com/publish-dm` key `x1y2z3?auth=...`; `srt://publish.dailymotion.com:1234?streamid=x1y2z3` | yes | `GET /v2/livestreams/{id}?fields=ingest.rtmp_url,ingest.srt_url` (scope `live.read`); create `POST /v2/profiles/{id}/livestreams` (`live.manage`) | OAuth 2.0 client_credentials, `POST https://oauth2.dailymotion.com/v2/token`, 30-min JWT | none | Paid plan feature (Account Manager enables live) |
+| **Rumble** | Alive; Rumble Studio public | RTMP; ingest URL from Live Dashboard only | no | read-only via personal Live Stream API URL (no OAuth; secret URL) | none | read-only polled JSON (last 50 chat + Rants) | Open |
+| **Bilibili** | Alive; `open-live.bilibili.com` is an in-room *interactive app* platform, **not** an ingest API | platform yes / API no | no | no | HMAC access_key/secret after onboarding review | danmaku WSS via `/v2/app/start` | Review + Chinese-only |
+| **Amazon IVS** | Infrastructure (no audience); any AWS account | RTMPS `:443`, RTMP (insecure opt-in), SRT `:9000` (`streamid=<key>&passphrase=`), **WHIP** `https://global.whip.live-video.net` (307 redirect; participant token as Bearer; H.264 track required) | yes | `CreateChannel` returns ingestEndpoint + streamKey; 1 key per channel | AWS IAM SigV4 | full 2-plane chat (`wss://edge.ivschat.<region>.amazonaws.com`) | Open (pay-per-use) |
+| **Amazon Live** | Creator program; no public API | — | — | — | — | — | Influencer Program only |
+
+Classification for LIVETAP: Dailymotion = OAUTH_API (paid gate) — candidate future adapter; Vimeo = PARTNER_APPROVAL_REQUIRED; Rumble = USER_ASSISTED (RTMP key from Studio); IVS = RTMP_DESTINATION/WHIP via custom destination; Trovo/DLive removed.
+
+## 4. WHIP / HEVC / AV1 / SRT ingest matrix (2026-09-11, sub-team result)
+
+Corrections to common assumptions (verified against OBS `services.json`, Twitch ingest list, RFC 9725):
+- Twitch **Enhanced Broadcasting is Enhanced RTMP multitrack, not WHIP**; Twitch has no documented WHIP or SRT ingest. HEVC 1440p GA for Partners/Affiliates (June 2026 announcement); AV1/4K beta-gated (secondary).
+- OBS added WHIP output in **30.0** (Nov 2023), HEVC-over-WHIP in 30.2, WebRTC simulcast in 32.1 (Mar 2026).
+- WHIP is **RFC 9725** (March 2025, Standards Track); no platform doc yet cites it.
+- YouTube docs contradict each other on RTMP codecs; OBS `services.json` declares YouTube RTMPS accepts h264/hevc/av1 (Enhanced RTMP). Developer protocol table (2026-09-04) lists only RTMP/RTMPS/HLS/DASH — **no WHIP, no SRT**.
+
+| Platform | WHIP | SRT | HEVC | AV1 | Notes |
+|---|---|---|---|---|---|
+| YouTube | No | No | Yes (E-RTMP; HLS too) | Yes (E-RTMP) | RTMP/RTMPS/HLS/DASH only |
+| Twitch | No (undocumented 2023 beta endpoint; do not build) | No | Yes (Enhanced Broadcasting) | Beta-gated | RTMP/RTMPS only per ingest list |
+| Kick | No | No | No ("X264/H.264 only") | No | `rtmp://ingest.kick.com/live`, 1080p60, ≤8000 kbps CBR |
+| Facebook/Instagram | No | No | No | No | RTMPS only, h264 |
+| TikTok | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | RTMP assumed (LIVE Studio / stream key) |
+| LinkedIn | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | RTMP(S) via partner tools |
+| Cloudflare Stream | Yes (VP8/VP9/H.264 only; WHIP↔WHEP only, no HLS from WHIP) | Yes (caller only) | No | No | GA, billing from 2026-10-15 |
+| Dolby OptiView (Millicast) | Yes (H.264/H.265/VP8/VP9/AV1) | Yes | Yes | Yes | Only verified WHIP target accepting HEVC/AV1 |
+| Amazon IVS real-time | Yes (H.264 required, ≤720p 8.5 Mbps) | (low-latency product: yes) | No | No | participant token Bearer |
+| Vimeo | No | Yes | No | No | RTMP/RTMPS/SRT |
+| Dailymotion | No | Yes | UNVERIFIED | UNVERIFIED | RTMP + SRT |
+
+Design consequence for LIVETAP: H.264 + AAC over RTMP/RTMPS is the only universal path in 2026; HEVC/AV1 are Pro-mode options gated per destination profile; WHIP is used only for the LIVETAP web→relay hop (MediaMTX) and for custom WHIP destinations; SRT is a custom-destination option.
+
+## 5. Custom destination spec (what LIVETAP must accept)
+
+- **RTMP/RTMPS**: `rtmp://host[:port]/app` or `rtmps://host[:port]/app` + stream key (key may contain `?query`, e.g. Dailymotion `x1y2z3?auth=...`). Publish URL = url + '/' + key. Refuse whitespace and shell metacharacters (`validateIngest` in packages/core). Auto-live semantics vary: Twitch/Kick/Facebook(LIVE_NOW) start when data arrives; YouTube needs explicit transition (adapter concern, not custom).
+- **SRT**: `srt://host:port` + optional `streamid` (opaque key like IVS `sk_...`, or structured like Millicast `name?t=token`), optional `passphrase` (AES), `latency` (ms, default 200 UNVERIFIED — no platform publishes a recommendation), mode caller only. Container MPEG-TS, keyframe 2 s, B-frames off for Millicast.
+- **WHIP**: `https://` endpoint + optional Bearer token; follow 307 redirects preserving headers (IVS); H.264 + Opus; expect 201 + Location; DELETE to end.
+- **Validation**: protocol-specific regex + metacharacter refusal; never log keys (redactIngest); test connection = short ffmpeg/WebRTC probe with a 5 s timeout, classified via classifyFailure into humane errors.
