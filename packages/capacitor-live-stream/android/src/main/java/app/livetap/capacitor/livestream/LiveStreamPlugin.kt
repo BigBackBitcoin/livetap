@@ -1,4 +1,4 @@
-package app.livetap.mobile
+package app.livetap.capacitor.livestream
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -18,7 +18,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * LiveStreamPlugin (Android) — the native half of apps/mobile/src/plugins/LiveStream.
+ * LiveStreamPlugin (Android) — the native half of @livetap/capacitor-live-stream.
  *
  * Library: RootEncoder 2.8.1 (Apache-2.0), `com.github.pedroSG94.RootEncoder:library`.
  * Verified API surface (read from the 2.8.1 tag on 2026-09-11):
@@ -39,8 +39,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * small (1 on a mid-range phone, 2 on a flagship) and why real multi-destination belongs behind a
  * relay in LIVETAP CLOUD (ADR-009) rather than in more of these.
  *
- * Registration: app-local plugins are not auto-discovered. MainActivity calls
- * `registerPlugin(LiveStreamPlugin.class)` before `super.onCreate()`.
+ * Registration: automatic, and that is the reason this file lives in a package rather than in
+ * apps/mobile. `npx cap sync android` scans every dependency whose package.json carries a
+ * `capacitor` block, finds the `@CapacitorPlugin(name = "LiveStream")` annotation below, and writes
+ * `{"pkg": "@livetap/capacitor-live-stream", "classpath": "app.livetap.capacitor.livestream.LiveStreamPlugin"}`
+ * into `apps/mobile/android/app/src/main/assets/capacitor.plugins.json`, which BridgeActivity loads.
+ * No `registerPlugin(...)` call in MainActivity, and nothing to re-add after a sync.
  *
  * VERIFICATION: UNVERIFIED — no Android SDK, no emulator, no device on the build host. Every
  * `TODO(device)` below marks a decision that can only be settled against real hardware.

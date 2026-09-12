@@ -42,7 +42,7 @@ import type {
   LiveStreamPlugin,
   StreamStateEvent,
   ThermalEvent,
-} from './plugins/LiveStream/definitions.js';
+} from '@livetap/capacitor-live-stream';
 
 export type MobilePlatform = 'ios' | 'android' | 'web';
 
@@ -275,7 +275,7 @@ export class MobileEngine implements MediaEngine {
   private async resolvePlugin(): Promise<LiveStreamPlugin> {
     if (this.options.plugin) return this.options.plugin;
     if (!this.plugin) {
-      const mod = await import('./plugins/LiveStream/index.js');
+      const mod = await import('@livetap/capacitor-live-stream');
       this.plugin = mod.LiveStream;
     }
     return this.plugin;

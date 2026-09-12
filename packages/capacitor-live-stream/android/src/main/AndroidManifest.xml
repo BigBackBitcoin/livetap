@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Library manifest for the LIVETAP LiveStream plugin.
+
+  Everything here is merged into apps/mobile's application manifest by the Android manifest merger.
+  That is a large part of the point of packaging the plugin: the foreground service that keeps a
+  broadcast alive now travels with the code that starts it, instead of being hand-copied into the
+  host app's manifest where it can drift out of step with the Kotlin.
+
+  ANDROID 14+ FOREGROUND SERVICE RULES ENCODED BELOW
+  - `foregroundServiceType` must match the runtime permissions actually held, or the platform throws
+    MissingForegroundServiceTypeException / SecurityException at startForeground().
+  - The same type set must also be declared in Play Console (Policy -> App content -> Foreground
+    service types) — docs/release/GOOGLE_PLAY_READINESS.md item G13.
+  - `camera` and `microphone` are while-in-use types: the service can only be started while the app
+    is in the foreground, which is why LiveStreamPlugin.startStream (the GO LIVE tap) is the only
+    caller of LiveForegroundService.startLive().
+  - `mediaProjection` is declared now because the screen-share build is one release away and adding
+    an FGS type later costs another Play review round. It is NOT used by the MVP code path:
+    startLive() passes camera|microphone unless a MediaProjection consent result is supplied.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Capture -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Publish -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Keep encoding and pushing while the screen is off or the user is in another app -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Android 13+: the live notification is the user's only handle on a running broadcast -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Features stay optional so the host app still installs on a device without a camera; the
+      plugin's capabilities() then reports camera:false honestly rather than the app refusing to
+      install.
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <application>
+        <service
+            android:name="app.livetap.capacitor.livestream.LiveForegroundService"
+            android:foregroundServiceType="camera|microphone|mediaProjection"
+            android:exported="false"
+            android:stopWithTask="true" />
+    </application>
+</manifest>

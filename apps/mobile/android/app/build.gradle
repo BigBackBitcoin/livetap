@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
-// Kotlin is added on top of Capacitor 7's Java-only template: LiveStreamPlugin and
-// LiveForegroundService are Kotlin, MainActivity stays Java.
-apply plugin: 'org.jetbrains.kotlin.android'
+// No Kotlin plugin here any more. LiveStreamPlugin and LiveForegroundService were the only Kotlin
+// in this module and they now live in packages/capacitor-live-stream, whose own android/build.gradle
+// applies 'org.jetbrains.kotlin.android'. MainActivity.java is all that is left, and it is Java.
 
 android {
     namespace "app.livetap.mobile"
@@ -35,12 +35,10 @@ android {
             applicationIdSuffix ""
         }
     }
-    kotlinOptions {
-        jvmTarget = '21'
-    }
     packagingOptions {
         resources {
-            // RootEncoder pulls in transitive modules that each ship their own license copies.
+            // RootEncoder (pulled in transitively through the :livetap-capacitor-live-stream
+            // module) brings modules that each ship their own license copies.
             excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE.md', 'META-INF/NOTICE.md']
         }
     }
@@ -56,17 +54,16 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
-    // core-ktx/core supplies ServiceCompat.startForeground(..., type) for Android 14+ FGS types.
     implementation "androidx.core:core:$androidxCoreVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
 
-    // RootEncoder 2.8.1 — Apache-2.0. RTMP/RTMPS/RTSP/SRT/UDP publisher with Camera2 + MediaCodec
-    // and built-in MediaProjection support. Verified 2026-09-11 against
-    // github.com/pedroSG94/RootEncoder (LICENSE.txt = Apache-2.0, latest release 2.8.1).
-    implementation "com.github.pedroSG94.RootEncoder:library:$rootEncoderVersion"
-    // extra-sources (BitmapSource / CameraXSource / UVC) is NOT included: the MVP captures the
-    // built-in camera only, and every extra source is extra attack surface and extra APK weight.
+    // No RootEncoder line here. The encoder is an implementation detail of the LiveStream plugin
+    // and is declared by packages/capacitor-live-stream/android/build.gradle; this module gets it on
+    // the runtime classpath through the generated
+    // `implementation project(':livetap-capacitor-live-stream')` in capacitor.build.gradle.
+    // `rootEncoderVersion` stays in variables.gradle because the plugin module reads it from
+    // rootProject.ext.
 
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

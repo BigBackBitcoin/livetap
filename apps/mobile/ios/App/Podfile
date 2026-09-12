@@ -23,6 +23,7 @@ def capacitor_pods
   pod 'CapacitorPreferences', :path => '../../../../node_modules/@capacitor/preferences'
   pod 'CapacitorSplashScreen', :path => '../../../../node_modules/@capacitor/splash-screen'
   pod 'CapacitorStatusBar', :path => '../../../../node_modules/@capacitor/status-bar'
+  pod 'LivetapCapacitorLiveStream', :path => '../../../../packages/capacitor-live-stream'
 end
 
 target 'App' do
@@ -30,6 +31,14 @@ target 'App' do
 
   # --------------------------------------------------------------------------------------------
   # HaishinKit — RTMP/SRT publisher for the LiveStream plugin.
+  #
+  # ALSO DECLARED BY THE PLUGIN PODSPEC, deliberately. Since the plugin moved into
+  # packages/capacitor-live-stream, LivetapCapacitorLiveStream.podspec carries
+  # `s.dependency 'HaishinKit', '~> 2.0.9'`, which is what makes the plugin self-contained —
+  # `pod 'LivetapCapacitorLiveStream'` (written into capacitor_pods above by `cap sync`) pulls the
+  # encoder in on its own. This app-level line is kept as an explicit, reviewable version pin in the
+  # place a release engineer looks first; CocoaPods resolves the two identical `~> 2.0.9`
+  # requirements to one pod. If they ever disagree, `pod install` fails loudly, which is the point.
   #
   # License: BSD-3-Clause ("New BSD" in the podspec). Verified 2026-09-11 by reading
   #   https://raw.githubusercontent.com/shogo4405/HaishinKit.swift/2.0.9/HaishinKit.podspec

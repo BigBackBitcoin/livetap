@@ -15,6 +15,12 @@ name: mobile
 # Those go in GitHub encrypted secrets when they exist, and a separate release workflow consumes
 # them. No secrets are referenced here.
 #
+# The native LiveStream code does NOT live in apps/mobile: it is the workspace package
+# packages/capacitor-live-stream (Swift under ios/Sources, Kotlin under android/src/main), which
+# `cap sync` discovers and wires into both native projects. The `packages/**` path filter below
+# already covers it, so no extra trigger is needed — but a change there is a change to the native
+# build, which is why that filter must stay.
+#
 # See docs/release/GOOGLE_PLAY_READINESS.md and docs/release/APP_STORE_READINESS.md.
 
 on:
@@ -94,6 +100,20 @@ jobs:
         working-directory: apps/mobile
         run: npx cap sync android
 
+      # Guards the regression that motivated packages/capacitor-live-stream: if the plugin package
+      # stops being discovered (a bad `exports` map, a dropped dependency, a renamed capacitor
+      # block), sync still succeeds and the APK still builds — it just silently has no LiveStream.
+      # Fail here instead, where the cause is obvious.
+      - name: Assert LiveStream plugin is registered
+        working-directory: apps/mobile
+        run: |
+          node -e "
+          const p=require('./android/app/src/main/assets/capacitor.plugins.json');
+          const hit=p.find(e=>e.pkg==='@livetap/capacitor-live-stream');
+          if(!hit) { console.error('capacitor.plugins.json:',JSON.stringify(p,null,2)); throw new Error('LiveStream plugin not registered for android'); }
+          console.log('registered:',hit.classpath);
+          "
+
       - name: Assemble debug APK
         working-directory: apps/mobile/android
         run: ./gradlew --no-daemon assembleDebug
@@ -133,6 +153,20 @@ jobs:
       - name: Capacitor sync (ios)
         working-directory: apps/mobile
         run: npx cap sync ios
+
+      # The iOS half of the same guard. `packageClassList` is the ONLY thing that makes an iOS
+      # Capacitor plugin reachable from JavaScript (CapacitorBridge.registerPlugins instantiates
+      # nothing else), and it is regenerated on every sync — so assert it rather than assume it.
+      - name: Assert LiveStream plugin is registered
+        working-directory: apps/mobile
+        run: |
+          node -e "
+          const c=require('./ios/App/App/capacitor.config.json');
+          if(!(c.packageClassList||[]).includes('LiveStreamPlugin')) { console.error('packageClassList:',c.packageClassList); throw new Error('LiveStreamPlugin missing from packageClassList'); }
+          const fs=require('fs'); const podfile=fs.readFileSync('./ios/App/Podfile','utf8');
+          if(!podfile.includes(\"pod 'LivetapCapacitorLiveStream'\")) throw new Error('Podfile is missing the LivetapCapacitorLiveStream pod');
+          console.log('LiveStreamPlugin in packageClassList and pod in Podfile');
+          "
 
       # CocoaPods is preinstalled on GitHub's macOS images. HaishinKit 2.0.9 is the newest version
       # published to CocoaPods trunk; 2.1+/2.2+ are Swift Package Manager only (see the note in

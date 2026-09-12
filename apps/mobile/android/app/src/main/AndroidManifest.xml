@@ -61,21 +61,19 @@
         </activity>
 
         <!--
-          The live broadcast service. Android 14+ requires a foregroundServiceType that matches the
-          runtime permission set, and the same types must be declared in Play Console
-          (Policy -> App content -> Foreground service types) — see
-          docs/release/GOOGLE_PLAY_READINESS.md item G13.
+          No <service> element for the live broadcast here on purpose.
 
-          `mediaProjection` is declared now because the screen-share build is one release away and
-          adding an FGS type later requires another Play Console review round. It is NOT used by
-          the MVP code path: LiveForegroundService.start() passes only camera|microphone unless a
-          MediaProjection consent result is supplied.
+          LiveForegroundService now lives in the @livetap/capacitor-live-stream package, and that
+          package's own library manifest
+          (packages/capacitor-live-stream/android/src/main/AndroidManifest.xml) declares it with
+          android:foregroundServiceType="camera|microphone|mediaProjection". The Android manifest
+          merger folds it into this application at build time, so the declaration cannot drift away
+          from the Kotlin that starts the service.
+
+          The Play Console obligation is unchanged: the same FGS type set must be declared under
+          Policy -> App content -> Foreground service types (docs/release/GOOGLE_PLAY_READINESS.md
+          item G13).
         -->
-        <service
-            android:name=".LiveForegroundService"
-            android:foregroundServiceType="camera|microphone|mediaProjection"
-            android:exported="false"
-            android:stopWithTask="true" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

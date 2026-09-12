@@ -11,5 +11,8 @@
   },
   "include": ["src", "capacitor.config.ts", "vitest.config.ts"],
   "exclude": ["ios", "android", "www", "dist", "node_modules"],
-  "references": [{ "path": "../../packages/core" }]
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/capacitor-live-stream" }
+  ]
 }

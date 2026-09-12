@@ -23,7 +23,7 @@ import type {
   StopStreamOptions,
   StreamStateEvent,
   ThermalEvent,
-} from './plugins/LiveStream/definitions.js';
+} from '@livetap/capacitor-live-stream';
 
 type Call = { method: string; args?: unknown };
 

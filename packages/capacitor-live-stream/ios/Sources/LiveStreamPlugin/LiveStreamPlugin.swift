@@ -6,9 +6,32 @@ import UIKit
 import VideoToolbox
 
 /**
- LiveStreamPlugin (iOS) — the native half of apps/mobile/src/plugins/LiveStream.
+ LiveStreamPlugin (iOS) — the native half of @livetap/capacitor-live-stream.
 
- Library: HaishinKit.swift 2.0.9 (BSD-3-Clause), installed via CocoaPods.
+ REGISTRATION, AND WHY THIS FILE MOVED OUT OF apps/mobile
+ `CapacitorBridge.registerPlugins()` (node_modules/@capacitor/ios/Capacitor/Capacitor/CapacitorBridge.swift)
+ instantiates ONLY the class names listed under `packageClassList` in the bundled
+ capacitor.config.json, and `registerPluginType(_:)` returns immediately while `autoRegisterPlugins`
+ is true — so an app-local Swift plugin is simply unreachable from JavaScript, and `cap sync`
+ regenerates that list from node_modules so a hand-added entry does not survive.
+
+ The fix is structural, not a workaround: this file now ships inside a Capacitor plugin PACKAGE
+ (package.json with a `capacitor: { ios: { src: 'ios' } }` block). `npx cap sync ios` reads every
+ .swift/.m file under that path, matches `@objc(...)` — the annotation on the class below — and
+ writes the class name into `packageClassList` itself
+ (node_modules/@capacitor/cli/dist/util/iosplugin.js, `findPluginClasses`). It also writes
+ `pod 'LivetapCapacitorLiveStream', :path => ...` into the Podfile, so the pod resolves from the
+ workspace. Nothing has to be re-applied after a sync.
+
+ There is deliberately NO LiveStreamPlugin.m. Capacitor 7's ObjC `CAP_PLUGIN(...)` macro expands to
+ a category that implements `identifier`/`jsName`/`pluginMethods` — the same three members the Swift
+ class below implements via CAPBridgedPlugin. Declaring both makes the ObjC category silently win at
+ runtime, makes clang warn, and throws away the compile-time safety of the Swift method list. One
+ source of truth, in Swift. (Verified shape: node_modules/@capacitor/haptics@7.0.5 ships
+ ios/Sources/HapticsPlugin/HapticsPlugin.swift with no .m file at all.)
+
+ Library: HaishinKit.swift 2.0.9 (BSD-3-Clause), declared as a dependency of
+ LivetapCapacitorLiveStream.podspec and installed via CocoaPods.
  Verified API surface (read from the 2.0.9 tag on 2026-09-11):
 
    public actor RTMPConnection: NetworkConnection

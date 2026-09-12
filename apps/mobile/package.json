@@ -29,6 +29,7 @@
     "@capacitor/preferences": "^7.0.4",
     "@capacitor/splash-screen": "^7.0.5",
     "@capacitor/status-bar": "^7.0.6",
+    "@livetap/capacitor-live-stream": "0.1.0",
     "@livetap/core": "0.1.0"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-package app.livetap.mobile
+package app.livetap.capacitor.livestream
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -26,8 +26,10 @@ import androidx.core.app.ServiceCompat
  * the background behind an FGS; iOS cannot without an Apple-gated entitlement.
  *
  * ANDROID 14+ RULES THIS CLASS ENCODES
- * - The manifest declares `foregroundServiceType="camera|microphone|mediaProjection"` and the
- *   same set must also be declared in Play Console (Policy -> App content).
+ * - This module's own `android/src/main/AndroidManifest.xml` declares the service with
+ *   `foregroundServiceType="camera|microphone|mediaProjection"` and is merged into the host app's
+ *   manifest by the manifest merger. The same set must also be declared in Play Console
+ *   (Policy -> App content).
  * - `ServiceCompat.startForeground(..., type)` must be called with the type bitmask that matches
  *   the permissions actually held, or the platform throws
  *   `MissingForegroundServiceTypeException` / `SecurityException`.
@@ -131,15 +133,21 @@ class LiveForegroundService : Service() {
     }
 
     private fun buildNotification(title: String, detail: String): Notification {
-        val open = Intent(this, MainActivity::class.java).apply {
+        // The tap target is resolved from the package manager rather than named as a class. A
+        // library module cannot reference the host app's MainActivity, and hard-coding one would
+        // make this plugin usable by exactly one app. `getLaunchIntentForPackage` returns the
+        // activity the launcher itself would start, which is the same thing the user expects.
+        val open = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
-        val openPending = PendingIntent.getActivity(
-            this,
-            0,
-            open,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val openPending = open?.let {
+            PendingIntent.getActivity(
+                this,
+                0,
+                it,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
         val stop = Intent(this, LiveForegroundService::class.java).setAction(ACTION_STOP)
         val stopPending = PendingIntent.getService(
             this,
@@ -152,7 +160,7 @@ class LiveForegroundService : Service() {
             .setContentTitle(title)
             .setContentText(detail)
             .setSmallIcon(android.R.drawable.presence_video_online)
-            .setContentIntent(openPending)
+            .apply { openPending?.let { setContentIntent(it) } }
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "End broadcast", stopPending)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -169,7 +177,7 @@ class LiveForegroundService : Service() {
         /** 6 hours. A broadcast longer than this has to re-acquire; the lock is not open-ended. */
         private const val MAX_BROADCAST_MS = 6L * 60L * 60L * 1000L
 
-        const val ACTION_STOP = "app.livetap.mobile.action.STOP_BROADCAST"
+        const val ACTION_STOP = "app.livetap.capacitor.livestream.action.STOP_BROADCAST"
         const val EXTRA_WITH_SCREEN = "withScreen"
         const val EXTRA_TITLE = "title"
         const val EXTRA_DETAIL = "detail"

@@ -5,6 +5,7 @@
     { "path": "packages/adapters" },
     { "path": "packages/media" },
     { "path": "packages/ui" },
+    { "path": "packages/capacitor-live-stream" },
     { "path": "apps/web" },
     { "path": "apps/desktop" },
     { "path": "apps/mobile" }

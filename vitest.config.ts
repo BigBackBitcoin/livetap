@@ -7,6 +7,7 @@ export default defineConfig({
       'packages/adapters',
       'packages/media',
       'packages/ui',
+      'packages/capacitor-live-stream',
       'apps/web',
       'apps/desktop',
       'apps/mobile',

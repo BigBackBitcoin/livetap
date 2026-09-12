@@ -1,6 +1,8 @@
 # LIVETAP Mobile Architecture
 
-Scope: `apps/mobile` — the iOS and Android apps. Written 2026-09-11 on a Windows Server 2022 host
+Scope: `apps/mobile` — the iOS and Android apps — plus `packages/capacitor-live-stream`, the
+Capacitor plugin package that carries the native streaming code (§3). Written 2026-09-11 on a
+Windows Server 2022 host
 with Node 20.11, **no Java/Android SDK and no Xcode**. Every claim about native behaviour in this
 document is therefore either read from a primary source (linked) or marked `UNVERIFIED`. Nothing
 native has been compiled or run here.
@@ -16,7 +18,8 @@ Status vocabulary: `PASS` | `FAIL` | `SIMULATED` | `UNVERIFIED` | `BLOCKED_EXTER
 | `npm install` (repo root, once) | **PASS** | Added 65 packages. `EBADENGINE` warnings for transitive npm-internal packages wanting Node ≥ 22; no Capacitor package warned. |
 | `npx cap add android` | **PASS** | Full Gradle project generated in `apps/mobile/android`, 7 Capacitor plugins detected, Gradle sync step ran. |
 | `npx cap add ios` | **PASS (with two expected skips)** | Full Xcode project generated in `apps/mobile/ios` — `App.xcodeproj/project.pbxproj`, `App.xcworkspace`, `AppDelegate.swift`, `Info.plist`, `Podfile`, asset catalogues, storyboards. Capacitor printed `Skipping pod install because CocoaPods is not installed` and `Unable to find "xcodebuild". Skipping xcodebuild clean step...`. |
-| `npx cap sync` (after all manual edits) | **PASS** | Re-verified by md5: `variables.gradle`, `app/build.gradle`, `AndroidManifest.xml`, `Info.plist`, `Podfile` and root `build.gradle` are **all preserved**. Only `capacitor.config.json`, `capacitor.plugins.json`, `capacitor.build.gradle` and the copied web assets are regenerated. |
+| `npx cap sync` (after all manual edits) | **PASS** | Re-verified by md5: `variables.gradle`, `app/build.gradle`, `AndroidManifest.xml`, `Info.plist`, `Podfile` and root `build.gradle` are **all preserved**. Only `capacitor.config.json`, `capacitor.plugins.json`, `capacitor.build.gradle`, `capacitor.settings.gradle`, the Podfile's `def capacitor_pods … end` block, and the copied web assets are regenerated. |
+| `npx cap sync` (after extracting `packages/capacitor-live-stream`) | **PASS** | `Found 8 Capacitor plugins` for both platforms, including `@livetap/capacitor-live-stream@0.1.0`; `packageClassList` gained `LiveStreamPlugin`; the Podfile gained `pod 'LivetapCapacitorLiveStream'`. `pod install` and the `xcodebuild` clean step were skipped — expected on Windows. See §3. |
 | `./gradlew assembleDebug` | **BLOCKED_EXTERNAL_DEPENDENCY** | `java: command not found`. No JDK and no Android SDK on the host. Runs in CI (`.github/workflows/mobile.yml`, `android` job). |
 | `pod install` + `xcodebuild` | **BLOCKED_EXTERNAL_DEPENDENCY** | Requires macOS. Runs in CI (`ios` job) on `macos-latest`. |
 
@@ -86,7 +89,7 @@ build lands** — one line in `apps/mobile/capacitor.config.ts`. CI already buil
 
 ## 3. The native plugin contract
 
-`apps/mobile/src/plugins/LiveStream/definitions.ts` defines `LiveStreamPlugin`. It is the **output
+`packages/capacitor-live-stream/src/definitions.ts` defines `LiveStreamPlugin`. It is the **output
 side** of `packages/core`'s `MediaEngine`: the native layer owns capture, encode and the RTMP
 socket; the WebView owns only the UI.
 
@@ -146,7 +149,7 @@ that thermally cannot work.
 | Mute | detach audio (`attachAudio(nil)`) | `MicrophoneSource.mute()` / `unMute()` |
 | Health | `RTMPStream.status` stream | `ConnectChecker.onNewBitrate` + `StreamBaseClient.getDroppedVideoFrames()` |
 | Attribution obligation | copyright notice + no-endorsement clause | license text + NOTICE if present |
-| Files | `ios/App/App/LiveStreamPlugin.swift`, `.m` | `android/app/src/main/java/app/livetap/mobile/LiveStreamPlugin.kt` |
+| Files | `packages/capacitor-live-stream/ios/Sources/LiveStreamPlugin/LiveStreamPlugin.swift` | `packages/capacitor-live-stream/android/src/main/java/app/livetap/capacitor/livestream/{LiveStreamPlugin,LiveForegroundService}.kt` |
 
 Both licenses are permissive and fine for an MIT product and for both stores. Obligations recorded
 in `docs/legal/THIRD_PARTY_LICENSES.md`.
@@ -155,35 +158,97 @@ Every place a decision needs hardware carries a `TODO(device)` comment rather th
 three biggest are: the preview surface wiring (an `MTHKView` / `OpenGlView` behind a transparent
 WebView), HaishinKit's recorder API, and the real value of `maxSimultaneousStreams`.
 
-### Plugin registration — a real gap, documented
+### Plugin packaging — why LiveStream is a package, not app-local code
 
-| Platform | Mechanism | Status |
-|---|---|---|
-| Android | `MainActivity.onCreate` calls `registerPlugin(LiveStreamPlugin.class)` **before** `super.onCreate()`. Verified against `BridgeActivity.java` (`initialPlugins` is consumed in `onCreate`). Additive; survives `cap sync`. | **PASS (by construction)** |
-| iOS | **Broken for an app-local plugin.** `CapacitorBridge.registerPlugins()` (`node_modules/@capacitor/ios/Capacitor/Capacitor/CapacitorBridge.swift:305`) instantiates only the class names in `packageClassList` of the bundled `capacitor.config.json`, and `registerPluginType(_:)` returns immediately while `autoRegisterPlugins` is true. `cap sync` regenerates that file from `node_modules`, so a hand-added entry does not survive. Confirmed: after `cap sync`, `packageClassList` contains the 7 npm plugins and **not** `LiveStreamPlugin`. | **FAIL (known, with a fix)** |
+The plugin used to live inside `apps/mobile`: TypeScript in `src/plugins/LiveStream/`, Swift in
+`ios/App/App/`, Kotlin in `android/app/src/main/java/app/livetap/mobile/`. That arrangement worked
+on Android and was **silently broken on iOS**, which is the whole reason for the move:
 
-**Fix, in order of preference:**
+- `CapacitorBridge.registerPlugins()`
+  (`node_modules/@capacitor/ios/Capacitor/Capacitor/CapacitorBridge.swift:305`) instantiates only
+  the class names listed in `packageClassList` of the bundled `capacitor.config.json`, and
+  `registerPluginType(_:)` returns immediately while `autoRegisterPlugins` is true. An app-local
+  Swift plugin is therefore unreachable from JavaScript no matter how correct the Swift is.
+- `cap sync` regenerates `packageClassList` from `node_modules`, so a hand-added entry does not
+  survive a sync — the stopgap was a foot-gun, not a fix.
+- Android's manual `registerPlugin(LiveStreamPlugin.class)` in `MainActivity.onCreate` did work,
+  but it was a second, divergent registration mechanism for the same plugin.
 
-1. **Extract the plugin into its own local package** — `packages/capacitor-live-stream` via
-   `npm init @capacitor/plugin`, depended on by `apps/mobile`. `cap sync` then writes
-   `LiveStreamPlugin` into `packageClassList` itself, the pod resolves from the workspace, and the
-   plugin can ship its own podspec and `PrivacyInfo.xcprivacy`. This is the right end state and
-   should happen before any device testing.
-2. Stopgap: append `"LiveStreamPlugin"` to `packageClassList` in
-   `ios/App/App/capacitor.config.json` after every `cap sync`.
+**The fix is structural.** `packages/capacitor-live-stream` (`@livetap/capacitor-live-stream`) is a
+real Capacitor plugin package, listed in `apps/mobile/package.json` dependencies and symlinked by
+npm workspaces. `cap sync` discovers it on **both** platforms because its `package.json` carries:
 
-The Swift class conforms to `CAPBridgedPlugin` (the Capacitor 7 pattern — verified against
-`@capacitor/haptics@7.0.5`, which uses exactly this shape with no `.m` file). `LiveStreamPlugin.m`
-exists and carries the legacy `CAP_PLUGIN` macro **commented out**: enabling both would make an
-ObjC category re-implement `identifier`/`jsName`/`pluginMethods` that the Swift class already
-implements, which clang warns about and which silently discards the compile-time safety of the
-Swift method list. One source of truth, in Swift.
+```json
+"capacitor": { "ios": { "src": "ios" }, "android": { "src": "android" } }
+```
+
+| Layout | What `cap sync` does with it |
+|---|---|
+| `src/{definitions,web,index}.ts` | Nothing — the TS is consumed by bundlers, not by the CLI. |
+| `ios/Sources/LiveStreamPlugin/LiveStreamPlugin.swift` | Scanned for `@objc(...)` by `findPluginClasses` (`@capacitor/cli/dist/util/iosplugin.js`); `LiveStreamPlugin` is written into `packageClassList`. |
+| `LivetapCapacitorLiveStream.podspec` | `pod 'LivetapCapacitorLiveStream', :path => '../../../../packages/capacitor-live-stream'` is written into the Podfile's `capacitor_pods` block. |
+| `Package.swift` | Unused today (CocoaPods project); present so the package is already SPM-shaped for the Capacitor 8 migration. |
+| `android/build.gradle` + `android/src/main/java/app/livetap/capacitor/livestream/*.kt` | `include ':livetap-capacitor-live-stream'` in `capacitor.settings.gradle`, `implementation project(':livetap-capacitor-live-stream')` in `app/capacitor.build.gradle`, and the `@CapacitorPlugin(name = "LiveStream")` classpath in `capacitor.plugins.json`. |
+| `android/src/main/AndroidManifest.xml` | Merged into the app manifest by the manifest merger — this is where `LiveForegroundService` and its `foregroundServiceType="camera\|microphone\|mediaProjection"` now live. |
+
+**Observed `cap sync` output** (Windows host, 2026-09-11), which is the evidence for the status
+change in §9:
+
+```
+[info] Found 8 Capacitor plugins for android:
+       … @livetap/capacitor-live-stream@0.1.0
+[info] Found 8 Capacitor plugins for ios:
+       … @livetap/capacitor-live-stream@0.1.0
+```
+
+and `ios/App/App/capacitor.config.json` now ends `"StatusBarPlugin", "LiveStreamPlugin"`.
+`pod install` and the `xcodebuild` clean step are skipped on Windows (`Skipping pod install because
+CocoaPods is not installed`), which is expected and unrelated.
+
+**Three naming rules that are not free, recorded so nobody "tidies" them:**
+
+1. **The pod is `LivetapCapacitorLiveStream`, not `LivetapLiveStream`.** `cap sync` writes the
+   Podfile line itself using `fixName()` (`@capacitor/cli/dist/plugin.js`): drop `@`, turn `/` and
+   `-` into `_`, upper-case each `_x`, upper-case the first letter. `@livetap/capacitor-live-stream`
+   → `LivetapCapacitorLiveStream`, and CocoaPods requires the podspec at that path to declare
+   exactly that `s.name`. The podspec filename follows from the npm package name; it is not a
+   preference.
+2. **The Gradle module is `:livetap-capacitor-live-stream`** — `getGradlePackageName()` drops `@`
+   and turns `/` into `-`.
+3. **`package.json` must expose `"./package.json"` in its `exports` map.** The CLI resolves the
+   plugin with `require.resolve('<pkg>/package.json')`; an `exports` map without that subpath throws
+   `ERR_PACKAGE_PATH_NOT_EXPORTED`, and `resolvePlugin` swallows the error and returns `null` — the
+   plugin simply vanishes from the sync output with no error at all. The other `@livetap/*` packages
+   do not need this because nothing resolves *their* package.json by specifier.
+
+**Android no longer registers anything by hand.** `MainActivity.java` is back to an empty
+`BridgeActivity` subclass; the `registerPlugin(...)` call is gone, because the generated
+`capacitor.plugins.json` now carries
+`{"pkg": "@livetap/capacitor-live-stream", "classpath": "app.livetap.capacitor.livestream.LiveStreamPlugin"}`.
+One mechanism, both platforms.
+
+**There is no `LiveStreamPlugin.m`, and no `PBXBuildFile` entries for the plugin in
+`project.pbxproj`.** The Swift class conforms to `CAPBridgedPlugin` (the Capacitor 7 pattern —
+verified against `@capacitor/haptics@7.0.5`, which ships `ios/Sources/HapticsPlugin/*.swift` with no
+`.m` file). Declaring the legacy ObjC `CAP_PLUGIN(...)` macro *as well* would make a category
+re-implement `identifier`/`jsName`/`pluginMethods` that the Swift class already implements — clang
+warns, the category silently wins at runtime, and the compile-time safety of the Swift method list
+is thrown away. One source of truth, in Swift. The four hand-added pbxproj entries were removed
+with the files; the project now has 42 object ids, each defined exactly once, no dangling
+references and balanced delimiters.
+
+**`LiveForegroundService` moved with the plugin** and no longer names the host app's
+`MainActivity`: a library module cannot reference it, and hard-coding one activity would make the
+plugin usable by exactly one app. The notification's tap target is resolved at runtime with
+`packageManager.getLaunchIntentForPackage(packageName)` — the same activity the launcher would
+start.
 
 ### `MobileEngine`
 
 `apps/mobile/src/MobileEngine.ts` implements core's `MediaEngine` with `kind: 'native'` on top of
-the plugin. It is the only mobile code with unit tests (22, against a fake plugin — the native side
-underneath is `UNVERIFIED`).
+the plugin, importing the contract from `@livetap/capacitor-live-stream`. It carries 22 unit tests
+against a fake plugin; the package's web fallback carries 4 more. Those 26 are the whole of the
+mobile test surface, and the native side underneath them is still `UNVERIFIED`.
 
 What it deliberately refuses rather than fakes:
 
@@ -397,18 +462,21 @@ Everything native is `UNVERIFIED` on this host. That is the whole point of this 
 | Item | Status | Evidence / what would change it |
 |---|---|---|
 | `apps/mobile` TypeScript typechecks | **PASS** | `npx tsc -p apps/mobile/tsconfig.json --noEmit` — clean. |
+| `packages/capacitor-live-stream` TypeScript typechecks | **PASS** | `npx tsc -p packages/capacitor-live-stream/tsconfig.json --noEmit` — clean. |
 | `MobileEngine` event mapping | **PASS** | 22 vitest tests against a fake plugin (`npx vitest run --project mobile`). |
-| ESLint | **PASS** | `npx eslint apps/mobile` — clean. `ios/` and `android/` are ignored in `eslint.config.mjs`. |
+| LiveStream web fallback refuses honestly | **PASS** | 4 vitest tests (`npx vitest run --project capacitor-live-stream`): every method throws `LiveStreamNativeOnlyError` naming itself, `capabilities()` reports `UNAVAILABLE` with every boolean false, no stream key in the error text, `addListener` still resolves. |
+| ESLint | **PASS** | `npx eslint apps/mobile packages/capacitor-live-stream` — clean. `apps/mobile/ios/` and `apps/mobile/android/` are ignored in `eslint.config.mjs`; the plugin package's own `ios/`+`android/` hold no JS/TS. |
 | Android Gradle project generated | **PASS** | `cap add android` output; files on disk. |
-| Xcode project generated | **PASS** | `cap add ios` output; `App.xcodeproj/project.pbxproj` present and structurally valid (46 object ids, all defined exactly once, balanced delimiters). |
-| `cap sync` preserves manual native edits | **PASS** | md5 comparison before/after, 6 files. |
+| Xcode project generated | **PASS** | `cap add ios` output; `App.xcodeproj/project.pbxproj` present and structurally valid (**42** object ids after the plugin files moved out, all defined exactly once, no dangling references, balanced delimiters). |
+| `cap sync` preserves manual native edits | **PASS** | md5 comparison before/after, 6 files. Re-confirmed after the plugin extraction: the hand-written `target 'App'` block of the Podfile (including the HaishinKit pin) survives, because the CLI only rewrites the `def capacitor_pods … end` block. |
 | Manifest / Info.plist / privacy manifest are well-formed XML | **PASS** | Parsed with an XML parser. |
 | `pod install` | **BLOCKED_EXTERNAL_DEPENDENCY** | Needs macOS. CI `ios` job. |
 | `xcodebuild` (simulator, unsigned) | **UNVERIFIED** | Never run. CI `ios` job is the first test. |
 | `./gradlew assembleDebug` | **UNVERIFIED** | `java: command not found`. CI `android` job is the first test. |
 | AGP 8.13 / Gradle 8.14.3 / Kotlin 2.2.20 on a Capacitor 7 template | **UNVERIFIED** | Highest-risk change in this deliverable. |
 | HaishinKit 2.0.9 compiles under Xcode 26 | **UNVERIFIED** | 2.2.5's changelog implies ≤ 2.2.4 had Xcode 26.4 problems. Watch the CI `ios` job. |
-| iOS plugin registration | **FAIL (known)** | `packageClassList` does not include `LiveStreamPlugin`. Fix in §3. |
+| Plugin registration, **both** platforms | **PASS (by structure)** | `npx cap sync` reports `Found 8 Capacitor plugins` for android *and* ios, including `@livetap/capacitor-live-stream@0.1.0`. `ios/App/App/capacitor.config.json` `packageClassList` now contains `LiveStreamPlugin`; the Podfile contains `pod 'LivetapCapacitorLiveStream'`; `capacitor.plugins.json` contains `app.livetap.capacitor.livestream.LiveStreamPlugin`. Idempotent — re-running sync reproduces all of it. This says the plugin is **wired**, not that it **works**: the row below is still the gate. |
+| Plugin compiles and answers a JS call | **BLOCKED_EXTERNAL_DEPENDENCY** | Needs `pod install` + `xcodebuild` on macOS and `./gradlew assembleDebug` with a JDK/Android SDK. Both are CI jobs that have never run. |
 | Camera capture, RTMP push, reconnect | **UNVERIFIED** | Needs a physical device and an ingest server. A simulator cannot test camera or cellular. |
 | Background audio continuation | **UNVERIFIED** | Declaration is written; behaviour needs a device. |
 | Thermal step-down thresholds | **UNVERIFIED** | Needs a device that gets hot. |
@@ -423,7 +491,9 @@ Everything native is `UNVERIFIED` on this host. That is the whole point of this 
 
 1. **Install Node 22 LTS** on the build host → Capacitor 8 + SPM + HaishinKit 2.2.x. Fixes the
    CocoaPods version cap, the Xcode 26 risk and the manual SDK overrides at once.
-2. **Extract `packages/capacitor-live-stream`** → fixes iOS plugin registration properly.
+2. ~~Extract `packages/capacitor-live-stream`~~ — **done** (2026-09-11). iOS registration is now
+   `PASS (by structure)`; see §3. What it cannot do is prove the native code compiles, which is
+   item 3.
 3. Run CI once and treat the AGP/Gradle/Kotlin bump as the prime suspect for the first red build.
 4. Switch `webDir` to `../web/dist` when the web build exists.
 5. Install and verify `@aparajita/capacitor-secure-storage@^7.1.6`; move tokens off Preferences.

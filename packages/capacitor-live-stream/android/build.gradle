@@ -1,0 +1,107 @@
+// Gradle module for the LIVETAP LiveStream Capacitor plugin.
+//
+// `npx cap sync android` includes this directory as a Gradle subproject of apps/mobile/android:
+//   apps/mobile/android/capacitor.settings.gradle  ->  include ':livetap-capacitor-live-stream'
+//   apps/mobile/android/app/capacitor.build.gradle ->  implementation project(':livetap-capacitor-live-stream')
+// Both of those files are generated, so nothing here is hand-wired into the app.
+//
+// The version properties below carry their own fallbacks so the module still configures if it is
+// ever built outside apps/mobile, but inside the app they resolve from
+// apps/mobile/android/variables.gradle (compileSdk/targetSdk 36, minSdk 26, rootEncoder 2.8.1).
+ext {
+    junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
+    androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.0'
+    // 1.12+ is required for ServiceCompat.startForeground(..., foregroundServiceType), which
+    // LiveForegroundService needs on Android 14+.
+    androidxCoreVersion = project.hasProperty('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.15.0'
+    androidxJunitVersion = project.hasProperty('androidxJunitVersion') ? rootProject.ext.androidxJunitVersion : '1.2.1'
+    androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.6.1'
+    // RootEncoder 2.8.1 — Apache-2.0, distributed through JitPack. Verified 2026-09-11 against
+    // github.com/pedroSG94/RootEncoder (LICENSE.txt = Apache-2.0, latest release 2.8.1).
+    // Attribution obligations are recorded in docs/legal/THIRD_PARTY_LICENSES.md.
+    rootEncoderVersion = project.hasProperty('rootEncoderVersion') ? rootProject.ext.rootEncoderVersion : '2.8.1'
+}
+
+buildscript {
+    ext.kotlin_version = project.hasProperty('kotlin_version') ? rootProject.ext.kotlin_version : '2.2.20'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Must stay in step with apps/mobile/android/build.gradle: AGP 8.13.0 + Gradle 8.14.3 is
+        // the combination validated against compileSdk 36.
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: 'com.android.library'
+// Both sources in this module are Kotlin. Capacitor's Java-only template does not apply the Kotlin
+// plugin for us, so the module applies it itself rather than depending on the host app doing it.
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace "app.livetap.capacitor.livestream"
+    compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+    defaultConfig {
+        // minSdk 26: RootEncoder's Camera2 + MediaCodec surface-input path behaves predictably from
+        // 26, and notification channels (which the live FGS notification needs) are mandatory there.
+        minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 26
+        targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        release {
+            // Left off until a device-tested ProGuard configuration exists for RootEncoder's
+            // MediaCodec/JNI paths. Turning it on untested is a classic way to ship a release build
+            // that crashes only on real hardware.
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    lintOptions {
+        abortOnError false
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+    packagingOptions {
+        resources {
+            // RootEncoder pulls in transitive modules that each ship their own licence copies.
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE.md', 'META-INF/NOTICE.md']
+        }
+    }
+    publishing {
+        singleVariant("release")
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+    // RootEncoder (com.github.pedroSG94.RootEncoder) is published through JitPack only.
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation project(':capacitor-android')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    // Supplies ServiceCompat.startForeground(..., type) and NotificationCompat.
+    implementation "androidx.core:core:$androidxCoreVersion"
+    // `library` only. extra-sources (BitmapSource / CameraXSource / UVC) is deliberately excluded:
+    // the MVP captures the built-in camera, and every extra source is extra APK weight and extra
+    // attack surface.
+    implementation "com.github.pedroSG94.RootEncoder:library:$rootEncoderVersion"
+
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+}
