@@ -1,0 +1,775 @@
+/**
+ * The app store: one `BroadcastOrchestrator`, mirrored into React.
+ *
+ * Rules this file keeps:
+ *  - Exactly one orchestrator and one media engine exist per store. Screens never construct either.
+ *  - React state is a *mirror*: every destination and production change arrives as an orchestrator
+ *    event, so the UI can never disagree with the machine.
+ *  - Nothing secret is stored here or persisted. Stream keys live in `secrets.ts`.
+ */
+import { create } from 'zustand';
+import type { StoreApi, UseBoundStore } from 'zustand';
+import {
+  BroadcastOrchestrator,
+  DEFAULT_PRODUCTION_SETTINGS,
+  INTENT_PROFILES,
+  buildAutomaticProduction,
+  defaultMoments,
+} from '@livetap/core';
+import type {
+  AdapterRegistry,
+  AspectRatio,
+  AutomaticProduction,
+  ChatMessage,
+  ContentType,
+  DestinationAspectInput,
+  DestinationConfig,
+  DestinationSnapshot,
+  EngineEvents,
+  EngineMetrics,
+  HumaneError,
+  MediaEngine,
+  Moment,
+  PlatformId,
+  ProductionSnapshot,
+  QualityPreset,
+} from '@livetap/core';
+import { PLATFORM_PROFILES, createMockAdapters } from '@livetap/adapters';
+import { createEngineForEnvironment } from '@livetap/media';
+import type { GoLiveState } from '@livetap/ui';
+import { demoIngest } from '../lib/mockIngest.js';
+import { platformStatus } from '../lib/platformStatus.js';
+import * as persist from './persist.js';
+import { DEFAULT_SETTINGS } from './persist.js';
+import { envMockMode } from './mockMode.js';
+import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
+
+export type Mode = 'simple' | 'pro';
+
+export interface Notice {
+  id: string;
+  level: 'info' | 'warning' | 'error';
+  message: string;
+  error?: HumaneError;
+  destinationId?: string;
+  at: number;
+}
+
+export interface RecordingItem {
+  id: string;
+  startedAt: number;
+  endedAt?: number;
+  path?: string;
+  blob?: Blob;
+  demo: boolean;
+  destinations: string[];
+}
+
+/** A line in the in-product diagnostics view. Never contains a key or a token. */
+export interface LogLine {
+  at: number;
+  level: 'info' | 'warning' | 'error';
+  text: string;
+}
+
+export interface AppState {
+  ready: boolean;
+  mockMode: boolean;
+  engineKind: string;
+
+  production: ProductionSnapshot;
+  destinations: DestinationSnapshot[];
+  moments: Moment[];
+  chat: ChatMessage[];
+  metrics?: EngineMetrics;
+  notices: Notice[];
+  recordings: RecordingItem[];
+  log: LogLine[];
+
+  intent: ContentType | null;
+  onboardingDone: boolean;
+  mode: Mode;
+  quality: QualityPreset;
+  recordEveryStream: boolean;
+  aspect: AspectRatio;
+
+  goLive: GoLiveState;
+  endingAt: number | null;
+  micMuted: boolean;
+  screenSharing: boolean;
+
+  init(): Promise<void>;
+  attachPreview(el: HTMLVideoElement | null): void;
+
+  setIntent(intent: ContentType): void;
+  setMode(mode: Mode): void;
+  setQuality(quality: QualityPreset): void;
+  setRecordEveryStream(on: boolean): void;
+  setAspect(aspect: AspectRatio): void;
+  finishOnboarding(): Promise<void>;
+  restartOnboarding(): void;
+
+  connectPlatform(platform: PlatformId, label?: string): Promise<DestinationSnapshot | undefined>;
+  addCustomDestination(input: {
+    label: string;
+    url: string;
+    streamKey: string;
+    aspect: AspectRatio;
+  }): Promise<DestinationSnapshot | undefined>;
+  replaceStreamKey(id: string, streamKey: string): Promise<void>;
+  reconnect(id: string): Promise<void>;
+  retry(id: string): Promise<void>;
+  removeDestination(id: string): Promise<void>;
+  setDestinationEnabled(id: string, enabled: boolean): void;
+  stopOne(id: string): Promise<void>;
+
+  setMoment(id: string): Promise<void>;
+  upsertMoment(moment: Moment): void;
+  setCameraDevice(deviceId: string): void;
+  setMicDevice(deviceId: string): void;
+  toggleMic(): Promise<void>;
+  toggleScreen(): Promise<void>;
+
+  startCountdown(): void;
+  cancelCountdown(): void;
+  commitGoLive(): Promise<void>;
+  requestEnd(): void;
+  undoEnd(): void;
+  confirmEnd(): Promise<void>;
+
+  sendChat(text: string): Promise<void>;
+  dismissNotice(id: string): void;
+
+  automaticProduction(): AutomaticProduction | null;
+
+  demoDropDestination(id: string): void;
+  demoDegradeDestination(id: string): void;
+  demoLoseCamera(): void;
+  demoCrashEncoder(): void;
+
+  resetEverything(): void;
+}
+
+export interface StoreDeps {
+  registry?: AdapterRegistry;
+  engine?: MediaEngine;
+  mockMode?: boolean;
+  /** Injected so tests can drive the countdown and the END grace without waiting. */
+  now?: () => number;
+}
+
+interface Runtime {
+  orchestrator: BroadcastOrchestrator;
+  engine: MediaEngine;
+  mockMode: boolean;
+  offs: Array<() => void>;
+  recordingId: string | null;
+}
+
+let seq = 0;
+function uid(prefix: string): string {
+  seq += 1;
+  return `${prefix}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * `MediaEngine` only declares `on`, but every engine in this repo extends core's
+ * `TypedEmitter`, which is how the demo controls can raise a genuine engine event rather than
+ * fake a UI state. Feature-detected, so a future engine without an emitter degrades to a no-op.
+ */
+interface EngineEmitter {
+  emit<K extends keyof EngineEvents>(event: K, payload: EngineEvents[K]): void;
+}
+
+function engineEmitter(runtime: Runtime | null): EngineEmitter | null {
+  const candidate = runtime?.engine as unknown as EngineEmitter | undefined;
+  return typeof candidate?.emit === 'function' ? candidate : null;
+}
+
+const EMPTY_PRODUCTION: ProductionSnapshot = {
+  state: 'IDLE',
+  activeMomentId: null,
+  liveCount: 0,
+  enabledCount: 0,
+  recording: false,
+};
+
+export type AppStore = UseBoundStore<StoreApi<AppState>>;
+
+export function createAppStore(deps: StoreDeps = {}): AppStore {
+  let runtime: Runtime | null = null;
+  const now = deps.now ?? ((): number => Date.now());
+
+  return create<AppState>((set, get) => {
+    /** Push one humane notice. Deduplicated by destination + code so a retry loop cannot spam. */
+    const notice = (n: Omit<Notice, 'id' | 'at'>): void => {
+      const entry: Notice = { ...n, id: uid('notice'), at: now() };
+      set((s) => {
+        const duplicate = s.notices.some(
+          (x) =>
+            x.destinationId === entry.destinationId &&
+            x.error?.code === entry.error?.code &&
+            x.message === entry.message,
+        );
+        const notices = duplicate ? s.notices : [...s.notices, entry].slice(-6);
+        return {
+          notices,
+          log: [...s.log, { at: entry.at, level: entry.level, text: entry.message }].slice(-2000),
+        };
+      });
+    };
+
+    const mirror = (): void => {
+      const r = runtime;
+      if (!r) return;
+      set({
+        production: r.orchestrator.getProduction(),
+        destinations: r.orchestrator.listDestinations(),
+        moments: [...r.orchestrator.moments],
+      });
+    };
+
+    const persistDestinations = (): void => {
+      const r = runtime;
+      if (!r) return;
+      persist.writeDestinations(r.orchestrator.listDestinations().map((s) => s.config));
+    };
+
+    const applySettings = (patch: Partial<typeof DEFAULT_SETTINGS>): void => {
+      const next = {
+        quality: patch.quality ?? get().quality,
+        recordEveryStream: patch.recordEveryStream ?? get().recordEveryStream,
+        aspect: patch.aspect ?? get().aspect,
+      };
+      persist.write(persist.KEYS.settings, next);
+      const r = runtime;
+      if (r) {
+        r.orchestrator.settings = {
+          ...r.orchestrator.settings,
+          qualityPreset: next.quality,
+          masterAspectRatio: next.aspect,
+          recording: { ...r.orchestrator.settings.recording, enabled: next.recordEveryStream },
+        };
+      }
+    };
+
+    return {
+      ready: false,
+      mockMode: deps.mockMode ?? envMockMode(),
+      engineKind: 'mock',
+
+      production: EMPTY_PRODUCTION,
+      destinations: [],
+      moments: defaultMoments(),
+      chat: [],
+      notices: [],
+      recordings: [],
+      log: [],
+
+      intent: persist.readIntent(),
+      onboardingDone: persist.read<boolean>(persist.KEYS.onboarding, false),
+      mode: persist.read<Mode>(persist.KEYS.mode, 'simple'),
+      quality: persist.read(persist.KEYS.settings, DEFAULT_SETTINGS).quality,
+      recordEveryStream: persist.read(persist.KEYS.settings, DEFAULT_SETTINGS).recordEveryStream,
+      aspect: persist.read(persist.KEYS.settings, DEFAULT_SETTINGS).aspect,
+
+      goLive: 'idle',
+      endingAt: null,
+      micMuted: false,
+      screenSharing: false,
+
+      async init(): Promise<void> {
+        if (runtime) return;
+        const mockMode = deps.mockMode ?? envMockMode();
+        const registry = deps.registry ?? createMockAdapters();
+        const engine = deps.engine ?? createEngineForEnvironment({ preferMock: mockMode });
+        const stored = persist.readMoments();
+        const settings = persist.read(persist.KEYS.settings, DEFAULT_SETTINGS);
+        const orchestrator = new BroadcastOrchestrator({
+          registry,
+          engine,
+          moments: stored ?? defaultMoments(),
+          settings: {
+            ...DEFAULT_PRODUCTION_SETTINGS,
+            qualityPreset: settings.quality,
+            masterAspectRatio: settings.aspect,
+            recording: { ...DEFAULT_PRODUCTION_SETTINGS.recording, enabled: settings.recordEveryStream },
+          },
+        });
+        runtime = { orchestrator, engine, mockMode, offs: [], recordingId: null };
+
+        runtime.offs.push(
+          orchestrator.on('destination', () => {
+            mirror();
+            persistDestinations();
+          }),
+          orchestrator.on('production', () => mirror()),
+          orchestrator.on('moment', () => {
+            mirror();
+            persist.write(persist.KEYS.moments, runtime?.orchestrator.moments ?? []);
+          }),
+          orchestrator.on('metrics', (m) => set({ metrics: m })),
+          orchestrator.on('chat', (m) => set((s) => ({ chat: [...s.chat, m].slice(-200) }))),
+          orchestrator.on('notice', (n) =>
+            notice({
+              level: n.level,
+              message: n.message,
+              error: n.error,
+              destinationId: n.destinationId,
+            }),
+          ),
+        );
+
+        runtime.offs.push(
+          engine.on('recording', (r) => {
+            if (r.state === 'started') {
+              const item: RecordingItem = {
+                id: uid('rec'),
+                startedAt: now(),
+                demo: get().destinations.every((d) => d.config.mock),
+                destinations: get()
+                  .destinations.filter((d) => d.config.enabled)
+                  .map((d) => PLATFORM_PROFILES[d.config.platform].displayName),
+              };
+              if (runtime) runtime.recordingId = item.id;
+              set((s) => ({ recordings: [item, ...s.recordings] }));
+            }
+            if (r.state === 'stopped') {
+              const recId = runtime?.recordingId;
+              set((s) => ({
+                recordings: s.recordings.map((x) =>
+                  x.id === recId ? { ...x, endedAt: now(), path: r.path ?? x.path } : x,
+                ),
+              }));
+              if (runtime) runtime.recordingId = null;
+            }
+          }),
+        );
+
+        // Bring back the destinations the user already configured. Stream keys are not persisted,
+        // so a paste-key destination comes back needing its key again — and says so.
+        for (const config of persist.readDestinations()) {
+          try {
+            orchestrator.addDestination(config);
+          } catch {
+            // A duplicate id in storage is not worth failing a cold start over.
+          }
+        }
+        set({ ready: true, mockMode, engineKind: engine.kind });
+        mirror();
+
+        for (const snap of orchestrator.listDestinations()) {
+          const needsKey = platformStatus(snap.config.platform).method === 'key';
+          const key = await readStreamKey(snap.config.id);
+          if (snap.config.mock) {
+            void orchestrator.connect(snap.config.id);
+          } else if (needsKey && !key) {
+            notice({
+              level: 'info',
+              destinationId: snap.config.id,
+              message: `${snap.config.label} needs its stream key again — keys are never saved in your browser.`,
+            });
+          } else {
+            void orchestrator.connect(snap.config.id);
+          }
+        }
+
+        try {
+          await orchestrator.startPreview();
+        } catch {
+          // A preview that will not start is reported by the engine's own error event.
+        }
+        mirror();
+      },
+
+      attachPreview(el: HTMLVideoElement | null): void {
+        const engine = runtime?.engine as
+          | { attachPreview?: (e: HTMLVideoElement | null) => void }
+          | undefined;
+        engine?.attachPreview?.(el);
+      },
+
+      setIntent(intent: ContentType): void {
+        persist.write(persist.KEYS.intent, intent);
+        set({ intent });
+      },
+
+      setMode(mode: Mode): void {
+        persist.write(persist.KEYS.mode, mode);
+        set({ mode });
+      },
+
+      setQuality(quality: QualityPreset): void {
+        applySettings({ quality });
+        set({ quality });
+      },
+
+      setRecordEveryStream(on: boolean): void {
+        applySettings({ recordEveryStream: on });
+        set({ recordEveryStream: on });
+      },
+
+      setAspect(aspect: AspectRatio): void {
+        if (get().production.state === 'LIVE') return;
+        applySettings({ aspect });
+        set({ aspect });
+        void runtime?.orchestrator.startPreview();
+      },
+
+      async finishOnboarding(): Promise<void> {
+        const r = runtime;
+        const plan = get().automaticProduction();
+        if (r && plan) {
+          r.orchestrator.settings = { ...r.orchestrator.settings, ...plan.settings };
+          for (const moment of plan.moments) r.orchestrator.upsertMoment(moment);
+          for (const [destId, aspect] of Object.entries(plan.destinationAspects)) {
+            try {
+              r.orchestrator.updateDestination(destId, { aspectRatio: aspect });
+            } catch {
+              // The destination was removed between the summary and Open Studio.
+            }
+          }
+          await r.orchestrator.setMoment(plan.activeMomentId).catch(() => undefined);
+          persist.write(persist.KEYS.moments, r.orchestrator.moments);
+          applySettings({
+            aspect: plan.settings.masterAspectRatio,
+            quality: plan.settings.qualityPreset,
+          });
+          set({ aspect: plan.settings.masterAspectRatio, quality: plan.settings.qualityPreset });
+          await r.orchestrator.startPreview().catch(() => undefined);
+        }
+        persist.write(persist.KEYS.onboarding, true);
+        set({ onboardingDone: true });
+        mirror();
+      },
+
+      restartOnboarding(): void {
+        persist.write(persist.KEYS.onboarding, false);
+        set({ onboardingDone: false });
+      },
+
+      async connectPlatform(
+        platform: PlatformId,
+        label?: string,
+      ): Promise<DestinationSnapshot | undefined> {
+        const r = runtime;
+        if (!r) return undefined;
+        const profile = PLATFORM_PROFILES[platform];
+        const status = platformStatus(platform);
+        if (status.blocked) return undefined;
+
+        const existing = r.orchestrator.listDestinations().find((d) => d.config.platform === platform);
+        if (existing) {
+          await r.orchestrator.connect(existing.config.id);
+          mirror();
+          return r.orchestrator.getDestination(existing.config.id);
+        }
+
+        const destinationId = uid(platform);
+        const config: DestinationConfig = {
+          id: destinationId,
+          platform,
+          label: label ?? profile.displayName,
+          aspectRatio: profile.preferredAspectRatio,
+          enabled: true,
+          mock: r.mockMode,
+          // In mock mode a paste-key platform still needs a structurally valid ingest to connect.
+          ingest: r.mockMode && status.method === 'key' ? demoIngest(platform) : undefined,
+        };
+        r.orchestrator.addDestination(config);
+        const snap = await r.orchestrator.connect(destinationId);
+        mirror();
+        persistDestinations();
+        return snap;
+      },
+
+      async addCustomDestination(input): Promise<DestinationSnapshot | undefined> {
+        const r = runtime;
+        if (!r) return undefined;
+        const destinationId = uid('custom');
+        await saveStreamKey(destinationId, input.streamKey);
+        const config: DestinationConfig = {
+          id: destinationId,
+          platform: 'custom',
+          label: input.label || PLATFORM_PROFILES.custom.displayName,
+          aspectRatio: input.aspect,
+          enabled: true,
+          mock: false,
+          ingest: {
+            protocol: input.url.trim().toLowerCase().startsWith('rtmps:') ? 'rtmps' : 'rtmp',
+            url: input.url.trim(),
+            streamKey: input.streamKey.trim(),
+          },
+        };
+        r.orchestrator.addDestination(config);
+        const snap = await r.orchestrator.connect(destinationId);
+        mirror();
+        persistDestinations();
+        return snap;
+      },
+
+      async replaceStreamKey(destinationId: string, streamKey: string): Promise<void> {
+        const r = runtime;
+        if (!r) return;
+        const snap = r.orchestrator.getDestination(destinationId);
+        if (!snap?.config.ingest) return;
+        await saveStreamKey(destinationId, streamKey);
+        r.orchestrator.updateDestination(destinationId, {
+          ingest: { ...snap.config.ingest, streamKey: streamKey.trim() },
+        });
+        await r.orchestrator.connect(destinationId);
+        mirror();
+      },
+
+      async reconnect(destinationId: string): Promise<void> {
+        await runtime?.orchestrator.connect(destinationId);
+        mirror();
+      },
+
+      async retry(destinationId: string): Promise<void> {
+        const r = runtime;
+        if (!r) return;
+        if (r.orchestrator.getProduction().state === 'LIVE') {
+          await r.orchestrator.retryDestination(destinationId);
+        } else {
+          r.orchestrator.resetDestination(destinationId);
+          await r.orchestrator.connect(destinationId);
+        }
+        set((s) => ({ notices: s.notices.filter((n) => n.destinationId !== destinationId) }));
+        mirror();
+      },
+
+      async removeDestination(destinationId: string): Promise<void> {
+        await runtime?.orchestrator.removeDestination(destinationId);
+        await forgetStreamKey(destinationId);
+        set((s) => ({ notices: s.notices.filter((n) => n.destinationId !== destinationId) }));
+        mirror();
+        persistDestinations();
+      },
+
+      setDestinationEnabled(destinationId: string, enabled: boolean): void {
+        runtime?.orchestrator.updateDestination(destinationId, { enabled });
+        mirror();
+        persistDestinations();
+      },
+
+      async stopOne(destinationId: string): Promise<void> {
+        await runtime?.orchestrator.stopDestination(destinationId);
+        mirror();
+      },
+
+      async setMoment(momentId: string): Promise<void> {
+        await runtime?.orchestrator.setMoment(momentId).catch(() => undefined);
+        mirror();
+      },
+
+      upsertMoment(moment: Moment): void {
+        const r = runtime;
+        if (!r) return;
+        r.orchestrator.upsertMoment(moment);
+        persist.write(persist.KEYS.moments, r.orchestrator.moments);
+        mirror();
+      },
+
+      /**
+       * A device choice applies to every Moment, not just the active one: "which camera" is a
+       * property of the person, not of the arrangement they happen to be showing.
+       */
+      setCameraDevice(deviceId: string): void {
+        const r = runtime;
+        if (!r) return;
+        for (const moment of [...r.orchestrator.moments]) {
+          const layers = moment.layers.map((l) => (l.kind === 'camera' ? { ...l, deviceId } : l));
+          r.orchestrator.upsertMoment({ ...moment, layers });
+        }
+        persist.write(persist.KEYS.moments, r.orchestrator.moments);
+        mirror();
+      },
+
+      setMicDevice(deviceId: string): void {
+        const r = runtime;
+        if (!r) return;
+        for (const moment of [...r.orchestrator.moments]) {
+          r.orchestrator.upsertMoment({
+            ...moment,
+            audio: { ...moment.audio, micDeviceId: deviceId },
+          });
+        }
+        persist.write(persist.KEYS.moments, r.orchestrator.moments);
+        mirror();
+      },
+
+      async toggleMic(): Promise<void> {
+        const r = runtime;
+        const next = !get().micMuted;
+        set({ micMuted: next });
+        const active = r?.orchestrator.getActiveMoment();
+        if (r && active) {
+          r.orchestrator.upsertMoment({ ...active, audio: { ...active.audio, micMuted: next } });
+        }
+        mirror();
+      },
+
+      async toggleScreen(): Promise<void> {
+        const next = !get().screenSharing;
+        set({ screenSharing: next });
+        const r = runtime;
+        const active = r?.orchestrator.getActiveMoment();
+        if (r && active) {
+          const layers = active.layers.map((l) =>
+            l.kind === 'screen' || l.kind === 'window' ? { ...l, visible: next } : l,
+          );
+          r.orchestrator.upsertMoment({ ...active, layers });
+        }
+        mirror();
+      },
+
+      startCountdown(): void {
+        if (get().goLive !== 'idle') return;
+        set({ goLive: 'countdown' });
+      },
+
+      cancelCountdown(): void {
+        if (get().goLive !== 'countdown') return;
+        set({ goLive: 'idle' });
+      },
+
+      async commitGoLive(): Promise<void> {
+        const r = runtime;
+        if (!r) return;
+        set({ goLive: 'starting' });
+        await r.orchestrator.goLive();
+        mirror();
+        const state = r.orchestrator.getProduction().state;
+        set({ goLive: state === 'LIVE' ? 'live' : 'idle' });
+      },
+
+      requestEnd(): void {
+        if (get().goLive !== 'live') return;
+        set({ endingAt: now() });
+      },
+
+      undoEnd(): void {
+        set({ endingAt: null });
+      },
+
+      async confirmEnd(): Promise<void> {
+        const r = runtime;
+        if (!r) return;
+        set({ goLive: 'stopping', endingAt: null });
+        // Capture the recording before the engine tears down, so the web build has a file.
+        const engine = r.engine as {
+          stopRecording?: () => Promise<{ path?: string; blob?: Blob }>;
+        };
+        if (r.orchestrator.getProduction().recording && engine.stopRecording) {
+          try {
+            const result = await engine.stopRecording();
+            const recId = r.recordingId;
+            if (result.blob || result.path) {
+              set((s) => ({
+                recordings: s.recordings.map((x) =>
+                  x.id === recId ? { ...x, blob: result.blob, path: result.path ?? x.path } : x,
+                ),
+              }));
+            }
+          } catch {
+            // The recording event already reported the failure humanely.
+          }
+        }
+        await r.orchestrator.stop();
+        mirror();
+        set({ goLive: 'idle', chat: [] });
+      },
+
+      async sendChat(text: string): Promise<void> {
+        const r = runtime;
+        if (!r) return;
+        const targets = r.orchestrator
+          .listDestinations()
+          .filter(
+            (d) =>
+              (d.state === 'LIVE' || d.state === 'DEGRADED') &&
+              PLATFORM_PROFILES[d.config.platform].capabilities.chatWrite !== 'UNAVAILABLE',
+          );
+        for (const target of targets) {
+          try {
+            await r.orchestrator.sendChat(target.config.id, text);
+          } catch {
+            // Capability-gated: a platform that cannot be posted to is already named in helper text.
+          }
+        }
+      },
+
+      dismissNotice(noticeId: string): void {
+        set((s) => ({ notices: s.notices.filter((n) => n.id !== noticeId) }));
+      },
+
+      automaticProduction(): AutomaticProduction | null {
+        const intent = get().intent;
+        if (!intent || !INTENT_PROFILES[intent]) return null;
+        const inputs: DestinationAspectInput[] = get().destinations.map((d) => ({
+          id: d.config.id,
+          platform: d.config.platform,
+          supportedAspectRatios: PLATFORM_PROFILES[d.config.platform].supportedAspectRatios,
+          preferredAspectRatio: PLATFORM_PROFILES[d.config.platform].preferredAspectRatio,
+        }));
+        return buildAutomaticProduction(
+          intent,
+          inputs,
+          runtime?.orchestrator.settings ?? DEFAULT_PRODUCTION_SETTINGS,
+        );
+      },
+
+      // --- Demo controls. Mock mode exists to be used; these drive the real failure paths. ---
+      // Every engine in the repo is a TypedEmitter, so a demo can raise exactly the event a real
+      // failure would raise. Nothing here is a UI-only simulation: the orchestrator's isolation,
+      // reconnect and humanize paths all run for real.
+
+      demoDropDestination(destinationId: string): void {
+        engineEmitter(runtime)?.emit('output', {
+          type: 'outputLost',
+          destinationId,
+          code: 'INGEST_DISCONNECTED',
+          technical: 'demo: scripted drop',
+        });
+      },
+
+      demoDegradeDestination(destinationId: string): void {
+        engineEmitter(runtime)?.emit('output', {
+          type: 'outputDegraded',
+          destinationId,
+          technical: 'demo: scripted degradation',
+        });
+      },
+
+      demoLoseCamera(): void {
+        engineEmitter(runtime)?.emit('deviceLost', { kind: 'camera' });
+      },
+
+      demoCrashEncoder(): void {
+        engineEmitter(runtime)?.emit('engineError', {
+          code: 'ENCODER_FAILED',
+          technical: 'demo: scripted encoder crash',
+        });
+      },
+
+      resetEverything(): void {
+        persist.clearAll();
+        set({
+          intent: null,
+          onboardingDone: false,
+          mode: 'simple',
+          quality: DEFAULT_SETTINGS.quality,
+          recordEveryStream: DEFAULT_SETTINGS.recordEveryStream,
+          aspect: DEFAULT_SETTINGS.aspect,
+          notices: [],
+          recordings: [],
+          chat: [],
+        });
+      },
+    };
+  });
+}
+
+/** The one store the app uses. Tests build their own with `createAppStore`. */
+export const useAppStore = createAppStore();

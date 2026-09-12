@@ -553,158 +553,147 @@ Not applicable — the marketing site has no modes. It must not show Pro-only vo
 
 ---
 
-## 5b. Onboarding
+## 5b. Onboarding — intent-first
+
+> **Revised 2026-09-11 to match the built flow in `apps/web/src/screens/onboarding/Onboarding.tsx`.**
+> The earlier draft of this section opened with "Where do you want to go live?". That is the wrong
+> first question, and the reason is in the north-star correction (`09_LIVETAP_NORTH_STAR_CORRECTION.md`
+> §5–6): knowing **what** someone is making is what lets LIVETAP infer the layout, the shape, the safe
+> areas, the framing and the quality. Ask it first and the destination step can *state* "YouTube 16:9 ·
+> TikTok 9:16" instead of asking; ask it second and LIVETAP has nothing to infer from and has to fall
+> back on a settings screen. The rest of this document is unchanged.
 
 ### Purpose
 
-Onboarding exists to deliver the promise's first two sentences and nothing else: connect a destination, pick a camera and mic. It is three steps because the promise has three clauses, and the third step is the payoff, not a task. Its success metric is the percentage of first-run users who reach Studio with at least one `READY` destination and a working camera — and, critically, it must let a user who wants none of this out at any time, because a setup flow that cannot be escaped is the first-run failure this whole product is designed against (B §1.1).
+Onboarding turns "I want to go live" into a production. It asks two questions, confirms one thing, and
+hands over. Its success metric is the percentage of first-run users who reach Studio with at least one
+`READY` destination — and, critically, it must let a user who wants none of this out at any time, because
+a setup flow that cannot be escaped is the first-run failure this whole product is designed against
+(B §1.1). "Skip setup" is present on every step and goes straight to Studio with no confirmation.
+
+### The budget
+
+**Six taps from `/app` to LIVE**, including GO LIVE. That budget is the product, and it is the reason
+the flow is three screens rather than four:
+
+| Tap | What the user does |
+|---|---|
+| 1 | Picks an intent — the card both selects and advances |
+| 2 | Picks the first destination |
+| 3 | Picks the second destination |
+| 4 | Continue |
+| 5 | Open Studio |
+| 6 | GO LIVE |
+
+The three-second countdown after tap 6 is a wait, not a tap, and it is cancellable. The count is asserted
+by `apps/web/e2e/golden-path.spec.ts` and recorded in `docs/qa/FRICTION_BENCHMARK.md`.
 
 ### Primary action
 
-The **Continue** button of the current step. (Step 1: "Connect an account"; step 2: "Use this camera and mic"; step 3: "Open Studio".)
+The one primary button on the current step: step 1 has none (the cards are the action), step 2 is
+**"Continue"**, step 3 is **"Open Studio"**.
 
-### Layout: desktop (>1024)
+### Step 1 — "What are you making?"
 
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│  ◆ LIVETAP                                                      Skip setup │
-│                                                                            │
-│      ●───────────○───────────○      Step 1 of 3                            │
-│                                                                            │
-│   ┌──────────────────────────────┐  ┌───────────────────────────────────┐   │
-│   │  Where do you want to go     │  │  YouTube      Connect with account│   │
-│   │  live?                       │  │  Twitch       Connect with account│   │
-│   │                              │  │  Kick         Connect with account│   │
-│   │  Connect one account now.    │  │  Facebook     Paste stream key    │   │
-│   │  You can add more any time,  │  │  Instagram    Paste stream key    │   │
-│   │  and LIVETAP can stream to   │  │  TikTok       Paste stream key    │   │
-│   │  all of them at once.        │  │  X            Paste stream key    │   │
-│   │                              │  │  LinkedIn     Not available       │   │
-│   │  LIVETAP never sees your     │  │  Other (RTMP) Paste stream key    │   │
-│   │  password. Sign-in happens   │  ├───────────────────────────────────┤   │
-│   │  on the platform's own page. │  │  Demo destinations            ⌄   │   │
-│   └──────────────────────────────┘  └───────────────────────────────────┘   │
-│                                                                            │
-│                                            [ I'll do this later ]  (text)  │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+Six `IntentCard`s, one per `ContentType` in `INTENT_PROFILES` (`@livetap/core`), rendered from the profile
+rather than from hand-written copy so the screen cannot drift from what the engine will actually do:
 
-Two-column 5/7 split, centred in a 960px container on `bg-0`; the card is `bg-1` at `radius-xl`. The step dots are the only chrome.
+| Card | Emoji | Tagline | `whatYouGet` (rendered as bullets) |
+|---|---|---|---|
+| Talking | 🎥 | "Just you and the camera." | full-frame camera · clean lower-third · auto vertical crop |
+| Gaming | 🎮 | "Your game, with you in the corner." | game capture with camera inset · 60 fps where allowed · balanced audio |
+| Podcast | 🎙 | "You and a guest, side by side." | split layout · voice-first audio · square and vertical versions |
+| Presentation | 💻 | "Your screen, with you alongside." | screen with camera inset · readable at 1080p · sharp slides |
+| Event | 🎤 | "A stage, a camera, an audience." | wide framing · starting-soon and break screens · steady 30 fps |
+| Vertical Live | 📱 | "Built for phones, first." | 9:16 with safe areas for chat · face-forward framing |
 
-### Layout: tablet (640–1024)
+Body copy: "LIVETAP sets up the picture, the shape and the quality from this one answer. You can change
+any of it later." Each card is a `<button aria-pressed>`; choosing one stores the intent and advances.
 
-```
-┌──────────────────────────────────────────────────┐
-│  ◆ LIVETAP                            Skip setup │
-│  ●───────○───────○   Step 1 of 3                 │
-├──────────────────────────────────────────────────┤
-│   Where do you want to go live?                  │  copy becomes a header
-│   Connect one account now. You can add more      │  band, 2 lines max
-│   any time.                                      │
-├──────────────────────────────────────────────────┤
-│  ┌────────────────────┐ ┌────────────────────┐   │  platform list becomes
-│  │ YouTube            │ │ Twitch             │   │  a 2-up grid of tappable
-│  │ Connect with acct  │ │ Connect with acct  │   │  cards, 72px tall
-│  └────────────────────┘ └────────────────────┘   │
-│  ┌────────────────────┐ ┌────────────────────┐   │
-│  │ Kick               │ │ Facebook           │   │
-│  └────────────────────┘ └────────────────────┘   │
-│            … 9 total, then Demo section          │
-├──────────────────────────────────────────────────┤
-│  LIVETAP never sees your password.               │
-│                        [ I'll do this later ]    │
-└──────────────────────────────────────────────────┘
-```
+### Step 2 — "Where are you going live?"
 
-### Layout: mobile (<640)
+Multi-select platform cards, built from `PLATFORM_PROFILES` (`@livetap/adapters`). The list is never
+filtered: absence would read as "not supported yet" when for LinkedIn it means "not possible".
 
-```
-┌────────────────────────────────┐
-│ ●──○──○            Skip        │  32px bar, dots left, Skip right
-├────────────────────────────────┤
-│  Where do you want              │
-│  to go live?                    │
-│                                 │
-│  Connect one account. You can   │
-│  add more later.                │
-├────────────────────────────────┤
-│ ┌────────────────────────────┐ │  full-width rows, 64px,
-│ │ ▶ YouTube                  │ │  one per line, no grid —
-│ │   Connect with account     │ │  thumb reach beats density
-│ └────────────────────────────┘ │
-│ ┌────────────────────────────┐ │
-│ │ ▶ Twitch                   │ │
-│ │   Connect with account     │ │
-│ └────────────────────────────┘ │
-│ ┌────────────────────────────┐ │
-│ │ ▶ TikTok                   │ │  order differs on mobile:
-│ │   Paste stream key         │ │  vertical-first platforms
-│ └────────────────────────────┘ │  are promoted above Kick
-│            ⋮ (scroll)          │
-├────────────────────────────────┤
-│  ┌──────────────────────────┐  │  sticky footer
-│  │   I'll do this later     │  │
-│  └──────────────────────────┘  │
-└────────────────────────────────┘
-```
+**The badge is derived, never written.** `lib/platformStatus.ts` reads `profile.capabilities.streamKey`
+and maps it to exactly three answers:
 
-### The three steps
+| `CapabilityClass` | Badge | Meaning |
+|---|---|---|
+| `NATIVE_API`, `OAUTH_API`, `RTMP_DESTINATION` | **Connect account** (`success`) | Sign in once and LIVETAP handles the broadcast |
+| `USER_ASSISTED`, `EXPERIMENTAL` | **Paste stream key** (`info`) | The platform gives *you* a key; LIVETAP pushes to it |
+| `PARTNER_APPROVAL_REQUIRED`, `UNAVAILABLE` | **Not available yet** (neutral, `aria-disabled`) | The platform does not allow an app like LIVETAP to do this |
 
-**Step 1 — Connect a destination.** The list is the same component as the Add-destination sheet (§5d) with the same honest badges, so a user learns one list once. Choosing an OAuth platform opens the system browser; the row shows `AUTHENTICATING` in place. Choosing a paste-key platform expands the key flow inline (§5d) without leaving the step. Success turns the row into a `READY` chip with the account's avatar and name, and Continue becomes primary and enabled.
+The one-line summary under each name is **generated** from the same capability values (method, whether
+`start` is `USER_ASSISTED`, whether the platform is vertical-only) rather than taken from the profile's
+`connectionSummary` verbatim. The profiles are engineering documentation written in protocol terms, which
+Simple mode may never show (§6.2); the profile's own prose stays available as a Pro-only disclosure on the
+Destinations screen. One source of truth, two readers.
 
-**Step 2 — Camera and mic.** Two Selects and two live meters. This step requests permissions; see the copy table.
+**Mock mode.** Every selectable platform connects through the mock adapter and carries a visible **"Mock"**
+`Badge` in addition to its capability badge. A paste-key platform is given a clearly-fake demo ingest
+(`demo.livetap.invalid`) so it can reach `READY` through the real orchestrator path — a mock destination is
+never allowed to skip validation. The note under the grid says so: "This build runs in demo mode, so every
+destination you pick is simulated and nothing is broadcast anywhere."
 
-**Step 3 — You're ready.** No inputs. It states what is now true, in the user's own nouns, and hands over.
+Tapping a picked platform unpicks it. Continue is disabled until one is picked, with the reason stated
+beneath it rather than only in a tooltip.
+
+### Step 3 — "Camera and mic", and "Here is your setup"
+
+One screen, two sections, one button. Splitting the payoff onto a fourth screen cost a tap and bought
+nothing: the setup explanation reads better beside the picture it describes.
+
+**Camera and mic.** `enumerateDevices` where it exists; `getUserMedia` is never called on mount, so the OS
+prompt is never a surprise and device labels stay empty until permission is granted (LIVETAP says
+"Camera 1" rather than inventing a model name). In a mock or device-free environment the preview shows the
+`MockEngine` test pattern and the hint reads **"No camera found — using a test pattern"**, with "Look
+again" beside it. A device choice applies to every Moment, because "which camera" is a property of the
+person, not of the arrangement they happen to be showing.
+
+**Here is your setup.** `buildAutomaticProduction(intent, destinations)` from `@livetap/core`, rendered:
+
+- its `explanation` bullets verbatim (intent and tagline; "One production, 2 formats: 16:9 and 9:16.
+  LIVETAP reframes automatically."; the resolved quality; computer audio when the intent includes it);
+- one line of per-destination shape — **"YouTube 16:9 · TikTok 9:16"**;
+- one line naming the Moment set the intent produced.
+
+Footnote: "You can run this setup again from Settings." Primary: **"Open Studio"**, which applies the plan
+to the orchestrator (settings, Moments, per-destination aspect, active Moment), marks onboarding done and
+navigates.
 
 ### States
 
 | State | What the user sees |
 |---|---|
-| **First run** | Step 1 with nothing connected. Continue is secondary and disabled with the subtitle "Connect one account to continue", and "I'll do this later" is always available. |
-| **Loading** (device enumeration, step 2) | Both Selects show a Spinner with the label "Looking for your camera and microphone…". Meters show a flat baseline, not a fake waveform. After 5s without a device: the empty state below. |
-| **Empty** (step 2, no devices found) | Heading "No camera or microphone found". Body: "LIVETAP could not find any capture devices on this computer. You can still go live with a screen share, a title card, or add a camera later." Primary: **"Continue without a camera"**. Text link: "Look again". This is a real path — a screen-only stream is legitimate. |
-| **Error** (OAuth fails, step 1) | The row collapses back to `DISCONNECTED` and an `ErrorCard` appears below the list, mapped from `AUTH_FAILED` or `NOT_ELIGIBLE`. The step does not advance and nothing else is disturbed. |
-| **Error** (permission denied, step 2) | See the copy table. The step stays usable and Continue stays available. |
-| **Live** | Not applicable — onboarding cannot be reached while live; `/welcome` redirects to `/studio` when `ProductionState !== 'IDLE'`. |
-| **Returning** (re-run from Settings) | Step 1 shows existing destinations as `READY` rows at the top under "Already connected", and Continue is enabled immediately. Onboarding never asks a returning user to redo work. |
-
-### Copy
-
-| Element | String |
-|---|---|
-| Step 1 heading | "Where do you want to go live?" |
-| Step 1 body | "Connect one account now. You can add more any time, and LIVETAP can stream to all of them at once." |
-| Step 1 trust line | "LIVETAP never sees your password. Sign-in happens on the platform's own page, and the key it gives us is stored in your system keychain." |
-| Step 1 skip | "I'll do this later" |
-| Step 2 heading | "What should viewers see and hear?" |
-| Step 2 camera label | "Camera" · helper "This is your Main Camera Moment." |
-| Step 2 mic label | "Microphone" · helper "Say something — the bar should move." |
-| Camera permission prompt (pre-request, in-app, before the OS dialog) | Heading "LIVETAP needs your camera" / body "Your browser will ask next. The video never leaves your computer until you go live, and it is never sent to us." / Button "Ask for camera access" |
-| Mic permission prompt | Heading "LIVETAP needs your microphone" / body "Your browser will ask next. Nothing is recorded until you start a stream or a recording." / Button "Ask for microphone access" |
-| Camera denied | ErrorCard — WHAT "LIVETAP cannot use your camera." / WHY "Camera access was blocked for this app." / DOING "LIVETAP will use your Starting Soon card instead, so your stream still shows something intentional." / YOU CAN "Allow camera access in your browser or system settings, then tap Look again." / Primary **"Look again"** |
-| Mic denied | ErrorCard — WHAT "LIVETAP cannot use your microphone." / WHY "Microphone access was blocked for this app." / DOING "LIVETAP will stream silence rather than stopping you from going live." / YOU CAN "Allow microphone access, then tap Look again. A stream with no sound is usually a stream people leave." / Primary **"Look again"** |
-| Both denied, user continues | Amber pre-flight item carried into Studio: "No camera or microphone — viewers will see your title card and hear nothing." |
-| Step 2 continue | "Use this camera and mic" |
-| Step 3 heading | "You're ready." |
-| Step 3 body (with destination + devices) | "LIVETAP will go live on {destination names} using {camera name} and {mic name}. Quality is set automatically and adjusts while you stream. Your six Moments are ready to switch between." |
-| Step 3 body (skipped destination) | "Your camera and microphone are set. You will need one account connected before you can go live — Studio will show you where." |
-| Step 3 body (skipped everything) | "Studio is ready when you are. You can connect an account and pick a camera at any time; LIVETAP will tell you what is missing before you go live." |
-| Step 3 primary | "Open Studio" |
-| Step 3 footnote | "You can run this setup again from Settings." |
-| Skip setup (top right, all steps) | "Skip setup" → goes straight to `/studio`, no confirmation. |
+| **First run** | Step 1, nothing selected. "Skip setup" is available on every step. |
+| **Loading** (device enumeration) | "Looking for your camera and microphone…" with a `Spinner`. Meters show a flat baseline, never a fake waveform. |
+| **Empty** (no devices found) | The test-pattern preview plus "No camera found — using a test pattern" and "No microphone found — viewers will hear nothing." Continuing is a real path: a screen-only or card-only stream is legitimate. |
+| **Blocked platform** | The card is focusable, `aria-disabled`, and carries its reason in `aria-describedby`: "{platform} only allows approved partner tools to go live. LIVETAP is not one, and would rather say so than waste your evening." Never a dead click. |
+| **Error** (connect fails) | An `ErrorCard` below the grid, mapped from the orchestrator's notice. The step does not advance and nothing else is disturbed. |
+| **Returning** (re-run from Settings) | Already-connected destinations are already picked; Continue is enabled immediately. Onboarding never asks a returning user to redo work. |
 
 ### Simple vs Pro differences
 
-**Identical in both modes.** Onboarding is the one flow that must not vary; a Pro user's first run is a Simple first run. Pro settings are reachable the moment Studio opens.
+**Identical in both modes.** A Pro user's first run is a Simple first run; Pro settings are reachable the
+moment Studio opens.
 
 ### Accessibility notes
 
-- The three steps are one `<main>` with an `aria-live="polite"` region announcing "Step {n} of 3: {heading}" on each transition. Focus moves to the step heading (`tabIndex={-1}`), never to the first input, so the context is heard before the task.
-- Step dots are decorative (`aria-hidden`); the textual "Step 1 of 3" is the accessible progress indicator.
-- Platform rows are `<button>` elements whose accessible name is "{platform}, {capability badge}" — e.g. "LinkedIn, not available", which is also `aria-disabled` with the reason in `aria-describedby`.
-- The mic meter is not the only feedback: below it, a text status updates at most once per second — "Hearing you" / "Silent for 12 seconds" — so a deaf or screen-reader user gets the same information.
-- `Escape` on any step triggers "Skip setup". `Enter` activates the step's primary action when it is enabled.
-- Permission-request buttons are always user-activated; LIVETAP never calls `getUserMedia` on mount, so the OS prompt is never a surprise.
+- One `<main>`; a polite live region announces "Step {n} of 3: {heading}" on each transition, and focus
+  moves to the step heading (`tabIndex={-1}`) — never to the first control, so the context is heard
+  before the task.
+- The step dots are `aria-hidden`; the textual "Step 1 of 3" is the accessible progress indicator.
+- Intent cards are `<button aria-pressed>`; platform cards are `<button aria-pressed>` unless blocked, in
+  which case they are `aria-disabled` and focusable, because a silently unfocusable row teaches nothing.
+- Every card's `whatYouGet` bullets are real list items, so the payoff is readable without sight.
+- Touch targets are ≥44px; nothing on this flow depends on hover.
+
+### Verified by
+
+`apps/web/src/__tests__/onboarding.test.tsx` (six cases, including "never shows a protocol word on the way
+to Studio") and `apps/web/e2e/golden-path.spec.ts` (the six-tap assertion and the DOM vocabulary scan).
+
 ---
 
 ## 5c. Studio
