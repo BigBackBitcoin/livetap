@@ -11,4 +11,11 @@ Format per entry: Category | Exact requirement | Why autonomous resolution faile
 - Exact human action: run `gh auth refresh -h github.com -s workflow`, then `git mv .github/workflows-pending/*.yml .github/workflows/ && git commit -m "ci: enable workflows" && git push`.
 - What resumes: CI on every push; macOS runner builds for Electron notarization and Capacitor iOS archives (free for public repos).
 
+## B-002 | Legal / open source | FFmpeg GPLv3 source offer before first desktop binary release
+- Exact requirement: publish a source mirror (or written offer) for the exact FFmpeg build bundled with the desktop app, plus GPL/LGPL license texts and the build configuration, as required by GPLv3 section 6.
+- Why autonomous resolution failed: choosing where the organisation hosts the mirror and who answers source requests is an owner decision; the legal contact in SECURITY.md must be a real mailbox.
+- Already completed: THIRD_PARTY_NOTICES.md drafted with the required text; ADR-013 documents mere-aggregation reasoning and the LGPL build alternative.
+- Exact human action: decide mirror location (e.g. a `livetap-ffmpeg-builds` GitHub repo with tagged source + config), set the contact address, and confirm MIT vs Apache-2.0 for LIVETAP itself (HANDOFF item).
+- What resumes: signed desktop releases can be published.
+
 (other environment-derived candidates to be finalized: Apple Developer account + macOS/Xcode host, Google Play console + Android SDK host, platform OAuth client credentials, code-signing certificates, GPU host for hardware-encoder verification, physical camera/mic for capture verification)
