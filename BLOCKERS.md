@@ -53,4 +53,11 @@ Format per entry: Category | Exact requirement | Why autonomous resolution faile
 - Exact human action: run `npm run verify:engine -w @livetap/desktop` and the web app on such a machine; record results in docs/qa.
 - What resumes: PASS labels for hardware encoding and real capture.
 
+## B-008 | Infrastructure | Container packaging of the relay unverified on this host
+- Exact requirement: run `docker compose up` for infra/relay once on a Linux host or CI runner.
+- Why autonomous resolution failed: the Vultr VM exposes no nested virtualisation (VMMonitorModeExtensions=False), so Docker Desktop's WSL2 engine can never start; native-binary verification was substituted.
+- Already completed: mediamtx.yml, compose file, session API with 33 tests and E2E, native verification of every runtime property.
+- Exact human action: enable B-001 (CI) or run compose on any Linux box; nothing else.
+- What resumes: PASS label for container packaging.
+
 (other environment-derived candidates to be finalized: Apple Developer account + macOS/Xcode host, Google Play console + Android SDK host, platform OAuth client credentials, code-signing certificates, GPU host for hardware-encoder verification, physical camera/mic for capture verification)

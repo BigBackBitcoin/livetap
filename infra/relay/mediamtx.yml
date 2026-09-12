@@ -1,0 +1,197 @@
+# LIVETAP CORE relay — MediaMTX configuration
+# =============================================================================
+# Pinned to MediaMTX v1.21.0 (bluenviron/mediamtx:1.21.0-ffmpeg).
+#
+# Verified against the exact `mediamtx.yml` shipped in the v1.21.0 release
+# (sha256 e5ccdda7ffd86168b12ca2405b91f7a07be4ead266d29701aaed50b39a6d32bb,
+# byte-identical to GitHub raw at tag v1.21.0). Evidence:
+# docs/qa/RELAY_VERIFICATION.md.
+#
+# THIS FILE CONTAINS NO SECRETS.
+# Every password is injected at runtime through MTX_* environment variables
+# (see .env.example). MediaMTX's env-override mechanism can both replace and
+# append list elements — VERIFIED, see RELAY_VERIFICATION.md test T2.
+#
+# NAMING CURRENCY NOTES for v1.21.0 (do not "fix" these back):
+#   * `runOnReady`   was renamed to `runOnAvailable`   in v1.21.0 — `runOnReady`
+#     does not exist in this version (0 occurrences in the shipped config).
+#   * `runOnNotReady` was renamed to `runOnUnavailable`.
+#   * The WebRTC ICE UDP listener is `webrtcLocalUDPAddress`, NOT
+#     `webrtcICEUDPMuxAddress` (that name is from an older release and is
+#     silently ignored — MediaMTX would fall back to the default port).
+# =============================================================================
+
+logLevel: info
+logDestinations: [stdout]
+
+# Size of the queue of outgoing packets, per reader.
+# Raised from the stock 512 because one ingest fans out to N destinations plus
+# the transcode hook's RTSP reader. A dead or slow destination drains its own
+# queue only — it can never stall the WHIP ingest or its sibling outputs.
+writeQueueSize: 1024
+writeTimeout: 10s
+
+###############################################
+# Control API
+#
+# Reachable ONLY from inside the compose network (service name `mediamtx`).
+# docker-compose.yml deliberately does NOT publish this port to the host.
+#
+# WHY THIS MATTERS: MediaMTX redacts `pass` fields in API responses, but it
+# does NOT redact `forward[].dest` or `runOnAvailable`. Both carry the user's
+# platform stream key in plaintext. Anyone who can reach this port can read
+# every connected user's stream keys. Treat exposure of :9997 as a full
+# credential breach. VERIFIED — see RELAY_VERIFICATION.md test T3.
+api: yes
+apiAddress: :9997
+
+###############################################
+# Authentication (internal user database)
+#
+# Passwords below are intentionally empty strings. They are overridden at
+# runtime by:
+#   MTX_AUTHINTERNALUSERS_0_PASS = ${MTX_PUBLISH_PASSWORD}   (publisher)
+#   MTX_AUTHINTERNALUSERS_1_PASS = ${MTX_API_PASSWORD}       (session-api)
+# docker-compose.yml wires those. An empty password would allow anonymous
+# publishing, so compose treats both vars as REQUIRED (`${VAR:?...}`).
+authMethod: internal
+authInternalUsers:
+  # [0] The publisher. This is the credential the browser sends as
+  #     `Authorization: Bearer <MTX_PUBLISH_PASSWORD>` on the WHIP POST, and
+  #     that FFmpeg/OBS send as the RTMP user/pass.
+  #     Scoped to publish-only, and only under `live/`.
+  - user: livetap
+    pass: ""
+    ips: []
+    permissions:
+      - action: publish
+        path: ~^live/.*$
+
+  # [1] The session-api service. API-only; cannot publish or read media.
+  - user: relayapi
+    pass: ""
+    ips: []
+    permissions:
+      - action: api
+
+  # [2] The transcode hook. The `runOnAvailable` ffmpeg process reads the
+  #     published stream back over RTSP, which requires a `read` permission.
+  #     Restricted to loopback, so only a process inside this container can
+  #     use it. Password from MTX_HOOK_PASSWORD.
+  - user: relayhook
+    pass: ""
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: read
+        path: ~^live/.*$
+
+  # NOTE: there is deliberately NO `user: any` entry.
+  # Removing it denies anonymous read AND anonymous publish outright, and also
+  # removes MediaMTX's stock "localhost may use the API without auth" rule.
+  # VERIFIED: unauthenticated API call -> 401; anonymous publish -> refused.
+
+###############################################
+# RTMP server
+#
+# Ingest only. Two uses:
+#   1. The LIVETAP desktop app can publish here instead of pushing to each
+#      platform itself (H.264 + AAC already, so native `forward` is viable).
+#   2. Host-side verification of the fan-out half without a browser.
+# Host port 19350 -> container 1935.
+rtmp: yes
+rtmpAddress: :1935
+rtmpEncryption: "no"
+
+###############################################
+# WebRTC / WHIP server — the web app's go-live path
+#
+# The browser cannot open an RTMP socket, so the web app publishes with WHIP
+# (RFC 9725). See ADR-005 and MEDIA_ENGINE_EVALUATION.md section 5.2.
+#
+# Host ports: 18889 -> 8889 (TCP/HTTP signalling), 18189/udp -> 8189/udp (ICE).
+webrtc: yes
+webrtcAddress: :8889
+webrtcEncryption: no # TLS is terminated by the reverse proxy — see README.md
+# ICE UDP listener. Correct key name for v1.21.0 (see header note).
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+# Inside a container, the addresses MediaMTX gathers from its own interfaces
+# are the bridge-network addresses, which no external client can reach. The
+# publicly reachable host/IP must be advertised explicitly.
+# Overridden by MTX_WEBRTCADDITIONALHOSTS=${LIVETAP_RELAY_PUBLIC_HOST}.
+webrtcAdditionalHosts: []
+webrtcIPsFromInterfaces: yes
+# Browsers behind restrictive NAT need STUN/TURN. Left empty by default:
+# add your own coturn here rather than a public STUN server in production.
+webrtcICEServers2: []
+webrtcAllowOrigins: ["*"] # Narrow this to your web app's origin in production.
+webrtcHandshakeTimeout: 10s
+webrtcTrackGatherTimeout: 2s
+
+###############################################
+# RTSP server
+#
+# REQUIRED, even though nothing external uses it: the `runOnAvailable`
+# transcode hook reads the published stream back over
+# rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH. Bound to loopback inside the
+# container and never published to the host.
+rtsp: yes
+rtspTransports: [tcp]
+rtspAddress: 127.0.0.1:8554
+
+###############################################
+# HLS — authenticated operator preview only
+#
+# Host port 18888 -> 8888. Because no `user: any` exists above, reading
+# requires the publisher credentials; there is no anonymous viewer surface.
+# Set MTX_HLS=no to remove this surface entirely.
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsAlwaysRemux: no
+hlsAllowOrigins: ["*"]
+
+###############################################
+# Disabled ingest/egress surfaces
+#
+# Every protocol LIVETAP does not use is switched off, so the relay exposes
+# the minimum possible attack surface. SRT in particular is left off because
+# the web path never uses it (ADR-012) and its default :8890 would collide
+# with the other team's `livetap-mtx` container.
+srt: no
+# Media-over-QUIC is ON by default in v1.21.0 and silently binds :8892 TCP,
+# :8892 UDP and :8893 UDP. Leaving it enabled would expose two undeclared
+# ports. Explicitly off. (Caught during verification — see RELAY_VERIFICATION.md.)
+moq: no
+webrtcTrustedProxies: []
+
+###############################################
+# Path defaults
+#
+# Applied to every session path created by session-api. Per-session
+# `forward` / `runOnAvailable` are written at runtime through
+# POST /v3/config/paths/add/live/<sessionId> — they cannot be expressed as a
+# static template, because a regex path template can only interpolate the
+# path name ($MTX_PATH, $G1...), never a per-session destination list.
+pathDefaults:
+  source: publisher
+  # No recording on the CORE relay by default — recording belongs to the
+  # desktop app (which has the full-quality master) or to LIVETAP CLOUD.
+  record: no
+  # Forward is EMPTY by design. See docs/architecture/RELAY_ARCHITECTURE.md:
+  # forwarding a WHIP ingest straight to RTMP silently DROPS the Opus audio
+  # track. Session paths therefore use `runOnAvailable` instead.
+  forward: []
+
+###############################################
+# Paths
+#
+# Deliberately EMPTY.
+#
+# There is no `live/~^(.+)$` catch-all template. A stream can only be
+# published to a path that session-api has explicitly created through the
+# Control API. No session => no publishable path => nothing to forward.
+# This is the relay's core authorisation invariant, and it means a leaked
+# publisher password alone cannot be used to push media anywhere.
+# VERIFIED — see RELAY_VERIFICATION.md test T4.
+paths: {}

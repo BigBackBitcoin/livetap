@@ -1,0 +1,115 @@
+# LIVETAP CORE relay — self-hosted WHIP -> RTMP/RTMPS fan-out.
+#
+# Usage:
+#   cp .env.example .env    # then fill in the three passwords and the host
+#   docker compose up -d
+#
+# PORT ALLOCATION
+# Host ports are deliberately offset so this stack can coexist with another
+# MediaMTX on the standard ports (1935/8889/8890/9997):
+#   19350 -> 1935      RTMP ingest (desktop app / diagnostics)
+#   18889 -> 8889      WHIP signalling (TCP/HTTP) — the web app's entry point
+#   18189 -> 8189/udp  WebRTC ICE (UDP) — MUST be reachable or WHIP cannot connect
+#   18888 -> 8888      HLS, authenticated operator preview only
+#   18080 -> 8080      session-api
+#
+# The MediaMTX Control API (:9997) is deliberately NOT published. It is
+# reachable only from inside the `relay` network, because anyone who can read
+# it can read every connected user's platform stream keys in plaintext
+# (MediaMTX redacts passwords but not `forward[].dest` / `runOnAvailable`).
+#
+# STATUS: this compose file has NOT been executed. The build host has no
+# nested virtualisation, so no Docker daemon can run on it — see
+# docs/qa/RELAY_VERIFICATION.md section "Docker". Every behaviour it configures
+# was instead verified against the identical MediaMTX v1.21.0 binary with the
+# identical mediamtx.yml. Treat `docker compose up` itself as UNVERIFIED until
+# someone runs it on a host with a working daemon.
+
+name: livetap-relay
+
+services:
+  mediamtx:
+    # Pinned. The `-ffmpeg` variant is REQUIRED: the stock `bluenviron/mediamtx`
+    # image contains only the Go binary, and the `runOnAvailable` transcode hook
+    # needs an ffmpeg on PATH inside the container.
+    image: bluenviron/mediamtx:1.21.0-ffmpeg
+    container_name: livetap-relay
+    restart: unless-stopped
+    networks: [relay]
+    ports:
+      - "19350:1935"      # RTMP ingest
+      - "18889:8889"      # WHIP / WebRTC signalling
+      - "18189:8189/udp"  # WebRTC ICE
+      - "18888:8888"      # HLS (authenticated)
+      # :9997 (Control API) intentionally absent. Do not add it.
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    environment:
+      # --- secrets, injected into authInternalUsers by index ---
+      # mediamtx.yml ships with empty passwords; these fill them in. An empty
+      # value would mean "no password", so all three are required.
+      MTX_AUTHINTERNALUSERS_0_PASS: ${MTX_PUBLISH_PASSWORD:?set MTX_PUBLISH_PASSWORD in .env}
+      MTX_AUTHINTERNALUSERS_1_PASS: ${MTX_API_PASSWORD:?set MTX_API_PASSWORD in .env}
+      MTX_AUTHINTERNALUSERS_2_PASS: ${MTX_HOOK_PASSWORD:?set MTX_HOOK_PASSWORD in .env}
+      # --- WebRTC reachability ---
+      # Inside a container MediaMTX can only see bridge addresses, which no
+      # browser can reach. The publicly routable host must be advertised.
+      MTX_WEBRTCADDITIONALHOSTS: ${LIVETAP_RELAY_PUBLIC_HOST:?set LIVETAP_RELAY_PUBLIC_HOST in .env}
+    healthcheck:
+      # v3/paths/list needs API auth; the WHIP endpoint answering is the better
+      # liveness signal and needs no credentials in the healthcheck.
+      test: ["CMD", "sh", "-c", "wget -q -O- http://127.0.0.1:8889/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  session-api:
+    # Node 20, zero dependencies — no build step, no package.json, no install.
+    image: node:20-alpine
+    container_name: livetap-relay-session-api
+    restart: unless-stopped
+    networks: [relay]
+    depends_on:
+      mediamtx:
+        condition: service_healthy
+    ports:
+      - "18080:8080"
+    volumes:
+      - ./session-api:/app:ro
+    working_dir: /app
+    command: ["node", "relay-session.mjs"]
+    environment:
+      PORT: "8080"
+      # Bearer token the web app presents here AND uses for the WHIP publish.
+      MTX_PUBLISH_PASSWORD: ${MTX_PUBLISH_PASSWORD:?set MTX_PUBLISH_PASSWORD in .env}
+      # Separate credential for the Control API, so a leaked browser token
+      # cannot be used to reconfigure the relay.
+      MTX_API_PASSWORD: ${MTX_API_PASSWORD:?set MTX_API_PASSWORD in .env}
+      # Credential the transcode hook uses for its loopback RTSP read-back.
+      MTX_HOOK_PASSWORD: ${MTX_HOOK_PASSWORD:?set MTX_HOOK_PASSWORD in .env}
+      # Service name on the private network — never a published port.
+      MTX_API_URL: "http://mediamtx:9997"
+      # What the browser is told to publish to. Must match how clients reach
+      # this host: a public DNS name behind TLS in production.
+      LIVETAP_RELAY_PUBLIC_HOST: ${LIVETAP_RELAY_PUBLIC_HOST:?set LIVETAP_RELAY_PUBLIC_HOST in .env}
+      LIVETAP_RELAY_PUBLIC_WHIP_PORT: ${LIVETAP_RELAY_PUBLIC_WHIP_PORT:-18889}
+      LIVETAP_RELAY_PUBLIC_WHIP_SCHEME: ${LIVETAP_RELAY_PUBLIC_WHIP_SCHEME:-http}
+      # 9:16 re-encode costs ~30% of a core per session. Opt in explicitly.
+      LIVETAP_ENABLE_VERTICAL_TRANSCODE: ${LIVETAP_ENABLE_VERTICAL_TRANSCODE:-0}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q -O- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  relay:
+    driver: bridge
