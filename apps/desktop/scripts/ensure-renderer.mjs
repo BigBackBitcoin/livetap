@@ -1,5 +1,5 @@
 /**
- * Make sure `dist/renderer/index.html` exists before packaging.
+ * Make sure `dist/renderer/app.html` exists before packaging.
  *
  * The real renderer is built by `npm run build:renderer` (the React app from apps/web). This script
  * only fills the gap: if that build has not been run, it drops in a placeholder page that says so,
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..');
-const target = path.join(appDir, 'dist', 'renderer', 'index.html');
+const target = path.join(appDir, 'dist', 'renderer', 'app.html');
 const placeholder = path.join(appDir, 'packaging', 'renderer-placeholder.html');
 
 if (existsSync(target)) {

@@ -28,7 +28,7 @@
  *    getUserMedia/getDisplayMedia track needs; blob: is for local recordings played back.
  *  - `script-src 'self'` — NO 'unsafe-inline' and NO 'unsafe-eval': the Vite production build emits
  *    external scripts only, so this holds.
- *  - `style-src 'self' 'unsafe-inline'` — unavoidable while the UI uses inline styles for layer
+ *  - `style-src 'self'` + `style-src-attr 'unsafe-inline'` — inline style ATTRIBUTES remain while the UI uses them for layer
  *    transforms; it is a far smaller risk than inline script.
  *  - the last four directives are not in the brief but cost nothing and close real holes:
  *    `object-src 'none'` (no plugins), `frame-src 'none'`, `base-uri 'self'` (stops a <base> tag
@@ -66,7 +66,8 @@ export function devCspHeaderValue(devServerOrigin: string): string {
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: mediastream:",
     `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${devServerOrigin}`,
-    `style-src 'self' 'unsafe-inline' ${devServerOrigin}`,
+    `style-src 'self' ${devServerOrigin}`,
+    "style-src-attr 'unsafe-inline'",
     "font-src 'self' data:",
     "worker-src 'self' blob:",
     "object-src 'none'",

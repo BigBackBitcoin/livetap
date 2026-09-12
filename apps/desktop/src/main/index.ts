@@ -42,8 +42,8 @@ import {
 import { SecretVault } from './vault.js';
 
 const IS_DEV = process.argv.includes('--dev');
-const DEV_SERVER_ORIGIN = 'http://localhost:5173';
-const RENDERER_INDEX = path.join(__dirname, '..', 'renderer', 'index.html');
+const DEV_SERVER_ORIGIN = 'http://localhost:5173/app.html';
+const RENDERER_INDEX = path.join(__dirname, '..', 'renderer', 'app.html');
 
 log.initialize();
 log.transports.file.level = 'info';
