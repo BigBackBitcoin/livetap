@@ -389,3 +389,28 @@ describe('BroadcastOrchestrator', () => {
     expect(notices[0]).toMatch(/Connect at least one destination/);
   });
 });
+
+describe('reconnect countdown exposure', () => {
+  it('publishes nextRetryAt and the policy max while RECONNECTING, and clears them on recovery', async () => {
+    const engine = new FakeEngine();
+    const scheduler = new FakeScheduler();
+    const registry = new AdapterRegistry().register(fakeAdapter('twitch').adapter);
+    let t = 10_000;
+    const orch = new BroadcastOrchestrator({ registry, engine, scheduler, now: () => t, random: () => 0.5, settings: { ...DEFAULT_PRODUCTION_SETTINGS, reconnect: { ...DEFAULT_PRODUCTION_SETTINGS.reconnect, maxAttempts: 5, jitter: 0 } } });
+    orch.addDestination(config('d2', 'twitch'));
+    await orch.connect('d2');
+    await orch.goLive();
+    await tick();
+    engine.emit('output', { type: 'outputLost', destinationId: 'd2', code: 'INGEST_DISCONNECTED' });
+    const s = orch.getDestination('d2')!;
+    expect(s.state).toBe('RECONNECTING');
+    expect(s.reconnectMaxAttempts).toBe(5);
+    expect(s.nextRetryAt).toBe(11_000);
+    t = 11_000;
+    await scheduler.flush();
+    const after = orch.getDestination('d2')!;
+    expect(after.state).toBe('LIVE');
+    expect(after.nextRetryAt).toBeUndefined();
+    expect(after.reconnectAttempt).toBe(0);
+  });
+});

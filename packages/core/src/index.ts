@@ -12,3 +12,4 @@ export * from './validation/ingest.js';
 export * from './orchestrator/BroadcastOrchestrator.js';
 export * from './production/intents.js';
 export * from './import/index.js';
+export * from './destination/describe.js';

@@ -482,7 +482,7 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
       }
     }
     if (this.apply(rec, 'STREAM_UP')) {
-      rec.snapshot = { ...rec.snapshot, error: undefined, reconnectAttempt: 0 };
+      rec.snapshot = { ...rec.snapshot, error: undefined, reconnectAttempt: 0, nextRetryAt: undefined };
       this.emit('destination', rec.snapshot);
       this.emitProduction();
       if (!wasReconnecting) this.subscribeChat(rec, adapter);
@@ -510,8 +510,15 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
   private scheduleReconnect(rec: Record_, attempt: number): void {
     this.clearReconnect(rec);
     const delay = reconnectDelayMs(this.settings.reconnect, attempt, this.random);
+    rec.snapshot = {
+      ...rec.snapshot,
+      nextRetryAt: this.now() + delay,
+      reconnectMaxAttempts: this.settings.reconnect.maxAttempts,
+    };
+    this.emit('destination', rec.snapshot);
     rec.reconnectTimer = this.scheduler.setTimeout(() => {
       rec.reconnectTimer = undefined;
+      rec.snapshot = { ...rec.snapshot, nextRetryAt: undefined };
       void this.attemptReconnect(rec);
     }, delay);
   }

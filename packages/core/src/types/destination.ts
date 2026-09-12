@@ -176,6 +176,10 @@ export interface DestinationSnapshot {
   watchUrl?: string;
   /** Reconnect attempt counter (resets on LIVE). */
   reconnectAttempt: number;
+  /** Maximum attempts the current policy allows (for "attempt 2 of 10"). */
+  reconnectMaxAttempts?: number;
+  /** When the next reconnect attempt fires (epoch ms) while RECONNECTING. */
+  nextRetryAt?: number;
   /** Timestamp of last state change. */
   stateChangedAt: number;
   /** Platform broadcast identifiers (never secrets). */
