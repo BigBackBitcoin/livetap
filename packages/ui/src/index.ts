@@ -131,5 +131,21 @@ export {
   TvIcon,
   GlobeIcon,
   SpinnerIcon,
+  IntentIcon,
+  INTENT_NAMES,
+  MomentIcon,
+  MOMENT_ICON_IDS,
+  hasMomentGlyph,
 } from './components/Icons.js';
-export type { IconProps, IconName, IconSize, IconComponent } from './components/Icons.js';
+export type {
+  IconProps,
+  IconName,
+  IconSize,
+  IconComponent,
+  GlyphProps,
+  GlyphSize,
+  IntentName,
+  IntentIconProps,
+  MomentIconId,
+  MomentIconProps,
+} from './components/Icons.js';

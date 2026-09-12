@@ -28,6 +28,13 @@ export interface StatusChipProps {
   label?: string;
   /** Tiny secondary line, e.g. "YouTube · 4,200 kbps" or "Attempt 2 of 8". */
   status?: string;
+  /**
+   * Secondary line for a live detail that changes every second, e.g. core's
+   * `describeReconnect()` output: "Trying again in 4 s (attempt 2 of 10)". Wins over
+   * `status`, is clipped with an ellipsis rather than wrapping, and is repeated in a
+   * `title` so the full sentence is reachable when it does not fit.
+   */
+  detail?: string;
   /** Announce state changes politely (use on the Studio chip row). */
   live?: boolean;
   className?: string;
@@ -45,10 +52,12 @@ export function StatusChip({
   state,
   label,
   status,
+  detail,
   live = false,
   className,
 }: StatusChipProps): ReactElement {
   const text = label ?? STATE_LABEL[state];
+  const secondary = detail ?? status;
   const treatment = DOT[state];
   const classes = [
     'lt-chip',
@@ -80,7 +89,11 @@ export function StatusChip({
       )}
       <span className="lt-chip__text">
         <span className="lt-chip__label">{text}</span>
-        {status ? <span className="lt-chip__status">{status}</span> : null}
+        {secondary ? (
+          <span className="lt-chip__status" title={secondary}>
+            {secondary}
+          </span>
+        ) : null}
       </span>
     </span>
   );

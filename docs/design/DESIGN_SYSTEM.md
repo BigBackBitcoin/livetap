@@ -492,6 +492,9 @@ assets, are never restyled or recoloured, and are never used to imply endorsemen
 
 ---
 
+
+**Domain glyph families (added 2026-09-12).** Beyond the closed 24-name system set, two id-keyed families share the same shell (24×24 grid, 1.75px stroke, `currentColor`, sizes 20/24/32): `IntentIcon` (talking, gaming, podcast, presentation, event, vertical) and `MomentIcon` (starting-soon, main-camera, screen-share, guest, break, ending, with a neutral fallback for custom Moments). They replace emoji everywhere in product UI so the site and app share one visual language.
+
 ## 8. Density: Simple vs Pro
 
 One attribute, `data-density="simple" | "pro"`, on the app root. Simple is the default. Density

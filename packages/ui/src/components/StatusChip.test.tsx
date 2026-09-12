@@ -66,6 +66,34 @@ describe('StatusChip', () => {
     unmount();
   });
 
+  it('shows a reconnect detail on one line, with the full text in a title', () => {
+    const detail = 'Trying again in 4 s (attempt 2 of 10)';
+    const { container, unmount } = render(
+      <StatusChip state="RECONNECTING" detail={detail} />,
+    );
+    const line = container.querySelector('.lt-chip__status');
+    expect(text(line)).toBe(detail);
+    expect(line?.getAttribute('title')).toBe(detail);
+    unmount();
+  });
+
+  it('prefers detail over status, and titles whichever line it renders', () => {
+    const both = render(
+      <StatusChip state="RECONNECTING" status="YouTube" detail="Trying again in 4 s" />,
+    );
+    expect(text(both.container.querySelector('.lt-chip__status'))).toBe('Trying again in 4 s');
+    both.unmount();
+
+    const statusOnly = render(<StatusChip state="LIVE" status="YouTube · 4,200 kbps" />);
+    const line = statusOnly.container.querySelector('.lt-chip__status');
+    expect(line?.getAttribute('title')).toBe('YouTube · 4,200 kbps');
+    statusOnly.unmount();
+
+    const neither = render(<StatusChip state="LIVE" />);
+    expect(neither.container.querySelector('.lt-chip__status')).toBeNull();
+    neither.unmount();
+  });
+
   it('announces politely when asked to', () => {
     const { container, unmount } = render(<StatusChip state="DEGRADED" live />);
     expect(container.querySelector('.lt-chip')?.getAttribute('aria-live')).toBe('polite');

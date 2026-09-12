@@ -1,8 +1,15 @@
 import type { ReactElement, ReactNode } from 'react';
 
 export interface MomentCardProps {
-  /** Emoji or an icon element. Moments carry an `icon` key in `@livetap/core`. */
-  icon: ReactNode;
+  /**
+   * The glyph for this Moment — preferably `<MomentIcon moment={id} />`, so the card
+   * speaks the same visual language as the nav (PRODUCT_REVIEW P2-5). A plain string
+   * still works and is rendered as an emoji: Moments carry an emoji `icon` key in
+   * `@livetap/core`, and that path stays supported. When both are given, `icon` wins.
+   */
+  icon?: ReactNode;
+  /** Emoji fallback, used only when `icon` is absent. */
+  emoji?: string;
   name: string;
   active?: boolean;
   onSelect: () => void;
@@ -21,6 +28,7 @@ export interface MomentCardProps {
  */
 export function MomentCard({
   icon,
+  emoji,
   name,
   active = false,
   onSelect,
@@ -28,6 +36,10 @@ export function MomentCard({
   disabled = false,
   className,
 }: MomentCardProps): ReactElement {
+  // A ReactNode icon is preferred; the emoji string is the backwards-compatible path.
+  const glyph = icon ?? emoji ?? null;
+  const isGlyph = glyph !== null && typeof glyph !== 'string' && typeof glyph !== 'number';
+
   return (
     <button
       type="button"
@@ -36,8 +48,13 @@ export function MomentCard({
       disabled={disabled}
       onClick={onSelect}
     >
-      <span className="lt-moment__icon" aria-hidden="true">
-        {icon}
+      <span
+        className={['lt-moment__icon', isGlyph ? 'lt-moment__icon--glyph' : null]
+          .filter(Boolean)
+          .join(' ')}
+        aria-hidden="true"
+      >
+        {glyph}
       </span>
       <span className="lt-moment__name">{name}</span>
       {meta ? <span className="lt-moment__meta">{meta}</span> : null}

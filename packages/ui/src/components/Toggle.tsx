@@ -13,11 +13,12 @@ export interface ToggleProps
 }
 
 /**
- * A switch, implemented as a `<button aria-pressed>` rather than a checkbox.
+ * A switch: `<button role="switch" aria-checked>`, not a checkbox.
  *
  * Rationale: every toggle in LIVETAP takes effect immediately (mute, recording,
- * theme). A checkbox implies a form that will be submitted later. `aria-pressed`
- * says "this is a control that is currently on", which is the truth.
+ * theme). A checkbox implies a form that will be submitted later. `role="switch"`
+ * says "this is on or off right now", which is the truth, and keeps the native
+ * button's Space/Enter activation and focus behaviour (PRODUCT_REVIEW P2-13).
  */
 export function Toggle({
   pressed,
@@ -40,7 +41,8 @@ export function Toggle({
     <button
       type={type}
       className={['lt-toggle', 'lt-touch', className].filter(Boolean).join(' ')}
-      aria-pressed={pressed}
+      role="switch"
+      aria-checked={pressed}
       disabled={disabled}
       onClick={(event) => {
         onClick?.(event);

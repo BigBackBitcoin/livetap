@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { click, render, text } from '../testing/render.js';
+import { click, flush, render, text } from '../testing/render.js';
 import { Toggle } from './Toggle.js';
 
 describe('Toggle', () => {
-  it('is a button carrying aria-pressed, not a checkbox', () => {
+  it('is a button with role=switch and aria-checked, not a checkbox', () => {
     const { container, unmount } = render(
       <Toggle pressed={false} onPressedChange={() => {}}>
         Record this broadcast
@@ -13,19 +13,53 @@ describe('Toggle', () => {
     expect(button).not.toBeNull();
     expect(button?.tagName).toBe('BUTTON');
     expect(button?.getAttribute('type')).toBe('button');
-    expect(button?.getAttribute('aria-pressed')).toBe('false');
+    expect(button?.getAttribute('role')).toBe('switch');
+    expect(button?.getAttribute('aria-checked')).toBe('false');
+    expect(button?.hasAttribute('aria-pressed')).toBe(false);
     expect(container.querySelector('input')).toBeNull();
     expect(text(button)).toBe('Record this broadcast');
     unmount();
   });
 
-  it('reflects the pressed state', () => {
+  it('reflects the checked state', () => {
     const { container, unmount } = render(
       <Toggle pressed onPressedChange={() => {}}>
         Record this broadcast
       </Toggle>,
     );
-    expect(container.querySelector('button')?.getAttribute('aria-pressed')).toBe('true');
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('aria-checked')).toBe('true');
+    expect(button?.getAttribute('role')).toBe('switch');
+    unmount();
+  });
+
+  it('leaves the native Space/Enter activation intact', () => {
+    const onPressedChange = vi.fn();
+    const { container, unmount } = render(
+      <Toggle pressed={false} onPressedChange={onPressedChange}>
+        Record
+      </Toggle>,
+    );
+    const button = container.querySelector('button') as HTMLButtonElement;
+
+    // A native <button> is in the tab order and activates on Space/Enter. Toggle adds
+    // no tabindex and no key handler, so neither is taken away.
+    expect(button.hasAttribute('tabindex')).toBe(false);
+    expect(button.onkeydown).toBeNull();
+    expect(button.onkeyup).toBeNull();
+    for (const key of ['Enter', ' ']) {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      flush(() => {
+        button.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented, key).toBe(false);
+    }
+
+    // The activation those keys produce in a browser is a click on the button, which
+    // reports the next value exactly once.
+    click(button);
+    expect(onPressedChange).toHaveBeenCalledTimes(1);
+    expect(onPressedChange).toHaveBeenLastCalledWith(true);
     unmount();
   });
 

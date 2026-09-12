@@ -227,7 +227,7 @@
 }
 
 /* ================================================================== */
-/* Toggle — a button with aria-pressed, not a checkbox                */
+/* Toggle — a button with role=switch/aria-checked, not a checkbox    */
 /* ================================================================== */
 
 .lt-toggle {
@@ -265,12 +265,12 @@
     background-color var(--lt-dur-1) var(--lt-ease-standard);
 }
 
-.lt-toggle[aria-pressed='true'] .lt-toggle__track {
+.lt-toggle[aria-checked='true'] .lt-toggle__track {
   background: var(--lt-accent-focus-solid);
   border-color: var(--lt-accent-focus-solid);
 }
 
-.lt-toggle[aria-pressed='true'] .lt-toggle__knob {
+.lt-toggle[aria-checked='true'] .lt-toggle__knob {
   background: var(--lt-on-focus);
   transform: translateX(18px);
 }
@@ -706,9 +706,12 @@
   white-space: nowrap;
 }
 
+/* One line, clipped — a reconnect countdown must not reflow the chip row. */
 .lt-chip__status {
   font-weight: var(--lt-weight-medium);
   opacity: 0.85;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -993,6 +996,16 @@
 .lt-moment__icon {
   font-size: var(--lt-text-22);
   line-height: 1;
+}
+
+/* A MomentIcon rather than an emoji: sized by the SVG, coloured by the card. */
+.lt-moment__icon--glyph {
+  display: inline-flex;
+  color: var(--lt-text-secondary);
+}
+
+.lt-moment[aria-pressed='true'] .lt-moment__icon--glyph {
+  color: inherit;
 }
 
 .lt-moment__name {

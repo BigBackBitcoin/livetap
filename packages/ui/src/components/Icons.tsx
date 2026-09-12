@@ -2,6 +2,12 @@
  * The closed LIVETAP icon set: 24 glyphs, 24x24 grid, 1.75px stroke, currentColor.
  * Adding a 25th requires naming the one it replaces. See DESIGN_SYSTEM.md §7.
  *
+ * Two further *families* live here, outside that count because they are picked by
+ * domain id rather than by name: `IntentIcon` (one glyph per content type) and
+ * `MomentIcon` (one per built-in Moment, plus a neutral fallback for custom ones).
+ * They are drawn on the same grid with the same stroke so intent and Moment cards
+ * stop mixing emoji into the system's single visual language (PRODUCT_REVIEW P2-5).
+ *
  * Icons are decorative by default (`aria-hidden`). Pass `title` only when the icon
  * is the sole content of a non-interactive element; interactive icon-only controls
  * must use `IconButton`, which carries the accessible name.
@@ -11,38 +17,62 @@ import type { ReactElement, ReactNode, SVGProps } from 'react';
 
 export type IconSize = 20 | 24;
 
-export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'children' | 'width' | 'height'> {
+/** Intent and Moment glyphs also render at 32px, the size of a Moment card's badge. */
+export type GlyphSize = 20 | 24 | 32;
+
+export interface GlyphProps
+  extends Omit<SVGProps<SVGSVGElement>, 'children' | 'width' | 'height'> {
+  /** 20px inline with text, 24px for controls and nav, 32px for Moment cards. */
+  size?: GlyphSize;
+  /** When set, the glyph becomes `role="img"` with this accessible name. */
+  title?: string;
+}
+
+export interface IconProps extends Omit<GlyphProps, 'size'> {
   /** 20px inline with text, 24px for controls and nav. Strokes are not rescaled. */
   size?: IconSize;
-  /** When set, the icon becomes `role="img"` with this accessible name. */
-  title?: string;
 }
 
 export type IconComponent = (props: IconProps) => ReactElement;
 
+interface GlyphShellProps extends GlyphProps {
+  children: ReactNode;
+}
+
+/** The one SVG shell every glyph in the package is drawn into. */
+function GlyphShell({
+  size = 24,
+  title,
+  className,
+  children,
+  ...rest
+}: GlyphShellProps): ReactElement {
+  const classes = ['lt-icon', className].filter(Boolean).join(' ');
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={classes}
+      role={title ? 'img' : undefined}
+      aria-hidden={title ? undefined : true}
+      focusable={false}
+      {...rest}
+    >
+      {title ? <title>{title}</title> : null}
+      {children}
+    </svg>
+  );
+}
+
 function makeIcon(name: string, children: ReactNode): IconComponent {
-  function Icon({ size = 24, title, className, ...rest }: IconProps): ReactElement {
-    const classes = ['lt-icon', className].filter(Boolean).join(' ');
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width={size}
-        height={size}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.75}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={classes}
-        role={title ? 'img' : undefined}
-        aria-hidden={title ? undefined : true}
-        focusable={false}
-        {...rest}
-      >
-        {title ? <title>{title}</title> : null}
-        {children}
-      </svg>
-    );
+  function Icon(props: IconProps): ReactElement {
+    return <GlyphShell {...props}>{children}</GlyphShell>;
   }
   Icon.displayName = `Icon.${name}`;
   return Icon;
@@ -243,3 +273,183 @@ export const Icons = {
 export type IconName = keyof typeof Icons;
 
 export const ICON_NAMES = Object.keys(Icons) as IconName[];
+
+/* ================================================================== */
+/* Intent glyphs — one per content type (`CONTENT_TYPES` in core)      */
+/* ================================================================== */
+
+export type IntentName = 'talking' | 'gaming' | 'podcast' | 'presentation' | 'event' | 'vertical';
+
+const INTENT_GLYPHS: Record<IntentName, ReactNode> = {
+  /** Camera on a person: you, in frame, talking. */
+  talking: (
+    <>
+      <path d="M3.25 5.25a1.5 1.5 0 0 1 1.5-1.5h14.5a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5Z" />
+      <circle cx="12" cy="10.25" r="2.5" />
+      <path d="M7.75 18.25a4.25 4.25 0 0 1 8.5 0" />
+    </>
+  ),
+  /** Gamepad: d-pad on the left, two buttons on the right. */
+  gaming: (
+    <>
+      <path d="M2.75 13.5a5.25 5.25 0 0 1 5.25-5.25h8a5.25 5.25 0 0 1 0 10.5H8a5.25 5.25 0 0 1-5.25-5.25Z" />
+      <path d="M7.75 11.5v4M5.75 13.5h4" />
+      <path d="M15.25 12h.01M17.5 14.25h.01" />
+    </>
+  ),
+  /** Studio condenser mic in its yoke — squarer capsule than the system `mic`. */
+  podcast: (
+    <>
+      <path d="M8.5 4.75a1.5 1.5 0 0 1 1.5-1.5h4a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5Z" />
+      <path d="M10.5 6.25h3M10.5 8.75h3M10.5 11.25h3" />
+      <path d="M6 11.25v1a6 6 0 0 0 12 0v-1" />
+      <path d="M12 18.25v2.5M9 20.75h6" />
+    </>
+  ),
+  /** Laptop showing slides. */
+  presentation: (
+    <>
+      <path d="M4.75 15.25V6.25a1.5 1.5 0 0 1 1.5-1.5h11.5a1.5 1.5 0 0 1 1.5 1.5v9" />
+      <path d="M7.75 8.5h8.5M7.75 11.5h5" />
+      <path d="M3.25 15.25h17.5l1.1 2.4a1 1 0 0 1-.9 1.45H3.05a1 1 0 0 1-.9-1.45Z" />
+    </>
+  ),
+  /** Handheld mic on a floor stand — a room, an audience, a stage. */
+  event: (
+    <>
+      <circle cx="12" cy="5.75" r="2.75" />
+      <path d="M12 8.5v7.75" />
+      <path d="M7.25 20.25 12 16.25l4.75 4" />
+    </>
+  ),
+  /** Phone held portrait. */
+  vertical: (
+    <>
+      <path d="M7.25 4.75a2 2 0 0 1 2-2h5.5a2 2 0 0 1 2 2v14.5a2 2 0 0 1-2 2h-5.5a2 2 0 0 1-2-2Z" />
+      <path d="M10.5 5.25h3" />
+      <path d="M11 18.5h2" />
+    </>
+  ),
+};
+
+export const INTENT_NAMES = Object.keys(INTENT_GLYPHS) as IntentName[];
+
+export interface IntentIconProps extends GlyphProps {
+  /** Which content type this card offers. */
+  intent: IntentName;
+}
+
+/** The glyph for a content type, drawn on the icon set's grid rather than as emoji. */
+export function IntentIcon({ intent, ...rest }: IntentIconProps): ReactElement {
+  return (
+    <GlyphShell data-intent={intent} {...rest}>
+      {INTENT_GLYPHS[intent]}
+    </GlyphShell>
+  );
+}
+IntentIcon.displayName = 'IntentIcon';
+
+/* ================================================================== */
+/* Moment glyphs — one per built-in Moment, plus a neutral fallback    */
+/* ================================================================== */
+
+/** Built-in Moment ids that have a dedicated glyph. Custom ids get the fallback. */
+export const MOMENT_ICON_IDS = [
+  'starting-soon',
+  'main-camera',
+  'screen-share',
+  'guest',
+  'break',
+  'ending',
+] as const;
+
+export type MomentIconId = (typeof MOMENT_ICON_IDS)[number];
+
+/** Rounded rectangle with a dot: "a Moment", with nothing claimed about its content. */
+const MOMENT_FALLBACK_GLYPH: ReactNode = (
+  <>
+    <path d="M3.75 7.25a2.5 2.5 0 0 1 2.5-2.5h11.5a2.5 2.5 0 0 1 2.5 2.5v9.5a2.5 2.5 0 0 1-2.5 2.5H6.25a2.5 2.5 0 0 1-2.5-2.5Z" />
+    <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
+  </>
+);
+
+const MOMENT_GLYPHS: Record<MomentIconId, ReactNode> = {
+  /** Hourglass. */
+  'starting-soon': (
+    <>
+      <path d="M6.75 3.75h10.5M6.75 20.25h10.5" />
+      <path d="M8.5 3.75v3.6a2 2 0 0 0 .58 1.4L12 12l2.92-3.25a2 2 0 0 0 .58-1.4V3.75" />
+      <path d="M8.5 20.25v-3.6a2 2 0 0 1 .58-1.4L12 12l2.92 3.25a2 2 0 0 1 .58 1.4v3.6" />
+    </>
+  ),
+  /** Camera — the same drawing as the system `camera` glyph. */
+  'main-camera': (
+    <>
+      <path d="M2.75 7.75a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2Z" />
+      <path d="m14.75 10.5 5.5-3.25v9.5l-5.5-3.25Z" />
+    </>
+  ),
+  /** Monitor — the same drawing as the system `screen` glyph. */
+  'screen-share': (
+    <>
+      <path d="M3.25 5.75a1.5 1.5 0 0 1 1.5-1.5h14.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5Z" />
+      <path d="M12 16.25v3.5" />
+      <path d="M9 19.75h6" />
+    </>
+  ),
+  /** Two people — the same drawing as the system `users` glyph. */
+  guest: (
+    <>
+      <circle cx="10.25" cy="8" r="3.25" />
+      <path d="M15.75 19.25v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4a3.5 3.5 0 0 0-3.5 3.5v1.5" />
+      <path d="M16.75 5.2a3.25 3.25 0 0 1 0 5.6" />
+      <path d="M19.75 19.25v-1.5a3.5 3.5 0 0 0-2.6-3.38" />
+    </>
+  ),
+  /** Cup on a saucer. */
+  break: (
+    <>
+      <path d="M4.75 6.75h11.5v6a4.5 4.5 0 0 1-4.5 4.5h-2.5a4.5 4.5 0 0 1-4.5-4.5Z" />
+      <path d="M16.25 8.25h1.25a2.5 2.5 0 0 1 0 5h-1.25" />
+      <path d="M3.75 20.25h13.5" />
+    </>
+  ),
+  /** An open hand, waving goodbye. */
+  ending: (
+    <>
+      <path d="M17.25 11V6.25a1.75 1.75 0 0 0-3.5 0" />
+      <path d="M13.75 10V4.5a1.75 1.75 0 0 0-3.5 0v1.75" />
+      <path d="M10.25 10.25V6.25a1.75 1.75 0 0 0-3.5 0v7.5" />
+      <path d="M17.25 8.25a1.75 1.75 0 0 1 3.5 0v5.5a7 7 0 0 1-7 7h-1.5c-2.1 0-3.6-.8-5-2.2l-2.9-2.9a1.75 1.75 0 0 1 2.5-2.45l1.4 1.3" />
+      <path d="M4.5 5.5 3.25 4.25M4 9.25H2.5" />
+    </>
+  ),
+};
+
+export interface MomentIconProps extends GlyphProps {
+  /**
+   * A Moment id. Built-ins get their own glyph; anything else — a Moment the user
+   * made — gets the neutral fallback rather than a guess at its content.
+   */
+  moment: string;
+}
+
+function isMomentIconId(id: string): id is MomentIconId {
+  return Object.prototype.hasOwnProperty.call(MOMENT_GLYPHS, id);
+}
+
+/** The glyph for a Moment, by id. Never throws on an unknown id. */
+export function MomentIcon({ moment, ...rest }: MomentIconProps): ReactElement {
+  const glyph = isMomentIconId(moment) ? MOMENT_GLYPHS[moment] : MOMENT_FALLBACK_GLYPH;
+  return (
+    <GlyphShell data-moment={moment} {...rest}>
+      {glyph}
+    </GlyphShell>
+  );
+}
+MomentIcon.displayName = 'MomentIcon';
+
+/** `true` when this Moment id has a dedicated glyph (rather than the fallback). */
+export function hasMomentGlyph(id: string): id is MomentIconId {
+  return isMomentIconId(id);
+}
