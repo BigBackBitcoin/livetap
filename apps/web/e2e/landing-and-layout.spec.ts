@@ -46,13 +46,12 @@ test.describe('landing', () => {
       page.getByText('TikTok, Instagram and X publish no live chat API, so nothing from them appears here.'),
     ).toBeVisible();
 
-    // Eight chapters and one declared silence, all real sections with real headings.
-    await expect(page.locator('[data-sc-act]')).toHaveCount(9);
+    // Eight chapters and two declared silences, all real sections with real headings.
+    await expect(page.locator('[data-sc-act]')).toHaveCount(10);
     /*
-     * Seven of the eight chapters carry their copy in the fixed band layer, one band per act,
-     * and only the active one is visible. A band that is not on screen is `visibility: hidden`
-     * and therefore out of the accessibility tree, so the peak's title is read off the element
-     * rather than looked up by role.
+     * Seven of the eight chapters carry their copy in a band inside their own act, and a band
+     * is cued to opacity 0 while its chapter is off screen, so the peak's title is read off the
+     * element rather than looked up by role.
      */
     await expect(page.locator('[data-lt-band]')).toHaveCount(7);
     await expect(page.locator('[data-lt-band="act-break"] .ltp-band__title')).toHaveText(

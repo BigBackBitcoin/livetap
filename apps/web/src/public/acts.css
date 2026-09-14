@@ -39,42 +39,49 @@
   pointer-events: auto;
 }
 
-/* The one declared silence, short: the peak is next and it should arrive soon. */
+/* The two declared silences, short: the seam between two pinned stages is already a viewport
+   of console alone, so a rest only needs to add a breath to it, not a screen. */
 .ltp-rest {
-  min-block-size: 40svh;
+  min-block-size: 25svh;
 }
 
-/* ------------------------------------------------------------ the band layer */
+/* A flow chapter: the band region sticks while the section passes, so the copy travels with
+   the page's own scroll instead of with a pinned stage. */
+.ltp-act--flow {
+  min-block-size: 90svh;
+}
 
-/*
- * One fixed layer for the bands. On desktop it is the reserved region above the surface; on a
- * phone it is the strip above the status bar, on a plate. Bands stack inside it and only the
- * active one is visible, so a chapter's copy arrives by cross-fade and never by motion.
- */
-.ltp-bands {
-  position: fixed;
-  inset-block-end: var(--ltp-status);
-  inset-inline: 0;
-  block-size: var(--ltp-band);
-  z-index: var(--ltp-z-acts);
+.ltp-act__flow {
+  position: sticky;
+  inset-block-start: 0;
+  block-size: 100svh;
+  inline-size: 100%;
   pointer-events: none;
 }
 
-@media (min-width: 1025px) {
-  .ltp-bands {
-    inset-block: 0 auto;
-    inset-inline: var(--ltp-rail) 0;
-  }
+/* The pan chapter's stage is the rail's viewport. */
+.ltp-act--pan [data-sc-stage] {
+  overflow: hidden;
 }
 
-/* Below the rail breakpoint the band overlays the desk's lower edge, so it sits on a plate
-   that is opaque where the text is and fades above it. Never a full-frame overlay. */
+/* ------------------------------------------------------------------ the plate */
+
+/*
+ * Below the rail breakpoint the band overlays the desk's lower edge, so it sits on a plate
+ * that is opaque where the text is and fades above it. Never a full-frame overlay. The plate
+ * is a SIBLING of the copy (the verification pass hides cued copy to measure what is under it)
+ * and it follows the act's own progress, so it is gone whenever the copy is gone.
+ */
 .ltp-act__plate {
   position: absolute;
-  inset-block-end: 0;
+  inset-block-end: var(--ltp-status);
   inset-inline: 0;
   block-size: calc(var(--ltp-band) + 3rem);
   pointer-events: none;
+  opacity: min(
+    clamp(0, calc(var(--sc-p, 0) * 14), 1),
+    clamp(0, calc((0.97 - var(--sc-p, 0)) * 24), 1)
+  );
   background: linear-gradient(
     to top,
     var(--lt-bg-0) 0%,
@@ -82,6 +89,10 @@
     color-mix(in oklab, var(--lt-bg-0) 70%, transparent) 88%,
     transparent 100%
   );
+}
+
+.ltp-act--hero .ltp-act__plate {
+  opacity: clamp(0, calc((0.92 - var(--sc-p, 0)) * 16), 1);
 }
 
 @media (min-width: 1025px) {
@@ -93,47 +104,64 @@
 
 /* ------------------------------------------------------------------- the band */
 
+/*
+ * Each chapter's band lives inside its own act, in the region the surface leaves free. The
+ * engine's cue on the band opens it as the chapter's travel begins and closes it before the
+ * chapter leaves, so copy is never on screen while a stage slides through a seam. `is-here`
+ * is set by the page on the active chapter and only governs pointer-events: a band that is
+ * fading out must not catch a tap meant for the console.
+ */
 .ltp-band {
   position: absolute;
-  inset-block: 0;
+  inset-block-end: var(--ltp-status);
   inset-inline: var(--ltp-pad);
+  block-size: var(--ltp-band);
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   gap: var(--lt-space-2);
   padding-block: var(--lt-space-2) var(--lt-space-1);
   overflow: hidden;
-  opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transition:
-    opacity var(--lt-dur-2) var(--lt-ease-standard),
-    visibility 0s linear var(--lt-dur-2);
 }
 
 .ltp-band.is-here {
-  opacity: 1;
-  visibility: visible;
   pointer-events: auto;
-  transition-delay: 0s;
 }
 
 @media (min-width: 1025px) {
   .ltp-band {
+    inset-block: 0 auto;
+    inset-inline: calc(var(--ltp-rail) + var(--ltp-pad)) var(--ltp-pad);
     padding-block: var(--lt-space-4) var(--lt-space-2);
+  }
+
+  /* Anchors vary chapter to chapter: lead, trail, rail, centre. Never the same twice running. */
+  .ltp-band--trail {
+    align-items: flex-end;
+    text-align: end;
+  }
+
+  .ltp-band--trail .ltp-band__tools {
+    justify-content: flex-end;
   }
 }
 
 /*
  * Two chapters need more room than the band: the six outputs and the comparison. Their band
  * grows downward over the surface as a panel, scrolls inside itself if it must, and never
- * pushes anything.
+ * pushes anything and never covers the desk.
  */
-.ltp-band--tall.is-here {
+.ltp-band--tall {
+  /* The panel is the ground the harness measures against, so the cue sits on the inner block
+     and the panel itself follows the act's progress. */
+  opacity: min(
+    clamp(0, calc((var(--sc-p, 0) - 0.02) * 16), 1),
+    clamp(0, calc((0.96 - var(--sc-p, 0)) * 16), 1)
+  );
   inset-block-end: auto;
   block-size: auto;
-  min-block-size: 100%;
-  /* Never over the desk: GO LIVE and the toolbar stay visible and operable under the panel. */
+  min-block-size: var(--ltp-band);
   max-block-size: calc(100svh - var(--ltp-status) - var(--ltp-desk) - 56px);
   padding-block-end: var(--lt-space-3);
   overflow-y: auto;
@@ -142,9 +170,21 @@
   box-shadow: var(--lt-shadow-2);
 }
 
+.ltp-band__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  min-block-size: 0;
+}
+
+.ltp-band__inner > .ltp-band__tools--wide {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
 @media (max-width: 1024.98px) {
-  .ltp-band--tall.is-here {
-    inset-block: auto 0;
+  .ltp-band--tall {
+    inset-block: auto var(--ltp-status);
     max-block-size: 58svh;
     background: var(--lt-bg-0);
     border-block-start: 1px solid var(--lt-border);
@@ -453,6 +493,139 @@
 
 .ltp-foot__nav a {
   color: var(--lt-text-secondary);
+}
+
+/* ------------------------------------------------------------------ the rail */
+
+/*
+ * Six looks travel sideways under the wheel. The rail is wider than the viewport on purpose:
+ * the engine travels exactly the overflow, so the heading rides in as the first item and a
+ * closing note as the last, which is what gives the rail its resolution and its width.
+ */
+.ltp-band--rail {
+  inset-inline: 0;
+  padding-inline: 0;
+  overflow: visible;
+}
+
+.ltp-lane {
+  display: flex;
+  align-items: stretch;
+  gap: var(--lt-space-3);
+  inline-size: max-content;
+  padding-inline: var(--ltp-pad);
+  block-size: 100%;
+}
+
+@media (min-width: 1025px) {
+  .ltp-lane {
+    padding-inline-start: calc(var(--ltp-rail) + var(--ltp-pad));
+  }
+}
+
+.ltp-lane__lead,
+.ltp-lane__trail {
+  flex: 0 0 auto;
+  inline-size: clamp(16rem, 24vw, 22rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--lt-space-2);
+}
+
+.ltp-lane__trail {
+  inline-size: clamp(14rem, 20vw, 18rem);
+  justify-content: center;
+}
+
+.ltp-railcard {
+  flex: 0 0 auto;
+  inline-size: clamp(11rem, 15vw, 14rem);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--lt-space-1);
+  padding: var(--lt-space-2);
+  background: var(--lt-bg-2);
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius-lg);
+  box-shadow: var(--lt-shadow-1), var(--ltp-edge);
+  color: var(--lt-text-secondary);
+  text-align: start;
+  transition: border-color var(--lt-dur-1) var(--lt-ease-standard);
+}
+
+.ltp-railcard[aria-pressed='true'] {
+  border-color: var(--lt-accent-focus);
+  background: var(--lt-bg-3);
+}
+
+.ltp-railcard__thumb {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-bg-1);
+  outline: 1px solid var(--ltp-hair);
+}
+
+.ltp-railcard__name {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-1);
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  font-weight: var(--lt-weight-semibold);
+  color: var(--lt-text-primary);
+}
+
+.ltp-railcard__meta {
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  color: var(--lt-text-tertiary);
+}
+
+/* Items settle in sequence as the rail travels, so it reads as a drawer being pulled. */
+@media (prefers-reduced-motion: no-preference) {
+  .ltp-railcard {
+    opacity: clamp(0.55, calc(0.55 + var(--sc-p, 1) * 3 - var(--i, 0) * 0.35), 1);
+  }
+}
+
+/* Under reduced motion the engine turns the stage into a native sideways scroll region. */
+@media (prefers-reduced-motion: reduce) {
+  .ltp-band--rail {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+}
+
+/* ----------------------------------------------------------------- the counts */
+
+.ltp-band__num {
+  font-family: var(--ltp-font-display);
+  font-size: var(--lt-text-28);
+  line-height: 1;
+  font-weight: var(--lt-weight-extrabold);
+  color: var(--lt-text-primary);
+}
+
+@media (min-width: 1025px) {
+  .ltp-band__num {
+    font-size: var(--lt-text-36);
+  }
+}
+
+.ltp-band__nocounts {
+  display: none;
+}
+
+[data-lt-countwrap].is-empty .ltp-band__counts {
+  display: none;
+}
+
+[data-lt-countwrap].is-empty .ltp-band__nocounts {
+  display: inline;
 }
 
 /* ================================================== the surface's new parts */
@@ -808,15 +981,8 @@
     display: none;
   }
 
-  .ltp-band__moments {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding-block-end: var(--lt-space-1);
-  }
-
-  .ltp-band__moments .lt-btn {
-    flex: none;
+  .ltp-lane__lead .ltp-band__lede {
+    -webkit-line-clamp: 2;
   }
 
   .ltp-stage__state {
@@ -863,8 +1029,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ltp-intentchip,
-  .ltp-input,
-  .ltp-band {
+  .ltp-input {
     transition: none;
   }
 }

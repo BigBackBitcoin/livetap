@@ -1,20 +1,37 @@
 # LIVETAP Scroll Story, the Scroll Craft score
 
-**Version** 2.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
-**Reads from** `scrollcraft/builds/livetap-public/BRIEF.md` (self-authored, not interviewed) and
-`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT.md` / `LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md`, the
-first-time-creator audit (score 59/150) that drove the rebuild this version documents.
+**Version** 3.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
+**Reads from** `scrollcraft/builds/livetap-public/BRIEF.md` (self-authored, not interviewed,
+including its "Revision 3" section), `docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT.md` /
+`LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md`, the first-time-creator audit (score 59/150) that
+drove the rebuild v2.0 documented, and the owner's follow-up direction of 2026-09-14, "the spacing
+and flow seems off," that drove the revision this version documents.
 **Companions** `LIVETAP_VISUAL_DIRECTION.md` · `LIVETAP_INTERACTION_SYSTEM.md` ·
 `LIVETAP_MOTION_SYSTEM.md` · `scrollcraft/builds/livetap-public/PLAN.md` /
 `REPORT.md`
 
-**What changed since v1.0.** The build this document described shipped, an independent
+**What changed since v1.0.** The build this document originally described shipped, an independent
 first-time-creator audit of the deployed page scored it 59/150 and named a jammed main thread as
 the root cause of nearly everything it disliked (`AUDIT_CLOSURE.md` §0), and the page was rebuilt
-to close every actionable finding. The grammar is unchanged, this is still **Live surface**, but
-the score, the hero, the chaos prologue and the choreography that caused the jam are gone. This
-version records the page as it now is. Sections that are no longer true are replaced, not
-footnoted; where a rule was traded away on purpose, that trade is written down rather than hidden.
+to close every actionable finding. The grammar did not change, this is still **Live surface**, but
+the score, the hero, the chaos prologue and the choreography that caused the jam were gone. That
+rebuild's own fix over-corrected: every act became `data-sc-act="pin"` and nothing else, with one
+fixed band layer cross-faded by a passive scroll listener carrying every chapter's copy. It shipped,
+it passed its own performance gate, and the owner read it and said the spacing and flow seemed off.
+
+**What changed since v2.0.** The owner asked for the full Scroll Craft process to run again rather
+than a spot fix, and said plainly not to block it from changing things. Reading the v2.0 build
+against its own grammar found the reason the flow read as off: one device shown eight times is not
+a page, it is one section repeated, whatever that section's own performance numbers say. This
+version restores device variety, seven families across eight chapters, moves each chapter's band
+inside its own act instead of behind a single cross-faded layer, and gates every band's copy with
+the engine's own cue so narration is never on screen while a stage is sliding through a seam, which
+is the version of "controls floating, narration clipped" the v2.0 rebuild had not actually solved,
+it had just hidden it behind a cheaper mechanism. Performance is not spent to get this back: the
+scroll-linked cost this version reintroduces is measured directly by `audit-closure.spec.ts`'s
+long-task budget rather than assumed safe or assumed unsafe. Sections that are no longer true are
+replaced, not footnoted; where a rule was traded away on purpose, that trade is written down rather
+than hidden.
 
 ---
 
@@ -46,7 +63,7 @@ the product's own chrome. The other seven still do not fit, one line each:
 | A section heading in display type | The largest type on the page is either a number the surface is counting or a sentence the surface is reporting about itself (VISUAL_DIRECTION §3.2) |
 | `scrub` | No scroll-scrubbed video anywhere. The stage does carry real footage now, a sample creator clip and a guest clip (§2.2, and `LIVETAP_INTERACTION_SYSTEM.md` §1a), but it plays on its own clock, mounted once, never tied to `--sc-p`. Nothing on this page ties a video's playhead to scroll. |
 | `kinetic` | No character or line splitting. Type arrives at full opacity, the way a status line does. |
-| `spotlight` | No pointer light. The only pointer-driven transform on the page is the dragged tile in ACT 2 BREAK IT. The close's intent chips do not tilt toward the pointer; that device was dropped in this rebuild along with the rest of the per-act choreography (§5). |
+| `spotlight` | No pointer light anywhere. The dragged tile in ACT 2 BREAK IT and the close's six intent chips (`data-sc-tilt="5"`, a small, spring-damped tilt toward the pointer, fine-pointer only) are the only pointer-driven transforms on the page. |
 | `drift` | Zero `data-sc-drift` attributes. The ground is one colour for the whole page. The two-stop drift the first version carried was cut in the rebuild along with the chaos act it decorated (§6). |
 | A magnetic button as the ending | The ending is a real input: the onboarding's first question with six operable intent chips. |
 
@@ -120,7 +137,10 @@ and the hero.
 
 At first paint: the fixed live surface holds a **real sample picture**, a generated creator clip
 playing on the stage from frame one, not a grey rectangle and not a static plate, and the hero band,
-a real panel with real type, is visible and readable at progress zero:
+a real panel with real type, is visible and readable at progress zero. The hero's cue,
+`data-sc-cue="0 0.86 0"`, is the one greet cue on the page, it opens at the very start of the
+chapter's travel rather than a few percent in, because there is nothing before it to protect the
+copy from:
 
 - **The product statement**, in `hero` type: *"Go live everywhere. Without becoming a broadcast
   engineer."*
@@ -167,44 +187,47 @@ A magnetic button would be the wrong ending for a page that spent its whole leng
 
 ## 3. The feeling curve
 
-The emotion is the constraint; the cause names a device second, never first. The curve below replaces
-the first version's ten-row table (eight acts, two rests): this version has **eight acts and one
-declared rest**, and the peak has moved from sixth to second.
+The emotion is the constraint; the cause names a device second, never first. The curve below is this
+version's own table: **eight acts and two declared rests**, and the peak still lands second, now with
+each act's own device doing the work the emotion asks for rather than one device standing in for
+all eight.
 
 | # | Act | Feeling | What on screen causes it |
 |---|---|---|---|
-| 1 | **HERO** | recognition | A real production statement over a real picture already on the stage: a working console with something on it, not a claim about one. "Use my camera" and "Try the web demo" are both real, both one tap away. |
-| · | **REST** | stillness | 40svh of nothing. The hero has resolved, the guided demo has handed over or is still counting down, and nothing moves until the visitor scrolls or taps. **Authored silence, and the silence in front of the peak.** |
-| 2 | **BREAK IT** | dread, then trust | **PEAK.** One tap, "Go live, then break YouTube", or a drag, or `Delete` on a focused live tile. The connection snaps, the chip tells the truth, a countdown runs, the others never flicker, then it heals. |
-| 3 | **SHAPES** | clarity | The 16:9 / 9:16 / 1:1 control, mirrored in the band, re-flows the picture in place, with the chat-safe and button-safe zones drawn directly on it. |
-| 4 | **MOMENTS** | competence | The six Moments, mirrored in the band, each producing a genuinely different picture: Screen Share turns the screen input on, Guest brings in a second clip, Break and Ending change the words on the ground. |
-| 5 | **OUTPUTS** | pride | Six small live canvases, each the same production re-cropped into its own platform's shape, with a name, a shape, an "up to N Mbps" ceiling and a state chip underneath. |
-| 6 | **VERSUS** | conviction | "Instead of OBS.", two playable lanes, side by side, that let the visitor press through fourteen named concepts on one side and six measured taps on the other, then read one honest line each about Restream, StreamYard, Streamlabs and Riverside. |
-| 7 | **PRO** | respect | A labelled Simple/Pro control, mirrored in the band, opens four real panels, quality, per-platform ceilings, audio, the session log, above the desk. Nothing the visitor already learned moves. |
-| 8 | **MAKE** | readiness | The surface settles into "What are you making?" with six live intent chips, then Open LIVETAP, Watch on GitHub, Code, and an honest footer: no download exists yet. |
+| 1 | **HERO** | recognition | A real production statement over a real picture already on the stage: a working console with something on it, not a claim about one. "Use my camera" and "Try the web demo" are both real, both one tap away. `pin`, greet cue. |
+| · | **REST A** | stillness | 0.25svh of nothing. The hero has resolved, the guided demo has handed over or is still counting down, and nothing moves until the visitor scrolls or taps. **Authored silence, and the silence in front of the peak.** `flow`. |
+| 2 | **BREAK IT** | dread, then trust | **PEAK.** One tap, "Go live, then break YouTube", or a drag, or `Delete` on a focused live tile. The connection snaps, the chip tells the truth, a countdown runs, the others never flicker, then it heals. `pin`, the largest span by a visible margin. |
+| 3 | **SHAPES** | surprise | The legend irises open (`data-sc-reveal="iris"`, the page's one iris) and the 16:9 / 9:16 / 1:1 control re-flows the picture in place, with the chat-safe and button-safe zones drawn directly on it. `pin`, reveal. |
+| 4 | **MOMENTS** | breadth | Six Moment cards, each carrying a live canvas thumbnail of that look, travel sideways under the wheel in a lane wider than the viewport, each producing a genuinely different picture: Screen Share turns the screen input on, Guest brings in a second clip, Break and Ending change the words on the ground. `pan`. |
+| 5 | **OUTPUTS** | pride | Two real counters, destinations and shapes, count up from the visitor's own picks, with six small live canvases underneath, each the same production re-cropped into its own platform's shape, with a name, a shape, an "up to N Mbps" ceiling and a state chip. `pin`, count. |
+| 6 | **VERSUS** | conviction | "Instead of OBS.", two playable lanes that arrive once as the chapter enters, side by side, that let the visitor press through fourteen named concepts on one side and six measured taps on the other, then read one honest line each about Restream, StreamYard, Streamlabs and Riverside. `flow`, staggered entrance. |
+| 7 | **PRO** | respect | A labelled Simple/Pro control wipes up (`data-sc-reveal="up"`) and opens four real panels, quality, per-platform ceilings, audio, the session log, above the desk. Nothing the visitor already learned moves. `pin`, reveal. |
+| · | **REST B** | settling | 0.25svh of nothing, before the question. `flow`. |
+| 8 | **MAKE** | readiness | The surface settles into "What are you making?" with six live intent chips that tilt toward the pointer, then Open LIVETAP, Watch on GitHub, Code, and an honest footer: no download exists yet. `pin`, tilt, greet-and-hold cue. |
 
-No two adjacent rows carry the same feeling. There is exactly one declared rest, and it sits directly
-in front of the peak.
+No two adjacent rows carry the same feeling. There are two declared rests, one directly in front of
+the peak and one directly in front of the close.
 
-### 3.1 Why the peak moved from sixth to second
+### 3.1 Why the peak stays second
 
-The first version placed BREAK IT (then called RESILIENCE) as ACT 6 of 8, two-thirds down the page.
-The audit named that placement directly: *"Failure demo buried two-thirds down… move it much higher"*
-(P1 #11), and separately: *"the drag-to-break demo earned my curiosity"* was the one thing that kept
-the auditor reading despite everything else being broken. Two findings point at the same fix, put the
-thing that works where a visitor can reach it before they decide the page is not worth their time.
+The first shipped version placed BREAK IT (then called RESILIENCE) as ACT 6 of 8, two-thirds down the
+page. The audit named that placement directly: *"Failure demo buried two-thirds down… move it much
+higher"* (P1 #11), and separately: *"the drag-to-break demo earned my curiosity"* was the one thing
+that kept the auditor reading despite everything else being broken. The v2.0 rebuild moved BREAK IT to
+a cold open, the second thing on the page, and that placement is not in question in this revision,
+nothing about "the spacing and flow seems off" pointed at the peak's position. What changed around it
+is the device roster: BREAK IT is still `pin`, still the largest span on the page by a visible margin
+over the next-largest act, `2.8` against `1.8` for MOMENTS, and it still sits directly after the
+page's first declared silence.
 
-So this version makes BREAK IT a **cold open**: the second thing on the page, right after the hero,
-with only one declared rest between them. `feel.md`'s requirement that a peak be preceded by silence
-still holds, the 40svh rest is that silence, but the requirement that the act before the peak be the
-page's quietest act is now trivially true, because there is only the hero and the rest before it, and
-the rest has no content at all. This is a deliberate departure from the first version's placement, made
-because the audit is the newer and more specific source of truth for this page, and it is recorded here
-rather than by silently moving the act.
-
-The rest of the descent, SHAPES, MOMENTS, OUTPUTS, VERSUS, PRO, MAKE, keeps the original score's
-logic of explaining after demonstrating: the peak proves the thing works, and everything after it
-explains how and shows the rest of what the product does, ending on the product's own first question.
+`feel.md`'s requirement that a peak be preceded by silence still holds: REST A, 0.25svh, is that
+silence, and it is still trivially the page's quietest act, since it has no content at all. The
+descent after the peak, SHAPES, MOMENTS, OUTPUTS, VERSUS, PRO, MAKE, keeps the same logic the v2.0
+score set: the peak proves the thing works, and everything after it explains how and shows the rest
+of what the product does, ending on the product's own first question. What is different in this
+revision is that the descent now has a device shape of its own, reveal, pan, count, staggered flow,
+reveal, so a visitor descending from the peak reads seven distinct acts rather than six repeats of
+the one they just left.
 
 ---
 
@@ -222,66 +245,72 @@ The peak still gets the three things `feel.md` says it must get, at the expense 
 | It gets | Here |
 |---|---|
 | The asset budget | There are no generated visual assets for this act specifically, so the equivalent budget is **build effort**: the pointer physics, the tension path, the countdown ring, the sibling-isolation assertion, the one-tap "Go live, then break YouTube" button and the three input equivalents are the most expensive code on the page, and they exist only for this act. |
-| The silence before it | The page's one declared rest, 40svh, directly in front of it. |
-| The most scroll room | `data-sc-span="2.4"` against a next-largest of 1.6 (VERSUS). The peak is 1.5× the longest other act. |
+| The silence before it | REST A, 0.25svh, directly in front of it, the first of the page's two declared silences. |
+| The most scroll room | `data-sc-span="2.8"` against a next-largest of 1.8 (MOMENTS). The peak is over 1.5× the longest other act. |
 
 ---
 
 ## 5. The act table
 
-Total page length **12.4 viewport-heights** across **8 acts plus 1 declared rest**. Inside the 8-to-14
-budget.
+Total page length **12.6 viewport-heights** across **8 acts plus 2 declared rests**, across **seven
+device families**: `pin`, `flow`, `reveal` (iris and up), `pan`, `count`, `flow`+`in`+stagger, and
+pointer `tilt`. Inside the 8-to-14 budget.
 
-| # | Beat | `data-sc-act` | Span | What the act does |
-|---|---|---|---|---|
-| 1 | **HERO** | `pin` | **1.2** | The product statement, the lede, the two hero actions and the guided 4.2s demo. |
-| · | **REST** | `flow` | 0.4 | Authored silence. Nothing on screen changes; the surface simply holds. |
-| 2 | **BREAK IT** | `pin` | **2.4** | The peak. One-tap break, drag, or `Delete`. |
-| 3 | **SHAPES** | `pin` | **1.4** | The 16:9 / 9:16 / 1:1 control, mirrored in the band; labelled chat/button safe zones drawn on the picture. |
-| 4 | **MOMENTS** | `pin` | **1.4** | The six Moments, mirrored in the band. |
-| 5 | **OUTPUTS** | `pin` | **1.4** | Six live output canvases, composed from the same picture. |
-| 6 | **VERSUS** | `pin` | **1.6** | "Instead of OBS.", two playable lanes plus the four-competitor strip. |
-| 7 | **PRO** | `pin` | **1.2** | The Simple/Pro control, mirrored in the band; four panels open above the desk. |
-| 8 | **MAKE** | `pin` | **1.4** | The close: the product's first question, six intent chips, the toolbar, the footer. |
+| # | Beat | `data-sc-act` | Device | Span | What the act does |
+|---|---|---|---|---|---|
+| 1 | **HERO** | `pin` | greet cue | **1.3** | The product statement, the lede, the two hero actions and the guided 4.2s demo. |
+| · | **REST A** | `flow` | none | 0.4 | Authored silence. Nothing on screen changes; the surface simply holds. |
+| 2 | **BREAK IT** | `pin` | none | **2.8** | The peak. One-tap break, drag, or `Delete`. |
+| 3 | **SHAPES** | `pin` | `reveal="iris"` | **1.4** | The band's legend irises open; the 16:9 / 9:16 / 1:1 control re-flows the picture, with labelled chat/button safe zones drawn on it. |
+| 4 | **MOMENTS** | `pan` | `data-sc-pan="0.05"` | **1.8** | A lane wider than the viewport carries six Moment cards, each with a live canvas thumbnail of that look, sideways under the wheel. |
+| 5 | **OUTPUTS** | `pin` | `count` ×2 | **1.4** | Two real counters, destinations and shapes, count up from the visitor's own picks; six live output canvases composed from the same picture underneath. |
+| 6 | **VERSUS** | `flow` | `data-sc-in` + stagger | 0.9 | "Instead of OBS.", two playable lanes that arrive once, staggered, as the chapter enters; the four-competitor strip. |
+| 7 | **PRO** | `pin` | `reveal="up"` | **1.2** | The Simple/Pro control wipes up; four panels open above the desk. |
+| · | **REST B** | `flow` | none | 0.4 | Authored silence, before the question. |
+| 8 | **MAKE** | `pin` | `tilt="5"` + greet-and-hold cue | **1.3** | The close: the product's first question, six intent chips that tilt toward the pointer, the toolbar, the footer. |
 
-### 5.1 What the device-family score no longer measures, and why
+### 5.1 The device roster, tried uniform, then restored, and why
 
-The first version scored itself against Scroll Craft's device-diversity gate: nine device families
-(`pin`, `pan`, `reveal`, `count`, `parallax`, bespoke pointer, `drift`, `flow`+`in`, pointer `tilt`),
-no family twice in a row, at most two `scrub` acts. **That gate no longer applies to this build, and
-the reason is written down rather than glossed over.**
+The v2.0 rebuild scored itself against Scroll Craft's device-diversity gate and then, deliberately,
+stopped meeting it: `AUDIT_CLOSURE.md` §0 had found the deployed page's main thread jammed by its own
+choreography, `pan` shelves, `reveal` irises, `count` timelines, `parallax` layers and pointer `tilt`
+all hit-testing on every frame, so that rebuild made every act `data-sc-act="pin"` and nothing else,
+with one fixed band layer cross-faded by a passive scroll listener carrying every chapter's copy. It
+shipped, it passed `audit-closure.spec.ts`, and it was wrong in a different way than the page it
+replaced: the owner's own words were "the spacing and flow seems off," and reading the build against
+the grammar's own device-diversity gate shows why. One device, `pin`, shown eight times with the same
+cross-fading band underneath is not eight chapters, it is one chapter's mechanism worn eight times, no
+matter how cheap each wearing is. Performance and variety are not actually in tension, they only looked
+that way because the wrong fix was chosen the first time; the wrong choice was retuning nothing, it was
+removing everything.
 
-`AUDIT_CLOSURE.md` §0 found the root cause of nearly every audit complaint: the deployed page's main
-thread was jammed by its own choreography. The wheel did nothing because the browser had to hit-test a
-stack of fixed, heavily parallaxed, cue-driven layers on every frame; the intro never cleared because
-its convergence was scroll-driven and the thread that should have run it was busy; controls "refused"
-because their handlers never got a turn to run. `pan` shelves, `reveal` irises, `count` timelines,
-`parallax` layers and pointer `tilt` were all part of that stack.
+This version restores seven device families, **pin**, **flow**, **reveal** (iris on SHAPES, up on
+PRO), **pan** (MOMENTS), **count** (OUTPUTS), **flow + `in` + stagger** (VERSUS), and pointer **tilt**
+(MAKE), and pairs every one of them with the fix the audit actually asked for on the band itself:
+narration now lives inside its own act, gated by the engine's own cue rather than a listener-driven
+cross-fade, so copy is on screen only during the chapter's own travel and never while a stage is
+sliding through a seam (§6). The one place bespoke, non-Scroll-Craft choreography still runs is the
+peak's drag, because it is pointer-driven and off the scroll thread entirely
+(`LIVETAP_MOTION_SYSTEM.md` §2, §4).
 
-The rebuild's answer is not to tune the choreography, it is to remove almost all of it. Every act in
-the table above is `data-sc-act="pin"`: the engine holds the stage in the viewport for the act's span
-and nothing more. There is no `pan`, no `reveal`, no `count`, no `parallax`, no `drift` and no pointer
-`tilt` anywhere on the page any more. What each chapter's copy shows is decided by **one fixed band
-layer, cross-faded by a passive scroll listener** (§6), not by per-act Scroll Craft cues. The one place
-bespoke choreography survives is the peak's drag, because it is pointer-driven and off the scroll
-thread entirely (`LIVETAP_MOTION_SYSTEM.md` §2, §4).
-
-This is a real trade and it is made on purpose: a page that changes richly with the wheel but that the
-wheel cannot reliably move at all has failed the grammar at a more basic level than "not enough device
-variety." `audit-closure.spec.ts` asserts fewer than three long tasks in six idle seconds and 40+ fps,
-which is the check this version optimizes for instead.
+This is not a bet that device variety is free. `audit-closure.spec.ts`'s long-task budget, fewer than
+three long tasks in six idle seconds and 40+ fps, still gates the deployed page, and it now gates a
+page that actually uses seven device families rather than one. That is the honest measure of the
+trade: cost is not assumed away by removing devices and it is not ignored by adding them back, it is
+read off the same E2E budget either way.
 
 What still holds from the original checks:
 
 | Check | Result |
 |---|---|
-| The grammar's bans hold | Yes. No `scrub`, no `kinetic`, no `spotlight` beyond the peak's own drag, no drift, no magnetic close. |
+| The grammar's bans hold | Yes. No `scrub`, no `kinetic`, no `spotlight` beyond the peak's drag and the close's chip tilt, no drift, no magnetic close. |
 | No two adjacent acts carry the same feeling | Confirmed in §3. |
-| One peak, largest span by a visible margin | 2.4 against 1.6. The act before it is the page's only rest. |
-| Every act earns its scroll span | Every act carries a state a visitor caused or watched; the one rest is a declared silence. |
-| Total 8 to 14 viewport-heights | 12.4. |
-| Minimum useful pinned span ≥ 1.2 | Smallest pinned span is HERO and PRO at 1.2. |
+| One peak, largest span by a visible margin | 2.8 against 1.8. The act before it is the page's first declared rest. |
+| Every act earns its scroll span | Every act carries a state a visitor caused or watched; both rests are declared silences. |
+| Total 8 to 14 viewport-heights | 12.9. |
+| Minimum useful pinned span ≥ 1.2 | Smallest pinned span is PRO at 1.2. |
 | Ground on every pinned act | The fixed surface is the ground for all eight, present from first paint. |
+| No two adjacent acts read the same | BREAK IT and SHAPES are both `pin`, the sequence's only same-base-act adjacency, but nothing about what happens inside them repeats: the peak is a bespoke drag with no cue device at all, SHAPES is a `reveal="iris"` legend. Every other boundary changes base act, `pin` to `flow`, `pin` to `pan`, `flow` to `pin`. |
 
 ### 5.2 The structural decision that makes it one surface
 
@@ -293,10 +322,16 @@ way*, and that has not changed. What changed is how the surrounding chapters tal
   values that actually paint, format, the six destination states, path phases, chat length, the pro
   flag, so the harness can check the acts that are pinned rather than trusting raw scroll progress.
 - **One fixed chrome layer**: the rail (or top row), the status bar.
-- **One fixed band layer**, `[data-lt-bands]` (§6), new in this version, holding one panel per chapter.
-- **The act stack**, `<main class="ltp-acts">`: nine transparent sections (eight acts, one rest), each
-  `pointer-events: none` except for its own controls, whose only job is to hold scroll length and tell
-  `watchActs()` which chapter is active. The engine pins each one; nothing else about them is bespoke.
+- **Ten transparent act sections**, `<main class="ltp-acts">`: eight acts and two declared rests, each
+  `pointer-events: none` except for its own controls. Each act's own band, `[data-lt-band]`, now lives
+  **inside that act's own stage** (§6), not in a separate fixed layer; the engine holds each pinned act
+  in the viewport for its span, pans MOMENTS, or lets the two `flow` chapters travel with the page's
+  own scroll, and each act's cue decides when its own band is readable.
+- `watchActs()` still runs, on one passive `scroll`/`resize` listener plus a single
+  `requestAnimationFrame`, but its job is narrower than it was in v2.0: it only toggles `is-here`,
+  which governs **pointer-events**, arms and disarms the peak's drag on entry to and exit from
+  ACT 2 BREAK IT, and shows or hides the SHAPES safe-area guides. It no longer decides whether a
+  band's copy is visible, that is the engine's own cue now (§6).
 
 `data-sc-verify-state` publishes **rendered** values, never raw scroll progress, and the peak and the
 close each set `data-sc-verify-hold="true"` on the surface only while their resolution or their final
@@ -304,37 +339,64 @@ screen is actually the thing on screen.
 
 ---
 
-## 6. The band layer, and why the chaos prologue is gone
+## 6. The band, back inside each act, and gated by the act's own cue
 
-The first version's hero was the chaos prologue: six duplicate control panels, a stream-key field, a
-bitrate input, a clock, a GO LIVE button, a mic meter, a destination row, each one six times over,
-jittering and converging into the surface across ACT 1's `--sc-p`. It does not exist in this build.
+The first shipped version's hero was the chaos prologue: six duplicate control panels, a stream-key
+field, a bitrate input, a clock, a GO LIVE button, a mic meter, a destination row, each one six times
+over, jittering and converging into the surface across ACT 1's `--sc-p`. It does not exist in this
+build, and it was never brought back. **Why it is gone** has not changed since v2.0: the audit's own
+words, *"an overlapping stack of six duplicated UI cards was frozen across the centre of the screen,
+covering the headline, and it stayed there indefinitely… my honest first thought was 'this site didn't
+load properly.'"* `AUDIT_CLOSURE.md` P0 #1 required the intro removed entirely rather than tuned,
+because a decorative element that can cover its own headline for eighteen seconds has no safe middle
+ground between "gone" and "still risky."
 
-**Why it is gone.** The audit's own words: *"an overlapping stack of six duplicated UI cards was frozen
-across the centre of the screen, covering the headline, and it stayed there indefinitely… my honest
-first thought was 'this site didn't load properly.'"* `AUDIT_CLOSURE.md` P0 #1 requires the intro
-removed entirely rather than tuned, because a decorative element that can cover its own headline for
-eighteen seconds has no safe middle ground between "gone" and "still risky." The convergence was also
-part of the scroll-linked choreography implicated in the main-thread jam (§5.1), so removing it served
-both the visual finding and the performance one.
+**What v2.0 replaced it with, and why that also had to change.** The rebuild put every chapter's copy,
+title, lede, mirrored controls, into **one fixed band**, `[data-lt-bands]`, a single layer stacked
+above the surface holding one panel per chapter, with only the active panel visible and the rest
+cross-faded out by a `classList` toggle from `watchActs()`. It fixed the audit's finding #9, *"pale,
+clipped narration; controls floating in white,"* and finding #10, *"120px dead zone under the
+caption,"* the band was a real panel, never pale, never clipped. But it also meant every chapter read
+as the same panel in the same place saying something different, which is most of what "the spacing and
+flow seems off" was describing: eight acts sharing one band, cross-faded by a listener, is visually one
+section shown eight times, whatever the mechanism underneath.
 
-**What replaced it.** Every chapter's copy, the title, the lede, the mirrored controls, now lives in
-**one fixed band**, `[data-lt-bands]`, a single layer stacked above the surface that holds one panel per
-chapter. Only the active panel is visible; the rest are present in the DOM (so nothing is gated behind
-scroll for assistive technology) and cross-fade in place by opacity and visibility over 200ms, none
-under reduced motion. On desktop the band is a **reserved region above the surface**,
-`clamp(224px, 27svh, 252px)`; on phones it is a **plate over the desk's lower edge**,
-`clamp(196px, 26svh, 228px)`. The hero band is the one exception that is visible from first paint with
-no cross-fade needed, because it is already active before any scrolling happens.
+**What this version does instead.** Each chapter's band, `[data-lt-band]`, now lives **inside its own
+act's stage**, `[data-sc-stage]`, inside its own `<section id="act-...">`, not in a shared layer above
+the surface. It is positioned in the region the surface leaves free, exactly as before: on desktop a
+**reserved region above the surface**, `clamp(224px, 27svh, 252px)`; on phones a **plate over the
+desk's lower edge**, `clamp(196px, 26svh, 228px)`. What decides when a band is readable is no longer a
+`classList` toggle keyed to which act is "current," it is the engine's own cue, `data-sc-cue`, carried
+by each band directly: it opens at **0.02** of the chapter's own travel and closes at **0.95**, with
+ramps either side so the copy holds a plateau at full strength rather than only touching full opacity
+for a single scroll pixel. That is the literal fix for "narration clipped at the top edge": copy is
+never on screen while a stage is still sliding through the seam into or out of its own chapter, because
+the cue is not open yet, or has already closed, whenever the stage is in that seam. Between chapters,
+while no band's cue is open, only the console is on screen, which is the grammar's own beat, not a
+gap.
 
-Which panel is active is decided by `watchActs()` (`main.ts`): the act whose box contains the point 45%
-down the viewport is the active one, computed by one passive `scroll`/`resize` listener plus a single
-`requestAnimationFrame`, not by Scroll Craft cues and not by a second per-frame scroll reader. This is
-the direct fix for the audit's finding #9, *"pale, clipped narration; controls floating in white"*,
-and finding #10, *"120px dead zone under the caption"*: the band is a real panel with a title in
-`text-primary`, a lede in `text-secondary` and its own controls, it is never pale, never clipped at a
-viewport edge, and it never overlaps the surface, because the surface's own layout reserves the band's
-space rather than the band floating over it.
+`is-here`, set by `watchActs()`, still exists, but it now governs **pointer-events only**: a band that
+is fading out under its own cue must not catch a tap meant for the console underneath it. It is not
+what makes a band's copy visible or invisible, the cue is.
+
+**Anchors vary chapter to chapter**, on purpose, so no two consecutive bands sit in the same part of
+the frame: the hero's is a lead block, the peak's is a lead block, SHAPES trails to the frame's far
+edge, MOMENTS' sits inside its own pan lane as a lead-and-trail pair either side of the travelling
+cards, OUTPUTS and VERSUS are tall panels, PRO leads again, and MAKE is centred and holds.
+
+**The two tall panels, OUTPUTS and VERSUS, carry their cue on an inner block.** `.ltp-band--tall`
+itself holds the panel's own background and grows downward over the surface; the cue, and the
+opacity it drives, sits on a child, `.ltp-band__inner`, wrapping the panel's actual content. This is
+not a stylistic choice: the verification harness hides cued copy to measure the ground underneath it,
+and if the cue sat on the panel itself the harness would also hide the panel's background, which is
+part of what it is measuring against. Putting the cue one level in keeps the panel's own ground stable
+while the copy inside it opens and closes.
+
+**The phone plate, `.ltp-act__plate`, is a sibling of the band, not a cue.** It is driven directly by
+`--sc-p`, the act's own raw progress, rather than by the cue window, so it can fade in ahead of the
+band's copy and fade out after it, protecting the band's contrast against whatever the desk shows
+underneath without itself being subject to the "never on screen during a seam" rule that governs
+copy.
 
 ---
 
@@ -422,27 +484,35 @@ the tell-someone sentence pointed at different moments, one of them would be dec
 
 **The registry at `scrollcraft/FINGERPRINTS.md` already carries one row for `livetap-public`**, from
 the version this document is revising. This is not a new build under a new name, it is the same
-build, rebuilt against the same URL to close an audit's findings, so the existing row is **updated in
-place** rather than appended a second time. `FINGERPRINTS.md`'s own append-only rule is about distinct
-builds occupying distinct rows; a build revising itself updates its own row, or the registry would
-claim two different pages share one URL.
+build, revised against the same URL a second time, first to close an audit's findings, now to fix the
+spacing and flow of that closure's own fix, so the existing row is **updated in place** rather than
+appended a second time. `FINGERPRINTS.md`'s own append-only rule is about distinct builds occupying
+distinct rows; a build revising itself updates its own row, or the registry would claim two different
+pages share one URL.
 
 ### 8.1 The row, updated
 
 | Build | Grammar | Nav treatment | Hero device | Act-sequence shape | Close pattern | Signature move | World | Port |
 |---|---|---|---|---|---|---|---|---|
-| `livetap-public` | Live surface | The product's own app chrome: an 88px labelled left rail on desktop / a top bar plus a bottom status bar carrying live session state on phones, both real enough to navigate with; no marketing bar | One fixed live surface, mounted at first paint with a real sample picture already on the stage, seen with nothing over it; a 4.2s guided demo hands over to the visitor | Eight `pin` acts and one declared rest; 12.4vh; the peak is a cold open second, span 2.4 against a next-largest of 1.6, ahead of the explanatory descent (Shapes, Moments, Outputs, Versus, Pro) | The product's real first-run question, "What are you making?", with six operable intent chips that re-compose the fixed stage, handing the chosen intent to `/app/start` | Drag a `LIVE` destination off the stage, or tap one button, or press Delete: its connection path strains and snaps, it counts down and heals, and no sibling flickers | Real sample footage. No generated imagery, no photography of anything but the product's own demo picture; the product is the picture | Web, `/` in `apps/web`, dark default with a first-class light theme |
+| `livetap-public` | Live surface | The product's own app chrome: an 88px labelled left rail on desktop / a top bar plus a bottom status bar carrying live session state on phones, both real enough to navigate with; no marketing bar | One fixed live surface, mounted at first paint with a real sample picture already on the stage, seen with nothing over it; a 4.2s guided demo hands over to the visitor | Eight chapters plus two declared silences, 12.6vh, seven device families (`pin`, `flow`, `reveal`, `pan`, `count`, `flow`+`in`, pointer `tilt`); the peak is a cold open second, `pin`, span 2.8 against a next-largest of 1.8, ahead of a descent that carries its own device shape (a reveal, a pan, a count, a staggered flow, a reveal) rather than repeating the peak's device | The product's real first-run question, "What are you making?", with six operable, pointer-tilting intent chips that re-compose the fixed stage, handing the chosen intent to `/app/start` | Drag a `LIVE` destination off the stage, or tap one button, or press Delete: its connection path strains and snaps, it counts down and heals, and no sibling flickers | Real sample footage. No generated imagery, no photography of anything but the product's own demo picture; the product is the picture | Web, `/` in `apps/web`, dark default with a first-class light theme |
 
 ### 8.2 What this revision changes in "What is taken"
 
-The bullets in `FINGERPRINTS.md`'s "What is taken" section are updated to match: the
-**fixed-surface-plus-flow-markers structure** bullet now describes a fixed **band** layer switched by a
-scroll-position listener rather than per-act cue choreography, and the **collapsing lattice of
-duplicated controls** bullet is removed, that hero device does not exist in this build and should not
-be treated as a reusable fingerprint by a future one. The act-count-and-length band changes from
-8-acts-plus-2-rests-at-12.8vh to **8 acts plus 1 rest at 12.4vh, peak at 2.4 and positioned second**.
-Everything else, Live surface as a grammar, app chrome as nav, a real first-run question as the close,
-drag-to-break as a signature move, still holds.
+The bullets in `FINGERPRINTS.md`'s "What is taken" section are updated to match. The
+**fixed-surface-plus-fixed-band structure** bullet, itself already a revision of the original
+duplicated-controls hero, is corrected again: the band is no longer one fixed layer cross-faded by a
+scroll listener, it is now a band per act, living inside that act's own stage, gated by the engine's
+own cue. The **uniform `pin` with no other Scroll Craft device** bullet is removed outright rather
+than kept and re-explained, because it is no longer true of this build: uniform `pin` was tried as a
+deliberate performance trade after the audit, it shipped, and it was replaced in this revision because
+it read as one section shown eight times, not because the trade was cheap or expensive but because a
+page is not supposed to read that way regardless of its frame budget. What a future build should take
+from this is not "uniform `pin` is safe" or "uniform `pin` is unsafe," it is that **any scroll-linked
+device's cost is measured directly by the E2E long-task budget** (`audit-closure.spec.ts`) before it
+ships, whether that device is one family repeated eight times or seven families used once each. The
+act-count-and-length band changes from 8-acts-plus-1-rest-at-12.4vh to **8 acts plus 2 rests at
+12.6vh, peak at 2.8 and still positioned second**. Everything else, Live surface as a grammar, app
+chrome as nav, a real first-run question as the close, drag-to-break as a signature move, still holds.
 
 ---
 
@@ -455,7 +525,12 @@ screen early, and the visitor's answer travels with them.
 
 The fixed stage holds. Where the Pro layer just was, the surface puts one question at `headline`:
 **"What are you making?"**, and six intent chips from `INTENTS`, each carrying an icon, a title and a
-tagline. Each chip is `<button aria-pressed>`.
+tagline. Each chip is `<button aria-pressed>`, and each carries `data-sc-tilt="5"`, a small,
+spring-damped tilt toward the pointer on fine-pointer devices only, the page's second and last
+pointer-driven transform after the peak's drag. The close's own cue, `data-sc-cue="0.02 1 0 0"`,
+opens early and holds to the end of the chapter's travel rather than closing before it, a
+greet-and-hold rather than a greet-and-fade, because this is the page's last screen and it must stand
+still with content on it (§9.4).
 
 Picking a chip does three things at once, none of which is navigation:
 

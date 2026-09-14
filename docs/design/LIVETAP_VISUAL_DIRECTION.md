@@ -1,6 +1,6 @@
 # LIVETAP Visual Direction, the public experience
 
-**Version** 2.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
+**Version** 3.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
 **Companions** `LIVETAP_SCROLL_STORY.md` (the score) · `LIVETAP_INTERACTION_SYSTEM.md` (the demos) ·
 `LIVETAP_MOTION_SYSTEM.md` (durations and the Anime.js contract) ·
 `scrollcraft/builds/livetap-public/PLAN.md` (the build)
@@ -12,7 +12,14 @@ image is a blank box cannot score well on visual quality, because the thing I'm 
 The rebuild that closed that finding (`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md`) changed
 this document's central rule more than any other page property: **the product is still the picture, but
 now there is a picture.** The chaos-lattice hero, the atmosphere canvas and the grain layer this
-document specified are gone. This version records the direction as it now ships.
+document specified are gone.
+
+**What changed since v2.0.** That rebuild also put every chapter's copy on a single fixed band layer,
+cross-faded by a scroll listener, and the owner read the shipped result as flat, "the spacing and flow
+seems off." This version does not touch the picture, the palette, the type or the atmosphere gradient,
+none of that was the complaint, it moves each chapter's band back inside its own act and lets the
+chapter's own reveal or pan or count carry a little of the depth and variety the flat cross-fade had
+been carrying alone. This version records the direction as it now ships.
 
 This document decides what the public experience looks like. It does not decide what it does; that is
 the Interaction System. Everything here is derived from three sources and nothing else:
@@ -126,7 +133,7 @@ content.
 | 3 | DATA / STATUS | `data: 30` | The toolbar, the desk, the readouts | No positional animation at all. Values change; boxes do not. |
 | 4 | DESTINATIONS | `dests: 35` | The six destination tiles | Scale is a real state cue: smaller when `DISCONNECTED`, full size when `READY` / `LIVE`. |
 | 5 | INTERACTION | `interaction: 40` | The peak's drag apparatus, the tour panel | Exists only while something is happening; removed from the DOM when idle. The only layer with pointer-driven transforms. |
-| 6 | BANDS / ACTS | `acts: 50` | The fixed band layer (`LIVETAP_SCROLL_STORY.md` §6) and the transparent act markers | `opacity` plus `visibility` cross-fade, driven by a `classList` toggle, never a transform. |
+| 6 | BANDS / ACTS | `acts: 50` | Each act's own band, living inside that act's stage (`LIVETAP_SCROLL_STORY.md` §6), plus the transparent act markers | `opacity`, driven by the engine's own cue window on the band itself, never a transform; SHAPES and PRO additionally wipe their mirrored control open by `clip-path` (§2.1). |
 | 7 | CHROME | `chrome: 60` | The rail (or top row) and the status bar | Fixed, never parallaxed, never scaled. CSS transitions only. |
 
 ### 2.1 How depth is actually carried

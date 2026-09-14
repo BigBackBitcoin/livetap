@@ -1,6 +1,6 @@
 # LIVETAP Motion System, the public experience
 
-**Version** 2.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
+**Version** 3.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
 **Choreography library** Anime.js **4.5.0** (`animejs`), a real dependency of `apps/web` (`^4.5.0` in
 `apps/web/package.json`), imported from its subpaths (`animejs/animation`, `animejs/draggable`, etc.)
 **Companions** `LIVETAP_VISUAL_DIRECTION.md` · `LIVETAP_SCROLL_STORY.md` ·
@@ -11,13 +11,25 @@ scroll-linked "chaos collapse" choreography, an atmosphere canvas and a `createS
 motion branch that could flip live mid-visit. A first-time-creator audit found the deployed page's main
 thread jammed by exactly that stack, the wheel did nothing because the browser was busy hit-testing
 fixed, cue-driven, parallaxed layers on every frame (`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md`
-§0). The rebuild's answer was not to tune the choreography but to remove almost all of it. This version
-documents the much smaller motion system that replaced it: **the rule motion communicates a state
-change, and nothing else animates** still holds, but there is far less on screen for it to hold over.
+§0). The rebuild's answer was not to tune the choreography but to remove almost all of it: every act
+became `pin`, one fixed band cross-faded by a listener carried every chapter's copy, and the only
+Scroll Craft device families left in the build were `pin` and `flow`.
+
+**What changed since v2.0.** That rebuild passed its own performance gate and still read wrong: the
+owner said the spacing and flow seemed off, and asked for the full Scroll Craft process to run again
+without holding anything back from it. Removing every device family had traded one problem for
+another, a page that scrolled cheaply but felt like one section shown eight times. This version
+restores five of the removed device families, `reveal` (twice, iris and up), `pan`, `count`, and
+`flow`+`in`, plus pointer `tilt` on the close, to the five chapters between the peak and the close,
+without touching the chaos collapse, the atmosphere canvas or the live-toggling reduced-motion branch,
+none of which come back. **The rule motion communicates a state change, and nothing else animates**
+still holds, and it now holds over more of the page than v2.0 left it holding over, because more of the
+page is doing something a wheel or a pointer caused.
 
 The app already holds that line in three durations and four easings. This page still adds no new
-duration and no new easing token; it now names **six** motion classes, not seven, because the chaos
-collapse it used to name does not exist any more.
+duration and no new easing token. It now names **six** motion classes, the same six v2.0 named, because
+the returning Scroll Craft devices are owned and paid for by the engine itself, not by a seventh
+page-authored motion class; the chaos collapse those six replaced in v1.0 still does not exist.
 
 ---
 
@@ -68,14 +80,20 @@ testable.
 
 | | **Scroll Craft** | **Anime.js** |
 |---|---|---|
-| Reads scroll | Yes, to hold each act pinned for its span, and (via `onScroll` in method mode) to detect when a declared rest enters or leaves the viewport | No. Never continuously; `onScroll` only fires playback methods at a threshold. |
-| Drives | Act pinning, the reduced-motion floor, the rest's hold state | Every state-change transition, the guided demo, both countdowns, path draws, chat arrival, the Pro reveal, and the drag with its spring release |
-| Trigger | The wheel, for pinning | A timer, a tap, a key, a pointer, or a scroll **threshold** |
-| Written in | `data-sc-act="pin"` / `"flow"` on real markup | `animate()` / `createDraggable()` / `createTimer()` inside plain functions, no scope wrapper |
+| Reads scroll | Yes: to hold each act pinned for its span, to pan the MOMENTS lane, to open and close every band's cue, to drive the two OUTPUTS counters and the SHAPES/PRO reveals, and (via `onScroll` in method mode) to detect when a declared rest enters or leaves the viewport | No. Never continuously; `onScroll` only fires playback methods at a threshold. |
+| Drives | Act pinning, the reduced-motion floor, both rests' hold state, every band's cue window, the MOMENTS pan, the OUTPUTS counters, the SHAPES iris and the PRO up-wipe, and the VERSUS staggered entrance | Every state-change transition, the guided demo, both countdowns, path draws, chat arrival, the drag with its spring release, and the six output canvases' own redraw loop |
+| Trigger | The wheel, for pinning, panning and cue windows | A timer, a tap, a key, a pointer, or a scroll **threshold** |
+| Written in | `data-sc-act` / `data-sc-cue` / `data-sc-pan` / `data-sc-reveal` / `data-sc-count` / `data-sc-in` / `data-sc-tilt` on real markup | `animate()` / `createDraggable()` / `createTimer()` inside plain functions, no scope wrapper |
 
-**This version has no `pan`, `reveal`, `count`, `parallax` or `drift` device anywhere on the page.**
-Every act is `data-sc-act="pin"` except the one declared rest, which is `flow`. That is the entire
-Scroll Craft device vocabulary this build uses (`LIVETAP_SCROLL_STORY.md` §5.1).
+**This version uses seven of the engine's device families: `pin`, `flow`, `reveal` (twice, iris and
+up), `pan`, `count`, `flow`+`in`+stagger, and pointer `tilt`.** That is a deliberate expansion from
+v2.0, whose entire vocabulary was `pin` and `flow`: v2.0 traded away every cue device to fix a
+main-thread jam, and it fixed the jam, but the owner read the result as flat, "the spacing and flow
+seems off," and this version restores variety chapter by chapter rather than reintroducing the v1.0
+choreography that caused the original jam. Two device families from v1.0's nine still do not appear
+anywhere on this page: `parallax` and `drift`. Both stay cut for the reasons `LIVETAP_VISUAL_DIRECTION.md`
+§2.1 and §4.6 record, not because this revision ran out of budget for them
+(`LIVETAP_SCROLL_STORY.md` §5.1).
 
 ### 2.2 The third reader: `watchActs()`, and why it is not a violation
 
@@ -83,9 +101,17 @@ v1.0's rule was written as an absolute: "Scroll Craft is the only thing that rea
 That is no longer strictly true, and this document says so rather than quietly keeping a stale claim.
 `main.ts`'s `watchActs()` carries its **own** `scroll` / `resize` listener, gated behind a single
 `requestAnimationFrame`, whose only job is to compute which act's box contains the point 45% down the
-viewport and toggle a `classList` on the fixed band layer, the rail's active item, and a couple of
-boolean flags (whether the peak is armed, whether the SHAPES guides should show, whether the close is
-dimming the monitor).
+viewport and toggle a `classList` on the matching rail item and a couple of boolean flags (whether the
+peak is armed, whether the SHAPES guides should show, whether the close is dimming the monitor).
+
+**Its job shrank in this revision, and that is the point.** In v2.0, `watchActs()` also toggled
+`is-here` to decide whether a chapter's band was *visible*, because every chapter shared one fixed band
+layer and something had to decide which panel to show. Now each band lives inside its own act and reads
+its own visibility from the engine's own cue (`LIVETAP_SCROLL_STORY.md` §6); `is-here` still exists, and
+`watchActs()` still sets it, but it governs **pointer-events only**, whether a fading band should still
+catch a tap meant for the console underneath it. `watchActs()` has gone from deciding what copy is
+readable to deciding what is clickable, a strictly smaller job than it had in v2.0, even though the
+page around it grew more devices.
 
 Three things keep this from re-creating the problem it replaced:
 
@@ -96,13 +122,15 @@ Three things keep this from re-creating the problem it replaced:
 2. **It is one listener, one rAF, no per-frame style read.** It reads `scrollY` and `innerHeight`, both
    of which are already-computed layout values, not `getComputedStyle().getPropertyValue()` against a
    custom property, which is what actually cost the old page a style recalculation every frame.
-3. **The band cross-fade itself is CSS**, `opacity` and `visibility` at 200ms, triggered by the
-   `classList` toggle, not a `transform` or `opacity` write from JS on every scroll event. The listener
-   only flips a class; the transition is the browser's own compositor work.
+3. **The band's own visibility is now the engine's cue, not this listener.** A band's opacity is driven
+   by `--sc-p` through the cue window Scroll Craft itself computes and writes; `watchActs()` no longer
+   participates in that write at all, which removes an entire class of "two writers, one property" risk
+   that existed in v2.0's cross-fade.
 
 `docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md` §0 is the reason this distinction matters:
 `audit-closure.spec.ts` asserts fewer than three long tasks in six idle seconds and 40+ fps on the
-rebuilt page, and `watchActs()` is deliberately built to the budget that assertion enforces.
+deployed page, and `watchActs()` is deliberately kept to the budget that assertion enforces even as the
+device roster around it grew back.
 
 ### 2.3 The ownership table, per layer
 
@@ -112,23 +140,43 @@ rebuilt page, and `watchActs()` is deliberately built to the budget that asserti
 | SIGNAL | Nobody. Paths are never translated. | Anime | Anime: `stroke-dashoffset`, `stroke-width`, `stroke`, `d` |
 | PRODUCT STAGE | CSS transitions, triggered by a class toggle | CSS | Anime: `aspect-ratio` is **not** animated; the shape change animates `transform: scale()` on an inner frame plus a `clip-path` |
 | DESTINATIONS | Anime on the tile itself (no separate parallax wrapper any more) | Anime | Anime: `box-shadow` and `background-color` |
-| BAND | `watchActs()`'s `classList` toggle only | CSS transition reading that class | CSS `visibility` |
+| MOMENTS LANE | Scroll Craft's `pan` device only, on the lane itself | Nobody | Scroll Craft: the lane's own scroll-linked translate; Anime never touches this element |
+| BAND | Scroll Craft's `cue` device, on the band itself (or on `.ltp-band__inner` for the two tall panels, §2.4) | Scroll Craft's `cue` device | Scroll Craft: nothing else. `watchActs()`'s `classList` toggle only ever governs `pointer-events` on this layer, never `opacity` (§2.2) |
+| SHAPES / PRO reveal | Scroll Craft's `reveal` device, `clip-path` only | Nobody | Scroll Craft: `clip-path` wipe (iris on SHAPES, up on PRO) |
+| OUTPUTS counters | Nobody | Nobody | Scroll Craft's `count` device: text content only, via the engine's own instance API, re-targeted by `main.ts` (`LIVETAP_INTERACTION_SYSTEM.md` §7.0) |
+| VERSUS entrance | Scroll Craft's `in` device, `translateY` once on entry | Scroll Craft's `in` device | Scroll Craft: `data-sc-stagger` sequences the children |
 | DATA / STATUS | Nobody. No positional animation at all. | Anime | Anime: text content via a modifier, colour, `stroke-dashoffset` on the countdown ring |
 | INTERACTION (the drag) | Anime `createDraggable` only | Anime | Anime |
+| MAKE chips (tilt) | Scroll Craft's pointer `tilt` device only | Nobody | Scroll Craft: a spring-damped rotate on pointer move, fine-pointer only |
 | CHROME (rail / status bar) | Nobody | CSS transitions at `--lt-dur-1` / `--lt-dur-2` | CSS |
 
 The rule that survives from v1.0: a magnet, a parallax and a cue writing the same `transform` on the
 same element is what breaks a page, so where a cued element needs its own continuous transform, an
 **inner wrapper** carries it rather than stacking a second writer on the same node. With no `parallax`
-device left on this build, this rule now mostly protects the stage's re-flow and the drag's tile.
+device on this build, this rule now protects the stage's re-flow, the drag's tile, the MOMENTS lane
+(owned exclusively by the pan device) and the MAKE chips (owned exclusively by the tilt device):
+nowhere on the page do two systems reach for the same `transform` on the same node.
+
+### 2.4 The two tall panels' inner cue, and why
+
+OUTPUTS and VERSUS carry more content than the band region was ever meant to hold, so their band grows
+downward as a panel, `.ltp-band--tall`, and that panel keeps its own background stable regardless of
+the cue. The cue itself, and the `opacity` it drives, sits one level in, on `.ltp-band__inner`, wrapping
+the panel's actual copy and controls. This matters for verification, not just layout: §8's harness hides
+cued copy to measure the ground underneath it, and if the cue sat on the panel element itself, hiding
+the cue would also hide the panel's own background, which is part of what the harness is trying to
+measure against.
 
 ---
 
 ## 3. The six motion classes
 
-Every animation on the page is one of these six. v1.0 named seven; the seventh, CHAOS COLLAPSE, is
-removed in full, there is no chaos prologue on this page any more
-(`LIVETAP_SCROLL_STORY.md` §6), so there is nothing left for that class to describe.
+Every **Anime.js** animation on the page is one of these six. v1.0 named seven; the seventh, CHAOS
+COLLAPSE, is removed in full, there is no chaos prologue on this page any more
+(`LIVETAP_SCROLL_STORY.md` §6), so there is nothing left for that class to describe. This count does
+not grow with the Scroll Craft devices this revision restored, `reveal`, `pan`, `count`, `in` and
+`tilt` are owned and paid for by the engine itself (§2.1, §2.3), not by a page-authored Anime.js class,
+so they are not a seventh or eighth item on this list.
 
 ### 3.1 STATE CHANGE
 
@@ -269,27 +317,29 @@ branch would be, and a future revision should either restore a scope-style re-ch
 
 ## 6. The performance budget
 
-### 6.1 JavaScript: about 53 KB gzipped for the whole public page
+### 6.1 JavaScript: about 53.2 KB gzipped for the whole public page
 
 The public experience still ships as its own Vite entry with no React and no framework. The number
 moved from v1.0's 60 KB budget (46.4 KB measured at the time) because this build carries more real
 logic than the plan did, `picture.ts`'s camera/compose engine, `outputs.ts`'s six live canvases and
-`versus.ts`'s two playable lanes did not exist in v1.0's estimate, and it carries far less choreography
-to spend the difference on.
+`versus.ts`'s two playable lanes did not exist in v1.0's estimate. Restoring `reveal`, `pan`, `count`,
+`in` and `tilt` in this revision cost nothing on this line: those devices are the vendored engine's own
+code, already inside the `scrollcraft.js` budget below, so growing the act table's device variety did
+not grow the JS the visitor downloads.
 
 | Item | Approximate budget (gz) | Basis |
 |---|---|---|
-| `scrollcraft.js`, copied verbatim | ~14 KB | Vanilla, no dependencies, never edited |
+| `scrollcraft.js`, copied verbatim | ~14 KB | Vanilla, no dependencies, never edited; carries every device family the build uses, `pin` and `flow` no more or less than `reveal`, `pan`, `count`, `in` and `tilt` |
 | Anime.js 4.5.0, subpath-imported | ~19 KB | Only the modules this build actually calls: `animate`, `createDraggable`, `onScroll`, `createTimer`, `utils`, `spring`, `engine` |
-| The page's own logic: `main.ts`, `data.ts`, `picture.ts`, `outputs.ts`, `versus.ts`, `capture.ts` | ~20 KB | The picture/compose engine, the six output canvases and the two playable Versus lanes all landed in this build after v1.0's plan was written |
+| The page's own logic: `main.ts`, `data.ts`, `picture.ts`, `outputs.ts`, `versus.ts`, `capture.ts` | ~20 KB | The picture/compose engine, the six output canvases and the two playable Versus lanes; `main.ts` also carries `updateCounters()`'s re-targeting of the OUTPUTS counters through the engine's instance API |
 | `theme.js`, the classic pre-paint script | ~0.4 KB | Unchanged |
 | Shared `@livetap/ui` CSS and the icon sprite | 0 KB of JS | CSS is a separate budget line (below); icons are inline SVG `<symbol>`s in `index.html`, not a JS module |
 | React, react-router, zustand, `packages/core`, `packages/adapters`, `packages/media` | 0 KB | None of them load on `/` |
-| **Total** | **~53 KB gzipped** | Against the same 60 KB ceiling v1.0 set |
+| **Total** | **~53.2 KB gzipped** | Against the same 60 KB ceiling v1.0 set |
 
 | Other assets | Approximate size |
 |---|---|
-| CSS: the whole design system plus `landing.css` and `acts.css` | ~15 KB gzipped |
+| CSS: the whole design system plus `landing.css` and `acts.css` | ~16 KB gzipped |
 | Video and image assets: `creator.{mp4,webm,webp}`, `guest.{mp4,webm,webp}`, `screen.svg` | ~360 KB total, served by format negotiation so a visitor downloads one video variant per clip, not both |
 | `archivo-latin.woff2`, self-hosted, subset | ~29 KB |
 
@@ -299,7 +349,8 @@ over this table if the two ever disagree.
 
 ### 6.2 What may be animated
 
-Unchanged from v1.0.
+Unchanged from v1.0 as a list of properties; what has changed is who is allowed to animate them, per
+§2.1 and §2.3.
 
 | Allowed | Forbidden |
 |---|---|
@@ -308,7 +359,7 @@ Unchanged from v1.0.
 | `clip-path` | `margin`, `padding`, `gap` |
 | `stroke-dashoffset`, `stroke-width`, `stroke`, SVG `d` | `aspect-ratio` |
 | `color`, `background-color`, `border-color` | `box-shadow` as a continuous tween |
-| CSS transitions on a `classList` toggle (the band cross-fade) | `filter` and `backdrop-filter`, anywhere |
+| Scroll Craft's own cue, reveal, pan, count and tilt devices, each reading `--sc-p` or a pointer position it already tracks | `filter` and `backdrop-filter`, anywhere |
 | | `transition: all`, anywhere |
 
 ### 6.3 `will-change` discipline
@@ -343,8 +394,10 @@ paints nothing and costs nothing.
 - **No canvas loop, no per-frame drift.** The atmosphere plane costs nothing (§6.4).
 - **No chaos collapse.** An entire choreography class, its will-change juggling and its jitter
   keyframes are gone with the prologue (`LIVETAP_SCROLL_STORY.md` §6).
-- **No `pan`, `reveal`, `count`, `parallax`, `drift` or pointer `tilt`.** Every act is `pin`; there is
-  no per-act cue machinery left to run.
+- **No `parallax` or `drift` anywhere.** This revision restored `pan`, `reveal`, `count`, `flow`+`in`
+  and pointer `tilt` to five chapters (`LIVETAP_SCROLL_STORY.md` §5.1), but `parallax` and `drift`
+  stay cut for the reasons recorded in `LIVETAP_VISUAL_DIRECTION.md` §2.1 and §4.6, and the returning
+  devices' own cost is what `audit-closure.spec.ts`'s long-task budget (§8.1) now measures directly.
 - **No webfont blocking first paint.** Unchanged: one self-hosted subset file with `font-display: swap`.
 - **No React on `/`.** Unchanged.
 - **No `filter` or `backdrop-filter` anywhere.** Unchanged.
@@ -357,15 +410,22 @@ paints nothing and costs nothing.
 
 `prefers-reduced-motion: reduce` still means **instant state changes with no positional animation**,
 read once at load rather than live-branched (§5). Rows that described devices removed from this build
-(the chaos collapse, the atmosphere canvas, `pan`, `reveal`, `parallax`, pointer `tilt`, the seventeen-
-step hero story) are gone from this table; everything that remains is current.
+(the chaos collapse, the atmosphere canvas, `parallax`, the seventeen-step hero story) are gone from
+this table. `pan`, `reveal` and pointer `tilt`, cut from v2.0, are back in this revision and back in
+this table with their own reduced-motion rows below; everything that remains is current.
 
 | Element | Full motion | Reduced motion |
 |---|---|---|
 | Engine durations | `--lt-dur-1/2/3` = 120 / 200 / 320ms | The app's own token override sets all three to 1ms |
 | Scroll Craft pin | Holds the act's stage in view for its span | Unchanged; pinning is not a motion |
-| The declared rest's hold state | Detected via `onScroll` enter/leave thresholds | Unchanged |
-| The band cross-fade | Opacity plus `visibility`, 200ms | `transition: none`; the switch is instant |
+| The declared rests' hold state | Detected via `onScroll` enter/leave thresholds | Unchanged |
+| Each band's cue | Opacity ramps in and out over the chapter's own 0.02 to 0.95 window | Unchanged; a cue window is not itself a motion, the content inside it still respects its own row below |
+| SHAPES iris reveal | `clip-path` iris wipe across `0.06` to `0.42` of the act's travel | Lands at its final state instantly; the control is present at full strength throughout |
+| PRO up reveal | `clip-path` wipe upward across `0.08` to `0.4` | Lands at its final state instantly |
+| MOMENTS pan | The lane travels sideways under the wheel, scroll-linked | The engine turns `data-sc-pan` into a native horizontal scroll region; the cards and their live thumbnails are reached by scrolling sideways by hand |
+| OUTPUTS counters | Numerals count up across their own cue window | Land at their final value instantly |
+| VERSUS entrance | The two lanes rise in, staggered 90ms per child, once on entry | Land in place instantly, no stagger |
+| MAKE chip tilt | Spring-damped rotate toward the pointer, fine-pointer only | Never constructed; the engine does not build pointer devices under reduced motion regardless of pointer type |
 | Static falloff gradient | Always static, always on | Identical, there was never a canvas to disable |
 | Destination connect | Path draws over ~420ms | Path appears at full length by opacity |
 | Path carrier (LIVE) | A slow travelling highlight | Not drawn |
@@ -403,10 +463,10 @@ node <skill>/scripts/shoot.mjs --url http://localhost:4173/ --out scrollcraft/la
 
 | What the harness reports | What we expect |
 |---|---|
-| **DEAD SCROLL** | Not reported on any of the eight acts, all of which are pinned and must show change. The one rest is `flow` and is excluded by design. |
+| **DEAD SCROLL** | Not reported on any of the eight acts. Six are pinned and must show change; MOMENTS pans; VERSUS is a `flow` chapter whose lanes arrive once. Both declared rests are `flow` and are excluded by design. |
 | **Bespoke fixed stage** | The whole page is one. `#surface` publishes `data-sc-verify-state`, a compact signature of rendered values, never raw scroll progress. |
 | **FROZEN CLIP** | Not applicable to the SCROLL mechanism, the sample clips play on their own clock, not on `--sc-p`, so there is no frame for the harness to find frozen against scroll. |
-| **CUES THAT NEVER PEAK** | Not applicable in the old sense: this build carries almost no `data-sc-cue` choreography left to check, since chapter copy now lives in the fixed band layer, cross-faded by `watchActs()`, not by Scroll Craft cues. |
+| **CUES THAT NEVER PEAK** | Applicable again, and checked directly: every band's `data-sc-cue` must reach full opacity somewhere in its window, `0.02` to `0.95` with ramps either side, and the two `reveal` devices and two `count` counters must each complete rather than stall partway. This is a real check now that chapter copy lives inside each act's own cue, not a cross-faded band layer. |
 | **Console errors and failed requests** | Zero. |
 
 **New for this version, and specific to the audit's own findings:** `apps/web/e2e/audit-closure.spec.ts`
@@ -433,21 +493,26 @@ Unchanged targets from v1.0, worth re-measuring against the smaller bundle:
 | INP | ≤ 200 ms at p75 |
 | TBT | ≤ 150 ms |
 | Long tasks after first paint | None over 50ms, and `audit-closure.spec.ts` (§8.1) enforces this directly |
-| JS transferred on `/` | ~53 KB gz, per §6.1 |
+| JS transferred on `/` | ~53.2 KB gz, per §6.1 |
 | Memory after 5 minutes idle | No growth. Chat is row-capped; the output canvases and the picture loop both pause off-screen; every Anime.js instance reverts on teardown. |
 
 ### 8.3 Scroll smoothness, and the feel check
 
 Record a Chrome performance trace while scrolling the whole page at a normal reading pace; require no
-frame over 16.7ms in the scroll-linked work, at 1440 and at 390. With `pan`, `reveal`, `count`,
-`parallax` and the chaos collapse all removed, the scroll-linked work left to profile is small: act
-pinning, the rest's hold detection, and `watchActs()`'s own listener (§2.2).
+frame over 16.7ms in the scroll-linked work, at 1440 and at 390. `parallax` and the chaos collapse stay
+removed, but `pan`, `reveal` (twice), `count` and the VERSUS entrance are back in this revision, so the
+scroll-linked work to profile is no longer only act pinning and the two rests' hold detection: the
+MOMENTS lane's own translate, the two reveal wipes' `clip-path` and the two counters' text updates all
+run during a scroll now, and `watchActs()`'s own listener (§2.2) is the smallest item on that list, not
+the whole of it. This is exactly the work `audit-closure.spec.ts`'s long-task budget exists to catch if
+it grows past what a wheel can carry.
 
 The feel check runs last, per `feel.md` §6: scroll top to bottom once at a normal pace, write one word
 per act for what was felt, and diff it against the intended curve in `LIVETAP_SCROLL_STORY.md` §3.
-Specifically for this version: **does the peak still read as the peak now that it arrives second, right
-after the hero, rather than two-thirds down?** That question did not exist for v1.0's build and is the
-one this rebuild's feel check exists to answer.
+Two questions for this revision specifically: **does the peak still read as the peak, largest span,
+second act, right after the hero?** And **does the descent after it now read as seven different
+chapters rather than one chapter's mechanism worn six more times?** The first question is unchanged
+from v2.0's own feel check; the second is the one this revision exists to answer.
 
 ### 8.4 The checks that are specific to this page
 

@@ -152,14 +152,14 @@ describe('the standing bans hold', () => {
   });
 });
 
-describe('the score is the one the audit closure wrote', () => {
+describe('the score is the one the Scroll Craft revision wrote', () => {
   const acts = Array.from(html.matchAll(/data-sc-act="(\w+)"[^>]*?(?:data-sc-span="([\d.]+)")?/g));
 
-  it('runs eight pinned chapters and one declared silence, the peak second', () => {
+  it('runs eight chapters and two declared silences across seven device families', () => {
     const devices = Array.from(html.matchAll(/data-sc-act="(\w+)"/g), (m) => m[1]!);
-    expect(devices).toEqual(['pin', 'flow', 'pin', 'pin', 'pin', 'pin', 'pin', 'pin', 'pin']);
-    expect(acts.length).toBe(9);
-    expect(Array.from(html.matchAll(/data-lt-rest="/g))).toHaveLength(1);
+    expect(devices).toEqual(['pin', 'flow', 'pin', 'pin', 'pan', 'pin', 'flow', 'pin', 'flow', 'pin']);
+    expect(acts.length).toBe(10);
+    expect(Array.from(html.matchAll(/data-lt-rest="/g))).toHaveLength(2);
     const ids = Array.from(html.matchAll(/<section\s+id="(act-[a-z]+)"/g), (m) => m[1]!);
     expect(ids).toEqual([
       'act-hero',
@@ -171,31 +171,54 @@ describe('the score is the one the audit closure wrote', () => {
       'act-pro',
       'act-make',
     ]);
+    /* The element devices that make the chapters differ: one iris, one up wipe, two real
+       counters, a pan rail, a staggered flow and pointer tilt on the close. */
+    expect(Array.from(html.matchAll(/data-sc-reveal="iris"/g))).toHaveLength(1);
+    expect(Array.from(html.matchAll(/data-sc-reveal="up"/g))).toHaveLength(1);
+    expect(Array.from(html.matchAll(/data-sc-pan="/g))).toHaveLength(1);
+    expect(Array.from(html.matchAll(/data-sc-stagger="/g))).toHaveLength(1);
+    expect(main).toContain("dataset.scTilt = '5'");
   });
 
-  it('spends 12.4 viewport-heights, with the peak the largest span', () => {
+  it('spends 12.6 viewport-heights, with the peak the largest span by a visible margin', () => {
     const spans = Array.from(html.matchAll(/data-sc-span="([\d.]+)"/g), (m) => Number(m[1]));
-    expect(spans).toEqual([1.2, 2.4, 1.4, 1.4, 1.4, 1.6, 1.2, 1.4]);
+    expect(spans).toEqual([1.3, 2.8, 1.4, 1.8, 1.4, 1.2, 1.3]);
     const pinned = spans.reduce((a, b) => a + b, 0);
-    /* Plus the one silence at 0.4. */
-    expect(pinned + 0.4).toBeCloseTo(12.4, 5);
+    /* Plus the flow chapter at 0.9 and the two silences at 0.25 each. */
+    expect(pinned + 0.9 + 0.5).toBeCloseTo(12.6, 5);
     const peak = Math.max(...spans);
     expect(spans.indexOf(peak)).toBe(1);
     const next = spans.filter((s) => s !== peak).sort((a, b) => b - a)[0]!;
-    expect(peak / next).toBeGreaterThan(1.4);
+    expect(peak / next).toBeGreaterThan(1.5);
   });
 
-  it('lets only the closing act hold its final cue', () => {
+  it('closes every cue but the last, and only the last holds', () => {
     const cues = Array.from(html.matchAll(/data-sc-cue="([^"]+)"/g), (m) => m[1]!);
     const holds = cues.filter((c) => c.trim().split(/\s+/).length === 1);
     expect(holds).toEqual([]);
     const closing = cues.filter((c) => c.endsWith('1 0 0'));
     expect(closing).toHaveLength(1);
+    /* The hero greets: full at progress zero, so the landing view has its headline. */
+    expect(cues[0]).toMatch(/^0 /);
   });
 
-  it('has no scroll-driven counter and no reveal: nothing a visitor needs waits for scroll', () => {
-    expect(Array.from(html.matchAll(/data-sc-count="/g))).toHaveLength(0);
-    expect(Array.from(html.matchAll(/data-sc-reveal="/g))).toHaveLength(0);
+  it('counts only numbers the visitor produced', () => {
+    const counters = Array.from(html.matchAll(/data-sc-count="([^"]+)"/g), (m) => m[1]!);
+    expect(counters).toHaveLength(2);
+    for (const c of counters) expect(c).toBe('0 0');
+  });
+
+  it('keeps every band inside its own act, never in a fixed layer', () => {
+    expect(html).not.toContain('data-lt-bands');
+    const bands = Array.from(html.matchAll(/data-lt-band="(act-[a-z]+)"/g), (m) => m[1]!);
+    expect(bands).toEqual(['act-hero', 'act-break', 'act-shape', 'act-moments', 'act-outputs', 'act-versus', 'act-pro']);
+    for (const id of bands) {
+      const act = html.indexOf(`<section id="${id}"`);
+      const band = html.indexOf(`data-lt-band="${id}"`);
+      const next = html.indexOf('<section', act + 1);
+      expect(band, `${id} band outside its act`).toBeGreaterThan(act);
+      expect(band, `${id} band outside its act`).toBeLessThan(next);
+    }
   });
 
   it('puts the statement, the picture control and the demo link in the hero band', () => {

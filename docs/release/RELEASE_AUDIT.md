@@ -95,3 +95,13 @@ DEPLOYED → COMMITTED → RELEASE-AUDITED, with the honest labels above.
 | Budget | landing JS 52.9 KB gz (limit 60), CSS 15.3 KB gz, footage 367 KB total | vite build |
 | Deploy procedure | prebuilt: vercel.json installCommand is a no-op and buildCommand calls vite directly, because `vercel build` under the host's Node 20 otherwise runs `npm ci` and wipes node_modules; reinstall with tools/node22 | HANDOFF.md |
 | Not verified | the auditor's own browser (its extension could not be scripted on any page); real-device LCP/INP; an independent re-audit | - |
+
+## Addendum 2026-09-14 (later) - Scroll Craft pass on the public page
+
+| Check | Result | Evidence |
+|---|---|---|
+| Score | 8 chapters + 2 silences, 12.6 viewport-heights, seven device families, peak 2.8 vs next 1.8 | scrollcraft/builds/livetap-public/REPORT.md, `landing-rules.test.ts` |
+| Harness | desktop, phone 390, reduced motion: no dead scroll, every cue clears 4.5:1 at its worst frame | scrollcraft/builds/livetap-public/lab/r4-* |
+| Feel check | intended curve matched except the pre-peak silence, which read as waiting; rests cut from 0.4 to 0.25vh | REPORT.md |
+| Gates | tsc/eslint clean, 1122 unit, 88 E2E, production review repeated at eight viewports | this session |
+| Not verified | the owner's own browser; a real device's frame cost for the pan lane and live thumbnails | - |

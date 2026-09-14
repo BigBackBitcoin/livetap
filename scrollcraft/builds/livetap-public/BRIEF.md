@@ -52,3 +52,45 @@ Act 6. The sentence: "I dragged YouTube off the stream with my mouse and everyth
 ## Tell-someone sentence
 
 "It's the site where you break your own live stream and watch it survive."
+
+---
+
+# Revision 3 brief (2026-09-14, after the audit closure): "the spacing and flow seem off"
+
+Self-authored, not interviewed. The owner's words, verbatim: "Run the Full Scroll Craft skill/plugin please. do not stop until scroll craft is complete and do not block it from changing anything. its in our best interest to let the plugin fix us" and, before that, "the spacing and flow seems off". The eight answers above still hold; what changed is the structure the audit closure left behind: one `pin` device eight times and one fixed band that cross-fades, which is one section shown eight times. This revision keeps every audit guarantee (copy readable and inside the viewport, native scrolling, nothing goes live by itself, a real picture from first paint, no Download) and restores the score.
+
+## Journey (revised beats)
+
+1  Recognition   a real console, a real picture, my name for the thing in one sentence
+2  Dread, trust  I break the stream myself and it survives (the peak, second on purpose)
+3  Surprise      the picture re-frames itself into the shape each platform wants
+4  Breadth       six looks travel past sideways, each one a picture, tap any
+5  Pride         the numbers I made count up: destinations, shapes, one production
+6  Clarity       the usual way beside this way, plainly, with measured numbers only
+7  Respect       Pro wipes in underneath; nothing I learned moves
+8  Readiness     the product's first question, answered on the stage, with the way in
+
+## Feeling curve (revised, one line per act)
+
+| Act | Feeling | What on screen causes it |
+|---|---|---|
+| 1 Hero (pin) | recognition, agency | statement and two buttons over a console already playing a picture; three tiles turn Ready in four seconds, then "Your turn" |
+| rest A (flow, authored silence) | a held breath | only the console, ready, nothing moving until the visitor moves |
+| 2 Break it (pin, PEAK) | dread, then trust | one tap or one drag snaps a live destination off; the card explains; the ring counts; it heals; the others never flicker |
+| 3 Shapes (reveal) | surprise | the legend irises open; tapping 9:16 re-frames the picture with the chat zone drawn |
+| 4 Moments (pan) | breadth | six Moment cards travel sideways under the wheel, each a live thumbnail of that look; tap any |
+| 5 Outputs (count) | pride | "3 destinations, 2 shapes" counts up from zero on the visitor's own picks; six platform-shaped pictures |
+| 6 Versus (flow + in) | clarity | the two lanes arrive staggered; play either; measured numbers only |
+| 7 Pro (reveal) | respect | the Simple / Pro control wipes up; Pro opens four panels above the desk |
+| rest B (flow, authored silence) | settling | the console alone, live or ready, before the question |
+| 8 Make (pin + pointer) | readiness | the first-run question with six chips that tilt to the pointer and re-compose the stage; the way in holds |
+
+Authored silence: rest A (0.25vh) before the peak and rest B (0.25vh) before the close (both were 0.4vh until the feel check read the pre-peak quiet as waiting); the seam between any two pinned chapters, where only the console is on screen, is the grammar's own beat and is not dead scroll (the console publishes `data-sc-verify-state`).
+
+## The peak
+
+Unchanged: act 2. "I dragged YouTube off the stream with my mouse and everything else stayed live, then it pulled itself back." Largest span on the page (2.8 against a next-largest of 1.8), a silence in front of it.
+
+## Tell-someone sentence
+
+"It's the site where you break your own live stream and watch it survive."

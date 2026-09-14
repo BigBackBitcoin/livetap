@@ -85,3 +85,7 @@ Exact E2E titles cited above: "P0 hero: the statement, the picture and the demo 
 | **Actionable total** | **34** | **33 closed + 1 external** | |
 
 Retest: `docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_RETEST.md` (132 / 150 self-assessed; two categories capped by things no page can change: no shipped build, no honest OBS click count).
+
+## 6. Revision 3 (same day): the full Scroll Craft pass
+
+The owner said the spacing and flow felt off and asked for the full Scroll Craft process to run. It did (`scrollcraft/builds/livetap-public/REPORT.md`): the copy moved back inside each chapter's act with cues that close before the chapter leaves (so #9's "never clipped, never off-screen" holds by construction rather than by a fixed layer), and the score regained seven device families (pin, flow, reveal, pan, count, flow + in, pointer). Every row above was re-verified on production after that deploy with the same review script at the same eight viewports (`docs/qa/deployed-review-2/review.json`) and the E2E suite (88 of 88). Nothing in this table changed status.

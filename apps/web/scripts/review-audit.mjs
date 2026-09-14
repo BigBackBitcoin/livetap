@@ -79,12 +79,17 @@ const shot = (page, file) => page.screenshot({ path: path.join(out, file) });
 
 /** Park at a chapter and wait for its band; report what the page thinks is active if it fails. */
 async function atBand(page, id) {
-  await toAct(page, id, 0.5);
-  try {
-    await page.waitForSelector(`[data-lt-band="${id}"].is-here`, { timeout: 2500 });
-  } catch {
-    const act = await page.evaluate(() => `${document.body.dataset.ltAct} y=${scrollY}`);
-    console.log(`  band ${id} not shown; page says ${act}`);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await toAct(page, id, 0.5);
+    try {
+      await page.waitForFunction((a) => document.body.dataset.ltAct === a, id, { timeout: 2500 });
+      await page.waitForSelector(`[data-lt-band="${id}"].is-here`, { timeout: 2500 });
+      await page.waitForTimeout(250);
+      return;
+    } catch {
+      const act = await page.evaluate(() => `${document.body.dataset.ltAct} y=${scrollY}`);
+      console.log(`  band ${id} not shown (attempt ${attempt + 1}); page says ${act}`);
+    }
   }
 }
 
@@ -174,17 +179,19 @@ async function review(name, vp, opts = {}) {
       };
     }, id);
     await shot(page, `${name}-${id}.png`);
-    // shape control at this chapter (toolbar on desktop, band mirror on phones)
-    const sel = opts.mobile ? '[data-lt-band="act-shape"] [data-lt-format-set="9:16"]' : '.ltp-toolbar [data-lt-format-set="9:16"]';
-    const before = await page.evaluate(() => document.querySelector('[data-lt-stage]').dataset.ltFormat);
-    const visible = await page.locator(sel).isVisible();
-    if (visible) {
-      await page.locator(sel).click();
+    // shape control at this chapter: the toolbar copy on desktop (every chapter), the band copy on
+    // phones (only at its own chapter, where the band is on). A real change is proved by
+    // switching AWAY from the current shape and back.
+    const here = await page.evaluate(() => document.querySelector('[data-lt-stage]').dataset.ltFormat);
+    const other = here === '9:16' ? '16:9' : '9:16';
+    const scope = opts.mobile ? '[data-lt-band="act-shape"]' : '.ltp-toolbar';
+    const usable = opts.mobile ? id === 'act-shape' : true;
+    if (usable) {
+      await page.locator(`${scope} [data-lt-format-set="${other}"]`).click();
       await page.waitForTimeout(150);
+      c.shapeBefore = here;
       c.shapeAfterClick = await page.evaluate(() => document.querySelector('[data-lt-stage]').dataset.ltFormat);
-      const back = opts.mobile ? '[data-lt-band="act-shape"] [data-lt-format-set="16:9"]' : '.ltp-toolbar [data-lt-format-set="16:9"]';
-      await page.locator(back).click();
-      c.shapeBefore = before;
+      await page.locator(`${scope} [data-lt-format-set="${here}"]`).click();
     } else {
       c.shapeControlVisibleHere = false;
     }

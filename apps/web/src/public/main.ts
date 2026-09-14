@@ -99,7 +99,7 @@ const stateDetail = $('[data-lt-statedetail]')!;
 const signal = $<SVGSVGElement>('[data-lt-signal]')!;
 const destList = $('[data-lt-dests]')!;
 const momentStrip = $('[data-lt-moments]')!;
-const momentMirror = $('[data-lt-moments-mirror]')!;
+const momentRail = $('[data-lt-moment-rail]')!;
 const intentGrid = $('[data-lt-intents]')!;
 const intentAnswer = $('[data-lt-intent-answer]')!;
 const openLink = $<HTMLAnchorElement>('[data-lt-open]')!;
@@ -425,6 +425,16 @@ function buildTiles(): void {
   });
 }
 
+/** One line per look, in the product's words: what the viewer sees, never how it is built. */
+const MOMENT_MEANING: Record<string, string> = {
+  'starting-soon': 'A held card before you begin',
+  'main-camera': 'You, full frame',
+  'screen-share': 'Your screen, you in the corner',
+  guest: 'Two people, side by side',
+  break: 'A quiet card while you step away',
+  ending: 'A thank-you and the sign-off',
+};
+
 function momentName(m: MomentDef): string {
   return RENAME[intent.id]?.[m.id] ?? m.name;
 }
@@ -457,18 +467,23 @@ function buildMoments(): void {
     });
     momentStrip.append(b);
 
-    /* The same six, mirrored into the Moments chapter's band as compact buttons. */
-    const mb = document.createElement('button');
-    mb.type = 'button';
-    mb.className = 'lt-btn lt-btn--secondary lt-btn--sm lt-touch';
-    mb.setAttribute('aria-pressed', String(m.id === momentId));
-    mb.dataset.ltMomentMirror = m.id;
-    mb.innerHTML = `${icon(momentGlyph(m), 20)}<span data-lt-moment-name>${momentName(m)}</span>`;
-    mb.addEventListener('click', () => {
+    /* The same six as rail cards in the Moments chapter, each with a live picture of that look. */
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'ltp-railcard lt-touch';
+    card.setAttribute('aria-pressed', String(m.id === momentId));
+    card.dataset.ltMomentMirror = m.id;
+    card.style.setProperty('--i', String(i));
+    card.innerHTML = `
+      <canvas class="ltp-railcard__thumb" width="352" height="198" aria-hidden="true" data-lt-railthumb></canvas>
+      <span class="ltp-railcard__name">${icon(momentGlyph(m), 20)}<span data-lt-moment-name>${momentName(m)}</span></span>
+      <span class="ltp-railcard__meta">${MOMENT_MEANING[m.id] ?? ''}</span>
+    `;
+    card.addEventListener('click', () => {
       interrupt();
       setMoment(m.id);
     });
-    momentMirror.append(mb);
+    momentRail.insertBefore(card, $('.ltp-lane__trail', momentRail));
   });
 }
 
@@ -479,6 +494,7 @@ function buildIntents(): void {
     b.className = 'ltp-intentchip lt-touch';
     b.setAttribute('aria-pressed', String(it.id === intent.id));
     b.dataset.ltIntent = it.id;
+    b.dataset.scTilt = '5';
     b.innerHTML = `${icon(`n-${it.id}`, 24)}<span class="ltp-intentchip__title">${it.title}</span><span class="ltp-intentchip__tag">${it.tagline}</span>`;
     b.addEventListener('click', () => {
       interrupt();
@@ -771,7 +787,7 @@ function setMoment(id: string, announce = true): void {
       meta.textContent = on && liveCount() ? 'Live now' : String(i + 1);
     }
   });
-  $$('[data-lt-moment-mirror]', momentMirror).forEach((b) =>
+  $$('[data-lt-moment-mirror]', momentRail).forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.ltMomentMirror === id)),
   );
   applyMoment();
@@ -782,23 +798,25 @@ function setMoment(id: string, announce = true): void {
 }
 
 /** Where a layer sits, for a given shape. Mirrors the product's applyIntentToLayer(). */
-function placementFor(layer: MomentDef['layers'][number], fmt: Format): Rect {
+function placementFor(layer: MomentDef['layers'][number], fmt: Format, mid: string = momentId): Rect {
   const at = layer.at ?? { default: { x: 0, y: 0, w: 1, h: 1 } };
   const base = (fmt === '9:16' && at['9:16']) || at.default;
   if (layer.kind === 'text') return insetToSafeArea(base, fmt);
-  if (layer.kind === 'camera' && momentId === 'screen-share' && fmt === '9:16') {
+  if (layer.kind === 'camera' && mid === 'screen-share' && fmt === '9:16') {
     return insetToSafeArea(base, fmt);
   }
   return base;
 }
 
-/** The current Moment's active layers, placed for a shape, for the composer. */
-function layersFor(fmt: Format): ComposedLayer[] {
-  const m = MOMENTS.find((x) => x.id === momentId)!;
+/** A Moment's active layers, placed for a shape, for the composer. Defaults to the current Moment. */
+function layersFor(fmt: Format, mid: string = momentId): ComposedLayer[] {
+  const m = MOMENTS.find((x) => x.id === mid)!;
   const out: ComposedLayer[] = [];
   for (const layer of m.layers) {
-    if (layer.visible === false || !hasInput(layer.kind)) continue;
-    const l: ComposedLayer = { kind: layer.kind, rect: placementFor(layer, fmt) };
+    /* A rail card previews the look as it would be with every input on. */
+    const present = mid === momentId ? hasInput(layer.kind) : true;
+    if (layer.visible === false || !present) continue;
+    const l: ComposedLayer = { kind: layer.kind, rect: placementFor(layer, fmt, mid) };
     if (layer.radius !== undefined) l.radius = layer.radius;
     if (layer.text !== undefined) l.text = layer.text;
     out.push(l);
@@ -1687,12 +1705,12 @@ function outputRows(): OutputRow[] {
 }
 
 function paintOutputs(): void {
-  outputs?.update(outputRows(), layersFor);
-  const n = connected().length;
+  outputs?.update(outputRows(), (fmt) => layersFor(fmt));
   const f = producedFormats();
-  outputsLede.textContent = n
-    ? `${n} destination${n === 1 ? '' : 's'}, ${f.length} shape${f.length === 1 ? '' : 's'} (${f.join(' and ')}), one production. Each platform gets what it accepts.`
-    : 'Each platform gets the shape it accepts and the quality it allows, from the same production. Pick destinations and they light up here.';
+  outputsLede.textContent = f.length
+    ? `${f.join(' and ')}. Each platform gets what it accepts.`
+    : 'Each platform gets what it accepts.';
+  updateCounters();
 }
 
 /* ---- the tiles' own pictures ------------------------------------------------ */
@@ -1720,13 +1738,46 @@ function drawThumbs(once = false): void {
     if (!ctx) return;
     picture.compose(ctx, row.thumb.width, row.thumb.height, layersFor(aspectFor(DESTINATIONS[i]!)));
   });
+  if (railVisible || once) {
+    $$<HTMLCanvasElement>('[data-lt-railthumb]', momentRail).forEach((c) => {
+      const ctx = c.getContext('2d');
+      const mid = (c.parentElement as HTMLElement).dataset.ltMomentMirror ?? momentId;
+      if (ctx) picture.compose(ctx, c.width, c.height, layersFor('16:9', mid));
+    });
+  }
 }
+
+let railVisible = false;
 
 function thumbLoop(): void {
   thumbRaf = requestAnimationFrame(thumbLoop);
   if (document.hidden || reduced) return;
-  if (!rows.some((r) => !r.thumb.hidden)) return;
+  if (!railVisible && !rows.some((r) => !r.thumb.hidden)) return;
   drawThumbs();
+}
+
+/**
+ * The two counters carry real, computed values. The engine reads `data-sc-count` once at
+ * mount, so the targets are updated through the instance API it publishes for exactly this
+ * kind of page, never by editing the engine or re-mounting it.
+ */
+function updateCounters(): void {
+  const n = connected().length;
+  const f = producedFormats().length;
+  const wrap = $('[data-lt-countwrap]');
+  if (wrap) wrap.classList.toggle('is-empty', n === 0);
+  const inst = window.ScrollCraft?.instances?.[0] as
+    | { acts: Array<{ counts?: Array<{ el: HTMLElement; b: number; tpl: string }> }> }
+    | undefined;
+  if (!inst) return;
+  for (const act of inst.acts) {
+    for (const k of act.counts ?? []) {
+      const which = k.el.dataset.ltCount;
+      const target = which === 'dests' ? n : f;
+      k.b = target;
+      k.tpl = String(target);
+    }
+  }
 }
 
 /* ====================================================== the guided five seconds */
@@ -2100,6 +2151,11 @@ async function boot(): Promise<void> {
   window.ScrollCraft?.mount(document.body);
   layout();
   watchActs();
+  updateCounters();
+  new IntersectionObserver((e) => {
+    railVisible = !!e[0]?.isIntersecting;
+  }).observe(momentRail);
+  drawThumbs(true);
   thumbLoop();
   mountStory();
 }

@@ -364,9 +364,9 @@ test.describe('the outputs', () => {
     ] as const) {
       await expect(page.locator(`[data-lt-output="${id}"] .ltp-output__meta`)).toContainText(shape);
     }
-    await expect(page.locator('[data-lt-outputs-lede]')).toContainText(
-      'Pick destinations and they light up here.',
-    );
+    /* With nothing picked the counters step aside for a sentence that says so. */
+    await expect(page.locator('[data-lt-countwrap]')).toHaveClass(/is-empty/);
+    await expect(page.locator('.ltp-band__nocounts')).toContainText('Nothing is picked yet.');
   });
 
   test('an output lights up with the destination it belongs to', async ({ page }) => {
@@ -389,9 +389,9 @@ test.describe('the outputs', () => {
       'data-lt-state',
       'DISCONNECTED',
     );
-    await expect(page.locator('[data-lt-outputs-lede]')).toContainText(
-      '1 destination, 1 shape (16:9), one production.',
-    );
+    /* The numbers are the engine's counters, re-targeted from the visitor's own picks. */
+    await expect(page.locator('[data-lt-countwrap]')).not.toHaveClass(/is-empty/);
+    await expect(page.locator('[data-lt-outputs-lede]')).toContainText('16:9. Each platform gets what it accepts.');
   });
 });
 

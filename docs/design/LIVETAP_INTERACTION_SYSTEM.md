@@ -1,6 +1,6 @@
 # LIVETAP Interaction System, the public experience
 
-**Version** 2.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
+**Version** 3.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
 **Companions** `LIVETAP_VISUAL_DIRECTION.md` · `LIVETAP_SCROLL_STORY.md` · `LIVETAP_MOTION_SYSTEM.md` ·
 `scrollcraft/builds/livetap-public/PLAN.md`
 
@@ -11,8 +11,19 @@ machines below are largely the ones the first version specified, the destination
 button, the drag-to-break peak and the Pro layer all still run on the same logic, but three structural
 things changed: the stage now shows a **real picture** from the first frame instead of an empty
 rectangle, the seventeen-step automatic hero story is gone in favour of a **4.2-second guided demo**
-that hands over fast, and GO LIVE no longer dead-ends when nothing is connected. Every section below is
-current; where a mechanic is unchanged from v1.0 it is stated as such rather than silently re-derived.
+that hands over fast, and GO LIVE no longer dead-ends when nothing is connected.
+
+**What changed since v2.0.** The audit-closure rebuild that v2.0 documented flattened Shapes, Moments,
+Outputs, Versus and Pro into five copies of the same pattern, a control that already lives on the
+desk, mirrored into a fixed band that cross-fades. The owner read the result and said the spacing and
+flow seemed off, and a full Scroll Craft pass restored real scroll devices to each of those chapters
+without touching the state machines underneath them. Every mechanic in this document, the ten states,
+the tile, the peak, GO LIVE, the guided demo, chat, is exactly the logic v2.0 specified; what changed
+is how five of these mechanics are **presented** as the visitor scrolls to them: SHAPES now irises its
+band open, MOMENTS is a travelling lane of live thumbnails rather than a mirrored strip, OUTPUTS counts
+two real numbers up from the visitor's own picks, VERSUS arrives as a staggered entrance in its own
+flow chapter, and PRO wipes its control up. Every section below is current; where a mechanic is
+unchanged since v1.0 or v2.0 it is stated as such rather than silently re-derived.
 
 Every interactive element on the public page is specified here as a state machine over real data. The
 data comes from `packages/core` and `packages/adapters`; nothing on this page invents a state, a
@@ -187,9 +198,15 @@ and announced. Tile targets are ≥ 168 × 44px at every breakpoint.
 
 The app's aspect-ratio segmented control, three segments, **16:9**, **9:16**, **1:1**, is a real
 roving-tabindex `role="radiogroup"`, each segment ≥ 44 × 44px. It lives permanently in the toolbar, and
-it is **mirrored** in the SHAPES band while that chapter is active, so a visitor who has not scrolled
-past the hero can still reach it, and a visitor reading the SHAPES chapter sees the same control they
-already used. The two controls are one state, painted twice.
+it is **mirrored** in the SHAPES band, so a visitor who has not scrolled past the hero can still reach
+it, and a visitor reading the SHAPES chapter sees the same control they already used. The two controls
+are one state, painted twice.
+
+The band's mirrored copy sits inside a legend that irises open as the chapter's own cue crosses its
+reveal window, `data-sc-reveal="iris"` at `0.06 0.42` of the act's travel, the page's one iris. The
+iris is decoration over content that is already correct in the DOM, not a gate in front of it: the
+segmented control underneath is real and operable before, during and after the reveal plays, and under
+reduced motion it is simply present at full strength with no wipe.
 
 The segment sets the **master canvas** shape. What each destination receives is computed, not chosen.
 
@@ -348,8 +365,17 @@ one frame with no carrier.
 ### 6.1 The six Moments, real
 
 From `MOMENTS` in `data.ts`, copied verbatim from `defaultMoments()`. The strip lives in the fixed
-desk, present from first paint, and is **mirrored** in the MOMENTS band while that chapter is active,
-the same two-places-one-state pattern as Shapes.
+desk, present from first paint, exactly as before.
+
+**The MOMENTS chapter itself is not a mirror any more, it is a lane.** `data-sc-act="pan"` on the act,
+`data-sc-pan="0.05"` on an inner `.ltp-lane` wider than the viewport, so the lane travels sideways under
+the wheel rather than sitting still while the page scrolls past it vertically. The lane carries a lead
+block with the chapter's heading and lede, the six Moment cards, and a trailing note. Each Moment card
+is not a static copy of the desk strip's card, it carries its own **live canvas thumbnail**,
+`[data-lt-railthumb]`, composed by the same `picture.compose()` call that draws the stage and every
+output (`LIVETAP_INTERACTION_SYSTEM.md` §1a.3, §7.1), so a visitor pans past six actual pictures of
+what tapping each Moment produces, "Your screen, you in the corner" rendered as a thumbnail rather than
+promised in a caption, not six identical cards with different labels.
 
 | id | Name | What changes on the stage |
 |---|---|---|
@@ -394,16 +420,30 @@ picture; the mic switches on during the guided demo (§9) or on tap; the mic's `
 ### 6.5 Accessibility
 
 `aria-pressed` on every Moment card; `1`–`6` shortcuts active only when focus is not in a text field;
-`M` toggles the mic. The strip is a horizontal scroll region on mobile with real overflow. Under reduced
-motion the layer crossover is an instant swap.
+`M` toggles the mic. The desk strip is a horizontal scroll region on mobile with real overflow. Under
+reduced motion the layer crossover is an instant swap, and the MOMENTS chapter's pan lane is not
+scroll-linked at all: the engine turns `data-sc-pan` into a native sideways scroll region under
+`prefers-reduced-motion: reduce`, so the same six cards and their live thumbnails are still reachable,
+by a real horizontal scroll rather than the wheel driving a transform.
 
 ---
 
 ## 7. OUTPUTS (ACT 5)
 
-New section: this chapter did not exist in v1.0. It is the direct answer to the audit's P0 finding #6,
-*"show the six outputs from one production"*, which v1.0 only promised in words ("One production,
-six correct pictures" was a sentence, not an image).
+This chapter did not exist in v1.0. It is the direct answer to the audit's P0 finding #6, *"show the
+six outputs from one production"*, which v1.0 only promised in words ("One production, six correct
+pictures" was a sentence, not an image).
+
+### 7.0 Two real counters, re-targeted from the visitor's own picks
+
+The band's lede opens with two numbers, destinations and shapes, that count up rather than simply
+printing a total: `data-sc-count` on each numeral, read once at mount by the engine. Because the real
+values are not known until the visitor has picked something, `updateCounters()` in `main.ts` re-targets
+both counters through the engine's own published instance API (`window.ScrollCraft.instances[0]`)
+every time the connected-destination count or the produced-format count changes, rather than editing
+the engine or re-mounting it. A visitor who has connected nothing yet sees the band's own empty state,
+"Nothing is picked yet. Pick destinations above and this counts them," instead of a count animating up
+from a lie.
 
 ### 7.1 Six live canvases, one production
 
@@ -440,7 +480,11 @@ Restream, StreamYard, Streamlabs, Riverside."*
 
 ### 8.1 Two playable lanes, not a table
 
-"Instead of OBS." presents two lanes a visitor presses through rather than reads:
+VERSUS is a `flow` chapter, 90svh, with a sticky full-viewport stage rather than a `pin`: the two lanes
+do not need the engine to hold the act in place, they need one entrance. `data-sc-in` on the lanes'
+container, with `data-sc-stagger="90"`, fires once as the chapter enters the viewport, so both lanes
+arrive together, staggered by 90ms across their own children, rather than being visible from the moment
+the act mounts. "Instead of OBS." presents two lanes a visitor presses through rather than reads:
 
 - **Lane A, OBS**: reveals, one tap at a time, the fourteen concepts OBS's own Quick Start guide names
   before a first stream, in that guide's order.
@@ -547,9 +591,15 @@ row's accessible text, not a colour. Message rows are not tab stops.
 
 ### 11.1 One control, present in two places
 
-A `Toggle`, labelled `Pro`, lives permanently in the toolbar and is **mirrored** in the PRO band while
-that chapter is active, the same pattern as Shapes and Moments. Turning it on adds four panels above
-the desk: Quality, per-platform Ceiling, Audio and the session Log.
+A `Toggle`, labelled `Pro`, lives permanently in the toolbar and is **mirrored** in the PRO band, the
+same pattern as Shapes. Turning it on adds four panels above the desk: Quality, per-platform Ceiling,
+Audio and the session Log.
+
+The band's mirrored copy is wrapped in `data-sc-reveal="up"`, a clip-path wipe that opens as the
+chapter's cue crosses its reveal window, so the control appears to rise into place under the heading
+rather than simply fading in. As with SHAPES' iris, this is decoration over a control that is already
+real and reachable in the DOM; under reduced motion the wipe is skipped and the control is present at
+full strength.
 
 ### 11.2 The rule that makes it respect, not clutter
 

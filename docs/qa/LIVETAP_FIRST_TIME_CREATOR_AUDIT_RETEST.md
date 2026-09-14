@@ -66,6 +66,10 @@ The retest lands below the directive's 135 floor on two categories that no page 
 
 All eight runs: hero band visible with the title not covered, video playing (paused under reduced motion, poster shown), no Download word, no horizontal overflow, GO LIVE -> LIVE with the badge, break -> RECONNECTING with the card -> LIVE again, 9:16 with two drawn zones, Screen Share switching the screen on, six output figures, versus lanes playable, four Pro panels, intent chip changing shape and first Moment, all internal links 200 and `/nope` 404.
 
+## Revision 3, the same day
+
+After this retest the owner asked for the full Scroll Craft pass ("the spacing and flow seems off"). The page kept every guarantee scored above and regained its rhythm: chapters now differ in device (pin, a pan lane of six live Moment thumbnails, an iris reveal, real counters, a staggered flow, an up wipe, tilting chips) and in anchor, and copy arrives with each chapter's own travel instead of cross-fading in one fixed strip. The harness passed at desktop, phone and reduced motion (no dead scroll, contrast clear), the E2E suite is 88 of 88, and the production review was repeated at the same eight viewports. Scores are unchanged by this pass except that Visual Quality and Premium Feel now rest on a page with shape as well as hierarchy; they stay at 9 rather than being raised by the same hand that built it.
+
 ## Remaining issues (new problems discovered, honestly)
 
 1. **Versus lanes were empty until played** on the first deploy of the day; the chips are now ghosted at 32% before play and light up when played (fixed and redeployed the same day).
