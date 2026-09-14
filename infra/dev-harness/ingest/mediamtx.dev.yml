@@ -1,0 +1,137 @@
+###############################################################################
+# LIVETAP dev-harness ingest - MediaMTX configuration
+#
+# THIS IS NOT THE PRODUCTION RELAY. The production relay config lives in
+# infra/relay/mediamtx.yml and is the thing that is actually deployed. This
+# file is a DEVELOPMENT RECEIVER: it exists so that a broadcast produced by
+# the LIVETAP desktop app (or by ffmpeg) can be received, recorded and probed
+# on a developer workstation, turning "the UI said LIVE" into bytes on disk.
+#
+# Differences from the production relay, all of them deliberate:
+#
+#   * NO AUTHENTICATION. Everything below is bound to 127.0.0.1 only, so the
+#     only clients that can reach it are processes on this machine. Adding a
+#     password here would buy nothing and would put a credential in a file
+#     that developers copy around.
+#   * RECORDING IS ON. The production relay deliberately does not record
+#     (the desktop app owns the full-quality master). Here the recording IS
+#     the evidence: verify-ingest.mjs probes it.
+#   * A CATCH-ALL PATH TEMPLATE. Production has an empty `paths:` and an
+#     explicit "no session, no path" authorisation invariant. A dev receiver
+#     has the opposite job: accept whatever the app under test pushes and
+#     report exactly what arrived.
+#   * EVERY EGRESS PROTOCOL IS OFF. No HLS, no WebRTC, no SRT, no MoQ. This
+#     receiver only receives. RTSP is off too, because nothing reads back
+#     from here; ffprobe pulls over RTMP.
+#
+# Verified against MediaMTX v1.21.0 (tools/mediamtx/mediamtx.exe --version).
+# Naming currency notes that apply to v1.21.0 and must not be "fixed" back:
+# `runOnReady` -> `runOnAvailable`, `runOnNotReady` -> `runOnUnavailable`.
+#
+# NEVER DEPLOY THIS FILE. It has no authentication.
+###############################################################################
+
+logLevel: info
+logDestinations: [stdout]
+
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 1024
+
+###############################################
+# Control API
+#
+# This is how verify-ingest.mjs and kill-publisher.mjs ask the server what is
+# actually publishing. Bound to loopback: MediaMTX does not redact
+# `forward[].dest` or `runOnAvailable` in API responses, and in production
+# those carry platform stream keys. Nothing in this harness writes such a
+# value, and the scripts field-filter API responses rather than echoing them,
+# but the listener stays on 127.0.0.1 regardless.
+api: yes
+apiAddress: 127.0.0.1:9997
+apiEncryption: no
+apiAllowOrigins: []
+apiTrustedProxies: []
+
+###############################################
+# Authentication
+#
+# Anonymous publish and anonymous read, on loopback only. The stock "any"
+# user is kept and narrowed by IP. `ips` is enforced by MediaMTX for every
+# action, so a process on another host cannot use this user even if the
+# listener were somehow exposed.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+      - action: pprof
+
+###############################################
+# RTMP ingest
+#
+# The single reason this server exists. 127.0.0.1 only. The desktop app
+# publishes here exactly as it would publish to YouTube or Twitch, which is
+# what makes this a real test of the encoder rather than a mock.
+rtmp: yes
+rtmpAddress: 127.0.0.1:1935
+rtmpEncryption: "no"
+rtmpTrustedProxies: []
+
+###############################################
+# Everything else is off
+#
+# MoQ in particular is ON by default in v1.21.0 and silently binds :8892 TCP,
+# :8892 UDP and :8893 UDP; leaving it enabled would open three ports that
+# nothing here uses.
+rtsp: no
+hls: no
+webrtc: no
+srt: no
+moq: no
+metrics: no
+pprof: no
+playback: no
+
+###############################################
+# Path defaults
+#
+# recordPath is RELATIVE. start-ingest.mjs spawns MediaMTX with its working
+# directory set to this directory, so recordings land in
+# infra/dev-harness/ingest/recordings/<path>/<timestamp>.mp4 and nowhere else.
+#
+# recordSegmentDuration is short on purpose. A segment is only finalised when
+# it rolls over or when the publisher disconnects, and a 1h default would mean
+# a 10 second test push produces a file that is still open. Keeping segments
+# small means verify-ingest.mjs has a complete, probeable file quickly.
+pathDefaults:
+  source: publisher
+  record: yes
+  recordPath: ./recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 30s
+  # Zero disables automatic deletion. Recordings are evidence; deleting them
+  # on a timer is exactly the wrong behaviour for a harness whose job is to
+  # let a human look at what arrived. `npm`-less cleanup: delete the folder.
+  recordDeleteAfter: 0s
+  # No fan-out. A dev receiver that forwarded anywhere would be a way to leak
+  # a test stream to the internet by accident.
+  forward: []
+
+###############################################
+# Paths
+#
+# One catch-all template: any path under `live/`. `~` marks a regular
+# expression. This is the opposite of the production relay's empty `paths:`,
+# and it is correct here: the harness must accept whatever the app under test
+# decides to publish, then tell the operator what that was.
+paths:
+  "~^live/[A-Za-z0-9._-]+$":
+    source: publisher

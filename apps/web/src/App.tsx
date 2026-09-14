@@ -3,12 +3,18 @@ import type { ReactElement } from 'react';
 import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router';
 
 /**
- * The desktop shell loads the bundle from file:// (and Capacitor from a custom scheme), where
- * history-based routing has no server fallback. A hash router keeps every route reachable there.
+ * The desktop shell loads the bundle from file://, and Capacitor serves it from a local origin
+ * whose server has no history fallback: `https://localhost/` on Android, `capacitor://localhost`
+ * on iOS. In all three a deep path survives only until the first reload, so a hash router is what
+ * keeps every route reachable. `Capacitor` is the global the native bridge injects before the
+ * bundle runs, which is why the Android case cannot be detected from the protocol alone.
  */
 const useHashRouting =
   typeof window !== 'undefined' &&
-  (window.location.protocol === 'file:' || 'livetap' in window || window.location.protocol === 'capacitor:');
+  (window.location.protocol === 'file:' ||
+    'livetap' in window ||
+    'Capacitor' in window ||
+    window.location.protocol === 'capacitor:');
 const Router = useHashRouting ? HashRouter : BrowserRouter;
 import { Spinner } from '@livetap/ui';
 

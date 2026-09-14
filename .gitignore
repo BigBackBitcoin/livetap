@@ -30,3 +30,8 @@ __pycache__/
 first time review.txt
 apps/web/docs/
 docs/qa/local-review/
+
+first time review 2.txt
+
+# The phone bundle is the web build, staged by apps/mobile/scripts/stage-web.mjs.
+apps/mobile/www/
