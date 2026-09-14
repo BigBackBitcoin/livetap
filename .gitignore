@@ -25,3 +25,8 @@ scrollcraft/builds/*/lab/
 scrollcraft/builds/*/out/
 .claude/
 __pycache__/
+
+# Working files that are not part of the product
+first time review.txt
+apps/web/docs/
+docs/qa/local-review/

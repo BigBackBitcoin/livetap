@@ -1,0 +1,156 @@
+/*
+ * The picture engine's own styles.
+ *
+ * Two jobs, and deliberately nothing else:
+ *
+ *   1. Make the stage's layer elements show real content. `landing.css` owns where a layer sits
+ *      (`--lx/--ly/--lw/--lh/--lr` and `.is-on`); this file only says what is inside one. The
+ *      two files never write the same property on the same element.
+ *
+ *   2. Lay out the six output figures.
+ *
+ * Every colour is a token from `packages/ui/src/tokens.css`. The deployed CSP is
+ * `style-src 'self'`, so this arrives as a file and never as a <style> tag.
+ */
+
+/* ------------------------------------------------------------------- the layers */
+
+/*
+ * A layer that carries media stops being a label. The placeholder word that used to sit in the
+ * corner ("Camera") is replaced by the thing itself, so the padding and the caption type that
+ * `landing.css` gives an empty layer are cleared here.
+ */
+.ltp-layer--media {
+  padding: 0;
+  overflow: clip;
+  background: var(--lt-bg-2);
+}
+
+.ltp-media {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+  /* A video element is replaced content: without this it keeps its own intrinsic baseline gap. */
+  vertical-align: bottom;
+}
+
+/*
+ * The self-view is mirrored, because an un-mirrored self-view reads as someone else. The
+ * OUTPUT is never mirrored: `compose()` draws the un-flipped frame, which is what viewers see.
+ */
+.ltp-media.is-mirrored {
+  transform: scaleX(-1);
+}
+
+/* The screen share is a screen: contained, whole, on its own dark ground. */
+.ltp-layer--screen {
+  background: var(--lt-bg-0);
+}
+
+.ltp-media--screen {
+  object-fit: contain;
+}
+
+/*
+ * The ground. The product's own two Moments carry a background hex that this page deliberately
+ * does not copy, so the colour layer is built from the page's ground plus the live accent at a
+ * mix low enough to read as light rather than as branding.
+ */
+.ltp-layer--ground {
+  background-image: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--lt-accent-live) 14%, var(--lt-bg-2)) 0%,
+    var(--lt-bg-2) 52%,
+    var(--lt-bg-0) 100%
+  );
+}
+
+/*
+ * The typed layer. The scrim is behind the text and nowhere else: a full-frame wash would
+ * darken the picture the page is asking you to look at, which is the defect the whole engine
+ * exists to fix. `main.ts` keeps writing this element's textContent, so it never gets children.
+ */
+.ltp-layer--typed {
+  padding: var(--lt-space-3);
+  font-size: var(--lt-text-28);
+  line-height: var(--lt-leading-28);
+  letter-spacing: var(--lt-tracking-28);
+  text-wrap: balance;
+  text-shadow:
+    0 1px 2px var(--lt-bg-0),
+    0 2px 12px var(--lt-bg-0);
+}
+
+@media (min-width: 1025px) {
+  .ltp-layer--typed {
+    font-size: var(--lt-text-36);
+    line-height: var(--lt-leading-36);
+    letter-spacing: var(--lt-tracking-36);
+  }
+}
+
+/* ------------------------------------------------------------------ the outputs */
+
+.ltp-outputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ltp-output {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.ltp-output__canvas {
+  display: block;
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-bg-0);
+  outline: 1px solid var(--lt-border);
+  outline-offset: -1px;
+}
+
+.ltp-output.is-off .ltp-output__canvas {
+  opacity: 0.5;
+}
+
+.ltp-output__cap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-05);
+  max-inline-size: 176px;
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  letter-spacing: var(--lt-tracking-12);
+  color: var(--lt-text-secondary);
+}
+
+.ltp-output__name {
+  font-weight: var(--lt-weight-semibold);
+  color: var(--lt-text-primary);
+}
+
+.ltp-output__meta {
+  color: var(--lt-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ltp-output .lt-chip {
+  align-self: flex-start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ltp-media {
+    /* Nothing here animates, but a paused clip should not inherit a transition either. */
+    transition: none;
+  }
+}

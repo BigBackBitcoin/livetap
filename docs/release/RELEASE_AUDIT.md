@@ -82,3 +82,16 @@ DEPLOYED → COMMITTED → RELEASE-AUDITED, with the honest labels above.
 | Scroll Craft harness | 3 passes x 61 samples: no dead scroll, every cue peaks, contrast >= 4.5:1 at worst frame | scrollcraft/builds/livetap-public/REPORT.md |
 | 15-second test / cheap-website tests / category test | answered with screenshot evidence | docs/qa/EXPERIENCE_REVIEW.md |
 | Not verified | throttled LCP/INP on a real device; Windows High Contrast; atmosphere canvas profiled against its 2 ms ceiling | - |
+
+## Addendum 2026-09-14 - First-time creator audit closure (directive docs/prompt-pack/11)
+
+| Check | Result | Evidence |
+|---|---|---|
+| Audit closure | 33 of 34 actionable findings closed on production, 1 external (early-access endpoint, B-009) | docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md |
+| Retest | 59 -> 132 / 150 (self-assessed; two categories capped by no shipped build and no honest OBS click count) | docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_RETEST.md |
+| Gates | tsc/eslint clean; 1122 unit; 88 E2E incl. 28 audit-closure specs; Scroll Craft harness clean | this session |
+| Deployed review | 8 viewports: hero uncovered, video playing, no auto go-live, wheel/keys/touch scroll, controls answer at every chapter, break/heal, 9:16 zones, six outputs, versus, Pro, intents, camera (fake device), 0 console errors, links 200, 404 real | docs/qa/deployed-review-2/ |
+| Layout shift, production | 0.004 desktop after reserving two lines under GO LIVE (0.049 before) | apps/web/scripts/cls-trace.mjs |
+| Budget | landing JS 52.9 KB gz (limit 60), CSS 15.3 KB gz, footage 367 KB total | vite build |
+| Deploy procedure | prebuilt: vercel.json installCommand is a no-op and buildCommand calls vite directly, because `vercel build` under the host's Node 20 otherwise runs `npm ci` and wipes node_modules; reinstall with tools/node22 | HANDOFF.md |
+| Not verified | the auditor's own browser (its extension could not be scripted on any page); real-device LCP/INP; an independent re-audit | - |

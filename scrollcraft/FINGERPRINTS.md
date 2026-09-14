@@ -28,11 +28,16 @@ changes only grammar and world will fail it.
 
 | Build | Grammar | Nav treatment | Hero device | Act-sequence shape | Close pattern | Signature move | World | Port |
 |---|---|---|---|---|---|---|---|---|
-| `livetap-public` | Live surface | The product's own app chrome: an 88px labelled left rail plus a bottom status bar carrying live session state, both real enough to navigate with; no marketing bar | One fixed live surface, mounted at first paint and already telling its own 17-step story on its own clock, seen through a collapsing lattice of six duplicated control panels | `pin` > rest > `pan` > `pin` > `reveal` > `count` > rest > bespoke pointer > `parallax` > `tilt`; 8 acts plus 2 declared rests; 12.8vh; peak at 2.8 against a next-largest of 1.6 | The product's real first-run question, "What are you making?", with six operable intent cards that re-compose the fixed stage and hand the chosen intent to `/app/start` | Drag a `LIVE` destination off the stage with the pointer: its connection path strains and snaps, it counts down and heals, and no sibling flickers | Drawn signal field. No photography, no footage, no generated imagery; the product is the picture | Web, `/` in `apps/web`, dark default with a first-class light theme |
+| `livetap-public` | Live surface | The product's own app chrome: an 88px labelled left rail on desktop / a top row plus a bottom status bar carrying live session state on phones, both real enough to navigate with; no marketing bar | One fixed live surface, mounted at first paint with a real sample picture already playing on the stage and nothing covering it; a 4.2s guided demo (mic on, three destinations to `READY`) hands over to the visitor with "Your turn" | Eight `pin` acts and one declared rest, no other device anywhere on the page; 12.4vh; the peak is a cold open, second on the page, span 2.4 against a next-largest of 1.6, ahead of a descending explanation (Shapes, Moments, Outputs, Versus, Pro) | The product's real first-run question, "What are you making?", with six operable intent chips that re-compose the fixed stage and hand the chosen intent to `/app/start` | Drag a `LIVE` destination off the stage with the pointer, tap one band button, or press Delete: its connection path strains and snaps, it counts down and heals, and no sibling flickers | Real sample footage: a generated creator clip and a guest clip stand in for the visitor's own camera, plus one drawn screen asset. No stock photography, no photography of anything but the product's own demo picture; the product is the picture | Web, `/` in `apps/web`, dark default with a first-class light theme |
 
-*(The first row was appended on 2026-09-12. The registry was empty before it, so the gate was
-vacuously satisfied and is recorded as such rather than reported as a pass against a table that
-did not exist. From the second build onwards, this table is the constraint.)*
+*(The row was first appended on 2026-09-12, when the registry was empty and the gate was vacuously
+satisfied. It was updated in place on 2026-09-14 after an independent first-time-creator audit
+(`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT.md`, score 59/150) drove a rebuild of the same page at the
+same URL: the hero device, the act-sequence shape and the world changed; the grammar, the nav
+treatment, the close pattern and the signature move did not. This is a revision of one build, not a
+second build, so the row was replaced rather than appended a second time, see
+`docs/design/LIVETAP_SCROLL_STORY.md` §8 for the reasoning. From the next genuinely new build onwards,
+this table is the constraint.)*
 
 ---
 
@@ -44,19 +49,31 @@ act-count-and-length band. The shared columns are what the next build inherits
 as a constraint, so writing them down is the whole point.
 
 - **Live surface** as a grammar.
-- **App chrome as nav**, specifically a labelled left rail plus a live status bar carrying
-  session state.
-- **The fixed-surface-plus-flow-markers structure**: one `position: fixed` product surface for
-  the whole page, with the act stack driving it, rather than one pinned stage per act. The act
-  band is the one region of the viewport the surface leaves free.
-- **A collapsing lattice of duplicated controls** as a hero device, where each duplicate
-  converges on the position of the surface's own single instance of that control.
+- **App chrome as nav**, specifically a labelled left rail (or top row on phones) plus a live
+  status bar carrying session state.
+- **The fixed-surface-plus-fixed-band structure**: one `position: fixed` product surface for the
+  whole page, with a transparent `pin`-only act stack driving it and one fixed band layer
+  cross-faded by a single passive scroll listener, rather than per-act Scroll Craft cue
+  choreography. The band is the one region of the viewport the surface leaves free.
+- **A real picture on the stage from first paint**, standing in for the visitor's own camera
+  until they grant it, as a hero device. (Superseding the first version's collapsing lattice of
+  duplicated controls, which this build no longer uses and which should not be reused as a
+  fingerprint by a future build.)
+- **A short, clock-driven guided demo that hands over fast** (this build: 4.2s) rather than a
+  long automatic story, as a hero pattern.
 - **A real first-run question as the close**, with the answer carried into the app as a query
   parameter.
-- **Drag-to-break-a-live-destination** as a signature move, and per-item failure isolation as
-  the peak.
-- **The act-count-and-length band**: 8 acts plus 2 declared rests at 12.8vh with the peak at
-  2.8.
+- **Drag-to-break-a-live-destination** as a signature move, with a one-tap non-pointer
+  alternative, and per-item failure isolation as the peak.
+- **A cold-open peak**: the signature move placed second on the page, immediately after the
+  hero, ahead of a descending explanation of the rest of the product.
+- **The act-count-and-length band**: 8 `pin` acts plus 1 declared rest at 12.4vh with the peak
+  at 2.4.
+- **Uniform `pin` with no other Scroll Craft device**, as a deliberate performance trade: this
+  build removed `pan`, `reveal`, `count`, `parallax`, `drift` and pointer `tilt` entirely after
+  an audit found their combined scroll-linked cost jammed the page's main thread. A future build
+  chasing device variety should measure its own scroll-linked frame cost before adding any of
+  them back.
 
 ---
 

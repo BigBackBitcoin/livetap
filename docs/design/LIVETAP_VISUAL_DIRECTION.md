@@ -1,18 +1,29 @@
-# LIVETAP Visual Direction — the public experience
+# LIVETAP Visual Direction, the public experience
 
-**Version** 1.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
+**Version** 2.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
 **Companions** `LIVETAP_SCROLL_STORY.md` (the score) · `LIVETAP_INTERACTION_SYSTEM.md` (the demos) ·
 `LIVETAP_MOTION_SYSTEM.md` (durations and the Anime.js contract) ·
 `scrollcraft/builds/livetap-public/PLAN.md` (the build)
 
+**What changed since v1.0.** A first-time-creator audit of the deployed page (score 59/150,
+`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT.md`) found the single largest visual failure to be the
+stage itself: *"the centrepiece, the stage, is an empty grey rectangle. A production tool whose hero
+image is a blank box cannot score well on visual quality, because the thing I'm buying is pictures."*
+The rebuild that closed that finding (`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md`) changed
+this document's central rule more than any other page property: **the product is still the picture, but
+now there is a picture.** The chaos-lattice hero, the atmosphere canvas and the grain layer this
+document specified are gone. This version records the direction as it now ships.
+
 This document decides what the public experience looks like. It does not decide what it does; that is
 the Interaction System. Everything here is derived from three sources and nothing else:
 
-1. `docs/design/DESIGN_SYSTEM.md` and `packages/ui/src/tokens.css` — the app's existing language. The
+1. `docs/design/DESIGN_SYSTEM.md` and `packages/ui/src/tokens.css`, the app's existing language. The
    public experience adds **no new colour, no new size, no new radius, no new duration**. It adds one
    typeface and one page-local layer scale, both defined in §4 and §3.
-2. The owner's directive of 2026-09-12 (`docs/prompt-pack/10_LIVETAP_UX_EXPERIENCE_REDESIGN.md`) and
-   the self-authored brief at `scrollcraft/builds/livetap-public/BRIEF.md`.
+2. The owner's directive of 2026-09-12 (`docs/prompt-pack/10_LIVETAP_UX_EXPERIENCE_REDESIGN.md`), the
+   self-authored brief at `scrollcraft/builds/livetap-public/BRIEF.md`, and, new for this version,
+   the first-time-creator audit and its closure matrix, which is the more specific and more recent
+   source wherever the two disagree.
 3. The Scroll Craft **Live surface** grammar, whose bans are treated here as hard rules.
 
 ---
@@ -22,15 +33,19 @@ the Interaction System. Everything here is derived from three sources and nothin
 The app's four rules (DESIGN_SYSTEM §0) hold verbatim. These four are additional, and specific to a
 page whose job is to be operated rather than read.
 
-1. **The product is the picture.** No photography, no stock imagery, no device mockups, no generated
-   scenery, no illustration of a person. The only pictorial elements on the page are the LIVETAP mark
-   and one hero plate. Atmosphere is drawn, not photographed.
+1. **The product is the picture, and now the page actually shows one.** No stock imagery, no device
+   mockups, no illustration of a person, no photography of anything other than the product's own
+   output. The pictorial elements are the LIVETAP mark, a generated sample creator clip that stands in
+   for a visitor's own camera, a matching guest clip for the Guest Moment, and a drawn screen asset for
+   Screen Share, every one of them the product's own demonstration picture, not decoration around it.
+   Atmosphere is drawn, not photographed.
 2. **Nothing on the page pretends.** Every panel is real markup computing its state from data arrays
    in the page, and the page says on its face that the scenario is a demo. A painted surface, a
    screenshot of a dashboard, or a div dressed as another company's product is forbidden outright.
 3. **Copy lives in the surface's own idiom.** Labels, status lines, values, empty states, tooltips,
-   field hints. There is no headline in display type making a claim. If a sentence could appear on a
-   competitor's marketing page, it does not belong here.
+   field hints. The hero carries one real product statement, this is the one place display type is
+   allowed to make a claim rather than report a state, because the audit found the page had no
+   statement at all (`AUDIT_CLOSURE.md` P0 #3), and nothing else on the page reads like marketing copy.
 4. **Colour is never the only carrier of state, and the page still reads with most colour removed.**
    Every coloured state also carries a word and a dot shape, exactly as `StatusChip` does in the app.
 
@@ -41,169 +56,144 @@ page whose job is to be operated rather than read.
 ### 1.1 What the world is
 
 A **cinematic live control environment**: one production stage, lit, with its instruments around it,
-in a room whose light comes from the stage itself. The reference set, from the brief: a broadcast
-truck's program monitor wall at night; a mission-control console where every light means one thing;
-the calm of a well-run live show's talkback.
+in a room whose light comes from the stage itself. The reference set is unchanged from v1.0: a
+broadcast truck's program monitor wall at night; a mission-control console where every light means one
+thing; the calm of a well-run live show's talkback.
 
-The world is a **signal field**, not a place. It has no floor, no horizon, no architecture and no
-sky, because a place implies travel and this page does not travel — it operates. What gives the frame
-depth is the falloff of light and contrast away from the stage, and the fact that things in front of
-the stage are sharper and larger than things behind it.
+The world is a **signal field**, not a place. It has no floor, no horizon, no architecture and no sky.
+What gives the frame depth is contrast falling off away from the stage, and the fact that the stage
+itself is now the sharpest, most detailed thing on the page, because it is the one place with real
+footage on it.
 
 ### 1.2 Explicitly not
 
+Unchanged from v1.0.
+
 | Not this | Why |
 |---|---|
-| Gaming PC, RGB, neon, chromatic glow | The brief forbids it by name. Colour here means a state, and a glow means nothing. |
-| Purple or violet-to-blue AI gradients | The category default that signals "nobody chose". Banned by the brief and by Scroll Craft's taste floor. |
-| Apple-style product flythrough | There is no object to fly around. A camera move would be a film, and a film cannot be operated. |
+| Gaming PC, RGB, neon, chromatic glow | Colour here means a state, and a glow means nothing. |
+| Purple or violet-to-blue AI gradients | The category default that signals "nobody chose". |
+| Apple-style product flythrough | There is no object to fly around. |
 | A SaaS template: hero claim, three feature cards, logo wall, pricing | The exact verdict the redesign exists to answer. |
 | Cream-and-brass premium-artisan palette | Wrong category and a known default. |
-| Glass and blur as decoration | Blur here is a depth cue on one layer only (§2, ATMOSPHERE). Anywhere else it is noise. |
+| Glass and blur as decoration | The design does not use `backdrop-filter` anywhere (§7.1). |
 | Platform brand colours or platform logos | Platform identity is carried by the platform's **name, set as text**. See §4.4. |
-| Emoji as icons | The app's closed 24-glyph set is the icon system (§5). |
+| Emoji as icons | The app's closed glyph set is the icon system (§5). |
 
-### 1.3 Atmosphere: how the signal field is drawn
+### 1.3 Atmosphere: one static gradient, not a canvas
 
-One `<canvas>`, one layer, restrained to the point of near-invisibility. Its job is to stop a flat
-dark ground from banding on real displays and to make the room feel lit by something.
+**This section replaces v1.0's `<canvas>` specification in full.** v1.0 called for a scan-drift and
+carrier-trail canvas, capped at 30 fps and clamped by device-pixel-ratio. It was never built that way,
+and the rebuild's own performance findings (`LIVETAP_MOTION_SYSTEM.md` §2.2, §6.4) are a good reason it
+should not be: any per-frame canvas work is exactly the kind of continuous cost the audit's root-cause
+finding named.
+
+What ships instead is one CSS rule, `.ltp-surface::before`: a single `radial-gradient()`, centred above
+the stage, fading `--ltp-atmos` (a 3% `color-mix()` of the text colour) to transparent. It is present at
+every breakpoint, in every theme, under every motion setting, and it costs nothing, no JavaScript, no
+canvas context, no per-frame paint. It is not created "below a breakpoint" or "under reduced motion,"
+the way v1.0's canvas was meant to fall back; it is simply always this.
 
 | Property | Value |
 |---|---|
-| Element | A single `<canvas>` at layer ATMOSPHERE, `aria-hidden="true"` |
-| Content | Two things only: (a) a slow horizontal **scan drift** — 9 bands of `--lt-text-primary` at 2.5% opacity, 1px tall, drifting upward at 4px/s with per-band phase; (b) a **carrier trail** — 24 points of `--lt-accent-focus` at 3% opacity travelling along the stage-to-destination axes at 12px/s, sparse enough that no two are ever within 80px |
-| Colour budget | Nothing above 5% opacity. No hue that is not already a token. |
-| Frame rate | Capped at 30 fps, and paused entirely when the stage is off-screen or the document is hidden |
-| Mobile | The canvas is **not created** below 640px. A static CSS radial falloff replaces it. |
-| Reduced motion | The canvas is not created. The same static falloff replaces it. |
-| Fallback | If `canvas` context creation fails, the static falloff is used. The page never shows an empty box. |
+| Element | `.ltp-surface::before`, `aria-hidden` by construction (a pseudo-element, not focusable or announced) |
+| Content | One `radial-gradient(120% 80% at 50% 38%, var(--ltp-atmos) 0%, transparent 62%)` |
+| Colour budget | Under 5% opacity, `--ltp-atmos` itself |
+| Cost | Zero JavaScript, one compositor layer that never repaints on its own |
+| Removing it | Costs the page texture only, the same test v1.0 set for the canvas it replaced |
 
-The canvas never carries information. Removing it entirely must cost the page nothing but texture,
-and that is the test of whether it has been kept restrained.
+### 1.4 Grain: present in the markup, not on screen
 
-### 1.4 Grain
-
-`.sc-grain` at 4% (Scroll Craft's engine ships it) over the whole page, above BACKGROUND and below
-ATMOSPHERE. It is the difference between a dark page and a lit room, and it costs one fixed element.
+`.sc-grain`, the Scroll Craft engine's own film-grain layer, is still in `index.html`, the engine
+ships it as part of its template, but `acts.css` sets `.sc-grain { display: none; }`. It paints
+nothing. This page does not use the engine's grain treatment; the room's texture comes entirely from
+§1.3's gradient and from the real footage on the stage.
 
 ---
 
 ## 2. The layered composition
 
-Eight layers. Each one has a fixed z-band, a fixed scale rule, and a fixed motion rule, and the rules
-are what stop the page becoming eight stacks of cards.
+Seven z-bands, not eight. v1.0's eight-layer table included a full ATMOSPHERE layer with its own scale
+and motion rules; that layer is now a zero-cost static gradient (§1.3) with nothing left to schedule, so
+it is folded into the table below rather than kept as a peer of layers that actually hold interactive
+content.
 
-The page-local z scale sits inside Scroll Craft's (`--sc-z-stage: 1`, `--sc-z-copy: 20`,
-`--sc-z-chrome: 60`) and is declared once, in the public page's own scope, as `--ltp-z-*`.
-
-| # | Layer | z | Scale rule | Motion rule | Blur / contrast |
-|---|---|---|---|---|---|
-| 0 | **BACKGROUND** | 0 | Fixed 1.0, always | None, ever. `--lt-bg-0`, and the page's only drift target (§4.6, two stops) | No blur. Reference black point. |
-| 1 | **ATMOSPHERE** | 1 | Fixed 1.0 | Its own internal drift only (§1.3). May be translated by scroll at most 40px total, via `data-sc-parallax="-0.4"` | 0 blur, ≤5% opacity |
-| 2 | **SIGNAL** | 2 | Fixed 1.0 | `stroke-dashoffset`, `stroke-width`, `opacity` and path geometry only. **Never translated, never scaled.** | No blur. Stroke at 60–100% of its state colour. |
-| 3 | **PRODUCT STAGE** | 10 | The only layer allowed a scale change: 0.96 → 1.00 during the chaos collapse, and 1.00 held during a format re-flow (the re-flow changes the stage's *shape*, not its scale) | Never parallaxed. Its contents re-compose; the frame itself holds. | No blur. 100% contrast. This is the reference plane: everything else is graded relative to it. |
-| 4 | **DESTINATIONS** | 20 | 0.98 when `DISCONNECTED`, 1.00 when `READY` / `LIVE`. Scale is a real state cue, not decoration. | `data-sc-parallax="0.35"` on the **wrapper** (they sit slightly in front of the stage). Anime.js writes transforms on the **inner tile**. Two nodes, never one. | No blur. 100% contrast. |
-| 5 | **DATA / STATUS** | 30 | Fixed 1.0 | **No positional animation at all.** Text the reader is reading must not move relative to what it is read against. Values change; boxes do not. | No blur. 100% contrast. |
-| 6 | **INTERACTION** | 40 | 1.00, except the drag proxy which may reach 1.04 while held | Exists only during an interaction, and is removed from the DOM when idle. The only layer with pointer-driven transforms. | No blur. |
-| 7 | **FOREGROUND** | 60 | Fixed 1.0 | Fixed position, never parallaxed, never scaled. CSS transitions only, at `--lt-dur-1` / `--lt-dur-2`. | No blur. `--lt-bg-1` with a 1px `--lt-border` edge. **No backdrop-filter.** |
+| # | Layer | `--ltp-z-*` | What it is | Motion rule |
+|---|---|---|---|---|
+| 0 | Static falloff | `atmos: 1` | `.ltp-surface::before`, §1.3 | None, ever. |
+| 1 | SIGNAL | `signal: 2` | The connection paths | `stroke-dashoffset`, `stroke-width`, `opacity` and path geometry only. Never translated, never scaled. |
+| 2 | PRODUCT STAGE | `stage: 10` | The stage frame and its picture | The only layer with a scale change: during a shape re-flow. The frame itself holds; its contents re-compose. |
+| 3 | DATA / STATUS | `data: 30` | The toolbar, the desk, the readouts | No positional animation at all. Values change; boxes do not. |
+| 4 | DESTINATIONS | `dests: 35` | The six destination tiles | Scale is a real state cue: smaller when `DISCONNECTED`, full size when `READY` / `LIVE`. |
+| 5 | INTERACTION | `interaction: 40` | The peak's drag apparatus, the tour panel | Exists only while something is happening; removed from the DOM when idle. The only layer with pointer-driven transforms. |
+| 6 | BANDS / ACTS | `acts: 50` | The fixed band layer (`LIVETAP_SCROLL_STORY.md` §6) and the transparent act markers | `opacity` plus `visibility` cross-fade, driven by a `classList` toggle, never a transform. |
+| 7 | CHROME | `chrome: 60` | The rail (or top row) and the status bar | Fixed, never parallaxed, never scaled. CSS transitions only. |
 
 ### 2.1 How depth is actually carried
 
-Five tools, used together, none of them a shadow on a card:
+Four tools now, not five, **parallax is gone from this list entirely.** v1.0's second tool was "scale
+as state" plus a `data-sc-parallax` wrapper on the destination row and the atmosphere layer. No
+`data-sc-parallax` attribute exists anywhere on this build (`LIVETAP_SCROLL_STORY.md` §5.1); depth is
+carried by:
 
-1. **Contrast falloff with distance.** ATMOSPHERE at 5% of ink, SIGNAL strokes at 60–100% of their
-   state colour, STAGE at 100%. Nothing behind the stage is ever as contrasty as the stage.
-2. **Scale as state.** A `DISCONNECTED` destination is 2% smaller than a `READY` one. The visitor
-   reads "further away" and "not yet mine" as the same thing, which is true.
-3. **Overlap.** The destination tiles cross the stage's boundary by 12px on desktop and 12px on
-   mobile. One element crossing another's edge establishes more depth than any shadow, and it is free.
-4. **Edge light.** A 1px top highlight on the stage, on each destination tile and on the Pro panel:
-   `--ltp-edge: inset 0 1px 0 color-mix(in oklab, var(--lt-text-primary) 9%, transparent)`. Real
-   raised things catch light on their lip.
-5. **Elevation, three steps only**, taken from the app: `--lt-shadow-1` (tiles), `--lt-shadow-2` (the
-   Pro panel, the format popover), `--lt-shadow-3` (the stage). `--lt-shadow-live` is reserved for the
-   armed GO LIVE button and nothing else, exactly as in the app.
+1. **Contrast falloff with distance.** The static gradient is under 5% of ink; SIGNAL strokes sit at
+   60–100% of their state colour; STAGE is 100% contrast, and it is now also the one place with real
+   photographic-grade detail, which does more for the falloff than the gradient alone ever could.
+2. **Scale as state.** A `DISCONNECTED` destination is smaller than a `READY` one.
+3. **Overlap.** The destination tiles cross the stage's boundary; the band sits above the surface on
+   desktop as a reserved region and as a plate over the desk on phones (`LIVETAP_SCROLL_STORY.md` §6).
+4. **Elevation, three steps**, taken from the app: `--lt-shadow-1` (tiles), `--lt-shadow-2` (the Pro
+   panels), `--lt-shadow-3` (the stage). `--lt-shadow-live` is reserved for the armed GO LIVE button.
 
 No zero-offset coloured halo anywhere. No fourth elevation step. No blur-as-glass.
 
-### 2.2 The one rule that keeps it from being eight card stacks
+### 2.2 The one rule that keeps it from being seven card stacks
 
-**A layer may not contain a rectangle whose only job is to hold content.** Every box on the page is
-either the stage, a destination tile, a real control, a real status readout, or the Pro panel. There
-is no "section card", no "feature card", and no container introduced to group things that spacing
-could have grouped.
+Unchanged from v1.0: **a layer may not contain a rectangle whose only job is to hold content.** Every
+box on the page is either the stage, a destination tile, a real control, a real status readout, or a
+Pro panel. There is no "section card," no "feature card," and, new and explicit for this version, the
+band is not a card either: it is a reserved region of the layout, not a floating panel over the surface.
 
 ---
 
 ## 3. Type
+
+Unchanged from v1.0. Archivo carries the display slot only; the app's Inter stack carries everything
+else.
 
 ### 3.1 Two faces, one file
 
 | Slot | Face | Files loaded |
 |---|---|---|
 | **Display** | **Archivo** (variable, wght 400–800) | 1 · self-hosted woff2, subset, `font-display: swap` |
-| **Text** | The app's existing `--lt-font-sans` stack (Inter preferred, system fallback) | 0 · no download |
+| **Text** | The app's existing `--lt-font-sans` stack | 0 · no download |
 | **Mono** | The app's existing `--lt-font-mono` stack | 0 · no download |
 
-**One file total, and the budget allows two.** The second slot stays unspent: the app deliberately
-ships no webfont, and adding Inter as a download to the public page would make the site's text render
-differently from the app's on the same machine, which breaks the one-product rule for no gain.
-
-Archivo is chosen because it is a technical grotesque with a wide weight range and true caps
-presence, it is not Inter, it is not one of the AI-page defaults, and it holds up at a console's
-scale without becoming a poster face. It is **not** a serif, because "editorial" is not what a control
-room is.
-
-**Hard constraints on the font, all of them enforceable:**
-
-- **Self-hosted, mandatory.** `apps/web/vercel.json` sets
-  `Content-Security-Policy: ... style-src 'self' 'unsafe-inline'; font-src 'self' data:`. Google Fonts
-  would be blocked by that policy with no visible error. The file lives under
-  `apps/web/public/fonts/` and is served from the same origin.
-- **Subset**, to Latin basic plus the digits, the colon, the middle dot and the arrow used in labels.
-  `unicode-range` declared. Target ≤ 28 KB for the variable woff2; if the subset exceeds 34 KB, ship
-  two static weights (600 and 800) instead of the variable file and keep the count at one request per
-  weight, two files maximum.
-- **`font-display: swap`**, with `<link rel="preload" as="font" crossorigin>`. First paint never waits
-  on it; the system stack renders the same text one frame earlier and the swap is a weight change on
-  at most four elements.
-- **Fallback stack declared explicitly**, so the swap does not reflow:
-  `--ltp-font-display: Archivo, "Segoe UI Variable Display", "Helvetica Neue", Arial, sans-serif`.
-- **The wordmark never uses it.** DESIGN_SYSTEM §1.1 fixes the wordmark as the `--lt-font-sans` stack
-  at weight 800, ALL CAPS. That rule is normative and this page obeys it.
-- **Numerals gate.** If the Archivo subset does not carry `tnum`, every numeral on the page stays in
-  `--lt-font-sans` with `font-variant-numeric: tabular-nums`, as the app already does (DESIGN_SYSTEM
-  §3.3). Verify before shipping; do not assume. A countdown whose digits change width is a defect.
+One file total, self-hosted under `apps/web/public/fonts/`, preloaded with `crossorigin` because the
+CSP is `font-src 'self' data:`. `--ltp-font-display: Archivo, "Segoe UI Variable Display", "Helvetica
+Neue", Arial, sans-serif` is the declared fallback stack so the swap does not reflow. The wordmark never
+uses Archivo (DESIGN_SYSTEM §1.1 fixes it to `--lt-font-sans`, weight 800, ALL CAPS).
 
 ### 3.2 The eight roles
 
-Sizes are the app's nine-step scale, unchanged. No tenth size is introduced.
+Unchanged from v1.0, sizes are the app's nine-step scale.
 
-| Role | Face | Size | Line height | Weight | Tracking | Where it appears |
-|---|---|---|---|---|---|---|
-| **display** | Archivo | `--lt-text-48` (mobile `--lt-text-36`) | `--lt-leading-48` | 800 | `--lt-tracking-48` | The 3-2-1 countdown numeral. The elapsed timer at stage scale. Nothing else. |
-| **hero** | Archivo | `--lt-text-36` (mobile `--lt-text-28`) | `--lt-leading-36` | 700 | `--lt-tracking-36` | The stage's own state line, one line, at most nine words, and it is a **status**, not a claim: "Live on YouTube, Twitch and TikTok". |
-| **headline** | Inter stack | `--lt-text-22` | `--lt-leading-22` | 600 | `--lt-tracking-22` | Panel titles. The rail's act labels. The close's question. |
-| **body** | Inter stack | `--lt-text-16` | `--lt-leading-16` | 400 | 0 | The few sentences that exist. Max 68 characters per line (`max-width: 34rem`). |
-| **metadata** | Inter stack | `--lt-text-13` | `--lt-leading-13` | 500 | `--lt-tracking-13` | Bitrate, fps, attempt counts, per-destination format labels, field hints. |
-| **status** | Inter stack | `--lt-text-12` | `--lt-leading-12` | 600 | `--lt-tracking-12` | Chip labels, the health word, "LIVE", "READY", "Demo". |
-| **navigation** | Inter stack | `--lt-text-12` | `--lt-leading-12` | 500 | `--lt-tracking-12` | Rail item labels, 12px under a 24px icon. Never icon-only (DESIGN_SYSTEM §9.1). |
-| **CTA** | Inter stack | `--lt-text-18` | `--lt-leading-18` | 700 | `--lt-tracking-18` | GO LIVE, Open LIVETAP, Download, GitHub. |
+| Role | Face | Where it appears |
+|---|---|---|
+| **display** | Archivo | The 3-2-1 countdown numeral. The elapsed timer at stage scale. Nothing else. |
+| **hero** | Archivo | The hero band's product statement, and the stage's own state line, one line, a status or a real claim in the hero's case, never elsewhere. |
+| **headline** | Inter stack | Band titles, panel titles, the close's question. |
+| **body** | Inter stack | The hero's lede and every band's one sentence. Max 68 characters per line. |
+| **metadata** | Inter stack | Bitrate ceilings, attempt counts, per-destination format labels, field hints. |
+| **status** | Inter stack | Chip labels, the health word, "LIVE," "READY," "Demo." |
+| **navigation** | Inter stack | Rail item labels, 12px under a 24px icon. Never icon-only. |
+| **CTA** | Inter stack | GO LIVE, Open LIVETAP, GitHub links. |
 
-Rules carried over from the app and not relaxed here: sentence case everywhere except the wordmark and
-`GO LIVE` / `END`; upper case is part of the string, never a `text-transform`; text never justified;
-never more than two consecutive centred lines; `font-synthesis: none`.
-
-One rule added by the grammar: **display and hero never carry an argument.** They carry state. The
-largest type on the page at any moment is either a number the surface is counting or a sentence the
-surface is reporting about itself.
-
-### 3.3 Tracking and the display face at scale
-
-At `--lt-text-48` with weight 800, Archivo needs `--lt-tracking-48` (`-0.022em`) and it is already in
-the token set. Do not add optical tracking beyond the scale's own value; the scale was built with the
-ramp in it. Light-on-dark compensation from the taste floor applies: the countdown numeral takes one
-step more weight than its light-mode equivalent would, which is why it is 800 and not 700.
+One rule added in v1.0 and still true, with one named exception: **display and hero elsewhere on the
+page never carry an argument. They carry state.** The hero band's product statement, in `hero` type, is
+the one deliberate exception, the audit's finding that the page had no statement at all outweighs the
+grammar's general preference here, and it is a single line, never repeated in that register anywhere
+else on the page.
 
 ---
 
@@ -211,12 +201,11 @@ step more weight than its light-mode equivalent would, which is why it is 800 an
 
 ### 4.1 No new colour
 
-Every colour on this page is a token from `packages/ui/src/tokens.css`. Page-local values exist only
-as `color-mix()` derivations of those tokens, under the `--ltp-` prefix, and there is **no raw hex
-anywhere in the public page's CSS**.
+Unchanged from v1.0. Every colour on this page is a token from `packages/ui/src/tokens.css`. Page-local
+values exist only as `color-mix()` derivations under the `--ltp-` prefix, and there is no raw hex
+anywhere in the public page's CSS.
 
 ```css
-/* the complete page-local colour surface. Nothing else is added. */
 --ltp-edge:      inset 0 1px 0 color-mix(in oklab, var(--lt-text-primary)  9%, transparent);
 --ltp-hair:                     color-mix(in oklab, var(--lt-text-primary) 12%, transparent);
 --ltp-field:                    color-mix(in oklab, var(--lt-text-primary)  4%, transparent);
@@ -230,185 +219,143 @@ anywhere in the public page's CSS**.
 
 ### 4.2 What each colour means, and nothing else
 
+Unchanged from v1.0.
+
 | Meaning | Token | Never used for |
 |---|---|---|
 | **LIVE** | `--lt-accent-live`, `--lt-accent-live-solid`, `--lt-on-live` | Errors. Destructive actions. Links. Decoration. |
 | **ACTION** | `--lt-accent-focus`, `--lt-accent-focus-solid`, `--lt-on-focus` | Anything to do with being on air. |
-| **PLATFORM** | **No colour.** A platform is named in text. | Brand hues, tinted tiles, logo colours. See §4.4. |
-| **WARNING** | `--lt-warning` | Failure. Warning means "live, and rough", and you can still be live. |
-| **SUCCESS** | `--lt-success` | "Live". Success means ready, connected, completed. |
-| **STATE** | The ten `--lt-state-*` foreground/tint pairs, verbatim from DESIGN_SYSTEM §2.4 | Any state not in that list. There are exactly ten. |
+| **PLATFORM** | **No colour.** A platform is named in text. | Brand hues, tinted tiles, logo colours. |
+| **WARNING** | `--lt-warning` | Failure. Warning means "live, and rough." |
+| **SUCCESS** | `--lt-success` | "Live." |
+| **STATE** | The ten `--lt-state-*` pairs, verbatim from DESIGN_SYSTEM §2.4 | Any state not in that list. |
 | **FAILURE** | `--lt-danger`, `--lt-danger-solid`, `--lt-on-danger` | Live. |
 
-`LIVE` is the only solid fill in the system, and on this page there is exactly one solid-filled
-element on screen at a time: the GO LIVE button before the countdown, then the LIVE chips. A visitor
-glancing at any frame can answer "is this thing live?" without reading.
+`LIVE` is the only solid fill in the system, and there is exactly one solid-filled element on screen at
+a time: the GO LIVE button before the countdown, then the LIVE chips.
 
 ### 4.3 The remove-most-colour test
 
-Set every state colour to `--lt-text-secondary` and every accent to `--lt-text-primary`, leaving only
-the four background layers and the three text levels. The page must still be:
-
-- **readable** — every state still names itself in words (`Ready`, `Live`, `Live, rough`,
-  `Reconnecting`, `Failed`, `Not connected`);
-- **hierarchical** — the stage is still the brightest and largest thing, the chrome is still the
-  quietest, and the squint test still resolves stage → destinations → chrome;
-- **operable** — every control still has a 1px `--lt-border-control` boundary, because the border, not
-  the fill, is what identifies a control.
-
-If any of those three fails, the page was leaning on colour. This test is a line item on the
-acceptance checklist in `PLAN.md`, run as a screenshot with a one-line CSS override.
+Unchanged from v1.0. Set every state colour to `--lt-text-secondary` and every accent to
+`--lt-text-primary`. The page must still be readable, hierarchical and operable, and now, additionally,
+the stage's own footage must still read as a picture with the state colours gone, which was not a
+question v1.0 had to answer because there was no footage.
 
 ### 4.4 Platform identity without platform colour
 
-Six destinations appear on the page: YouTube, Twitch, TikTok, Instagram, X, Facebook. Each is
-identified by:
-
-- its **name**, set in the text stack at `status` weight;
-- its **connection method**, stated honestly in `metadata` under the name, derived from
-  `packages/adapters` capability data (§5 of the Interaction System);
-- its **state**, via the app's `StatusChip` vocabulary.
-
-No platform logo, no platform brand colour, no tinted tile. Three reasons, all of them already
-settled in this repo: DESIGN_SYSTEM §7 says platform logos are third-party trademarks that live
-outside the icon system and are never restyled; DESIGN_SYSTEM §12.5 has already excluded
-per-platform accent tinting for trademark risk and visual noise; and the asset list for this build is
-the mark and the hero plate, nothing more.
+Unchanged from v1.0. Six destinations, each identified by name, connection method and `StatusChip`
+state. No platform logo, no platform brand colour, no tinted tile.
 
 ### 4.5 Both themes
 
-Dark is the default and the one the direction is composed for. Light is not an afterthought: it is a
-first-class theme in the app and the page inherits it through the same tokens, with two page-specific
-adjustments.
+Unchanged from v1.0. Dark is the default; light is first-class. `--ltp-atmos` and `--ltp-carrier`
+invert with the theme automatically because they are derived from theme tokens.
 
-- `--ltp-atmos` and `--ltp-carrier` are derived from `--lt-text-primary` and `--lt-accent-focus`, so
-  they invert with the theme automatically and stay under 5%.
-- On a light ground the stage's own elevation does the work the dark theme's background layering does:
-  the stage takes `--lt-shadow-3` and the tiles take `--lt-shadow-1`, per DESIGN_SYSTEM §4.3.
+### 4.6 No drift at all
 
-When a subtree redefines `--lt-text-primary`, it must restate `color` on the same subtree, or the text
-under it keeps the body's ink. This has bitten before; it is written down in Scroll Craft's taste
-floor and it is repeated here because the public page has two grounds.
-
-### 4.6 Drift, and why there are only two stops
-
-The Live surface grammar bans `drift` past two stops. The page therefore carries exactly two
-`data-sc-drift` attributes:
-
-| Act | Value | Reason |
-|---|---|---|
-| ACT 1 CHAOS | `var(--lt-bg-0)` resolved at build time | The page's reference ground. |
-| ACT 6 RESILIENCE | One step deeper than `bg-0`, inside the same hue family | The room dims very slightly for the peak. Invisible frame to frame, obvious top to bottom. |
-
-No other act sets a drift. The ground is otherwise constant, because a page that is one surface
-should not keep changing the colour of the room it is in.
+**This section replaces v1.0's "why there are only two stops" in full.** The Live surface grammar bans
+`drift` past two stops; this build carries **zero**. There is no `data-sc-drift` attribute anywhere on
+the page. v1.0's two stops decorated the chaos prologue's open and the peak's arrival; the prologue is
+gone (§1.3, `LIVETAP_SCROLL_STORY.md` §6) and the peak no longer dims the room around it, its own
+content (the snapping path, the reconnect ring) carries the dread-then-trust turn without a ground-colour
+change. The ground is one colour for the whole page, which is a stricter reading of the grammar's rule
+than v1.0's two stops were, not a looser one.
 
 ---
 
 ## 5. Iconography
 
-The public page uses **the app's icon set, unchanged**: the closed 24-glyph set exported from
-`packages/ui/src/components/Icons.tsx`, inline SVG, `viewBox="0 0 24 24"`, 1.75px stroke,
-`currentColor`, round caps and joins, at 20px or 24px.
+Unchanged from v1.0 in mechanism, updated in the glyph list to match the current rail and the current
+chapters. The public page uses the app's closed glyph set, unchanged: inline SVG `<symbol>`s,
+`viewBox="0 0 24 24"`, 1.75px stroke, `currentColor`, round caps and joins, at 20px or 24px, extracted
+from `packages/ui/src/components/Icons.tsx` so a glyph change changes both surfaces.
 
 | Rule | Value |
 |---|---|
-| Source | The same path data as the app. The public page's build imports the SVG bodies, so a change to a glyph changes both surfaces. |
-| Glyphs used | `camera`, `mic`, `mic-off`, `screen`, `chat`, `chart`, `alert`, `check`, `x`, `refresh`, `play`, `stop`, `record`, `users`, `tv`, `globe`, `sliders`, `chevron`, `external-link`, `spinner` |
-| New glyphs | None. If the page needs a 25th, it names the one it replaces, and that is a change to `packages/ui`, not a page-local addition. |
-| **Emoji** | **Forbidden as an icon, anywhere on the page.** `MomentCard` accepts an emoji fallback and `INTENT_PROFILES` carries emoji keys; the public page passes `<MomentIcon>` / `<IntentIcon>` instead, which is the path PRODUCT_REVIEW P2-5 already established. |
-| Colour | Always `currentColor`. The single exception in the whole system is the live dot inside the mark. |
+| Source | The same path data as the app, inlined once as a sprite in `index.html`. |
+| System glyphs used | `camera`, `mic`, `mic-off`, `screen`, `chat`, `chart`, `alert`, `check`, `x`, `refresh`, `play`, `stop`, `record`, `users`, `tv`, `globe`, `sliders`, `chevron`, `external-link`, `spinner`, `sun`, `moon` |
+| Moment glyphs | One per Moment, drawn to match the system set's stroke and grid |
+| Intent glyphs | One per intent chip, same rules |
+| New glyphs | None beyond the Moment and intent sets, which existed in v1.0's plan too. If the page ever needs a system glyph beyond the list above, it names the one it replaces. |
+| **Emoji** | Forbidden as an icon, anywhere on the page. |
+| Colour | Always `currentColor`, except the live dot inside the mark. |
 | Accessibility | `aria-hidden="true"` beside a text label; an icon-only control carries `aria-label`. |
 
-The mark itself is the SVG in DESIGN_SYSTEM §1.2, verbatim, with its stroke weight scaled linearly
-(2 at 32px, 1.5 at 24px, 1.25 at 20px). Its ripples **do not animate** on this page: the ripple
-animates exactly once in the product, on the onboarding "You're ready" step, and borrowing it here
-would spend a moment that belongs to the app.
+The rail now carries five sections, not four (§2.1 of `LIVETAP_SCROLL_STORY.md`): Stage (`tv`), Break it
+(`alert`), Shapes (`chart`), Outputs (`globe`), Versus (`sliders`).
 
 ---
 
 ## 6. Mobile: a different composition
 
-Mobile is not the desktop composition with smaller type. It is a second composition of the same eight
-layers, and the differences are decided here rather than left to `flex-wrap`.
+Mobile is not the desktop composition with smaller type. It is a second composition of the same layers,
+updated below for the current chapter set.
 
 ### 6.1 What changes
 
-| Aspect | Desktop (> 1024) | Mobile (< 640) |
+| Aspect | Desktop (> 1024px) | Mobile (< 640px) |
 |---|---|---|
-| **Chrome** | Left rail, 88px, `--lt-bg-1`, mark at top, four labelled items, mirroring the app's rail | Bottom status bar, 64px + `env(safe-area-inset-bottom)`, carrying the session state and one action. A 44px top row holds the mark alone. No rail. |
-| **Stage** | Centre column, flexible, `min-width: 640px`, 16:9 at rest | Full-width, top of the viewport, 16:9 at rest, shape changing in place during ADAPT |
-| **Destinations** | Six tiles arranged around the stage, overlapping its edge by 12px | Below the stage: a horizontal scroll-snap row, 2.2 tiles visible, each ≥ 168px wide and ≥ 44px tall, overlapping the stage's lower edge by 12px |
-| **ATMOSPHERE canvas** | Present, 30 fps cap, paused off-screen | **Not created.** A static CSS radial falloff replaces it. |
-| **SIGNAL paths** | Curved beziers from stage ports to tiles around the frame | Kept, and they matter more: short vertical stubs from the stage's lower edge down into the tile row. Depth without paths would be decoration; paths are the meaning. |
-| **Parallax** | ATMOSPHERE −0.4, DESTINATIONS +0.35 | **Off.** Depth is carried by overlap, scale-as-state and edge light only. |
-| **Pointer devices** | `data-sc-tilt="5"` on the close's intent cards | None. `(hover: hover) and (pointer: fine)` gates them out, and the engine already does this. |
-| **Moment strip** | 6-up, 168×104, no scroll | Horizontal scroll-snap, 2.2 cards visible, 140×104, exactly as the app does at this width |
-| **Type** | `display` 48, `hero` 36 | `display` 36, `hero` 28. One rung down, per the taste floor's portrait-crop-of-the-type rule. |
-| **Act spans** | As scored | Every span multiplied by 0.85 by a page-local function that rewrites `data-sc-span` **before** `ScrollCraft.mount()`. The peak stays the largest span by the same margin. |
-| **Hero auto-story** | 17 steps, ~24 s | 9 steps, ~11.5 s (§7 of the Interaction System) |
-| **ADAPT formats** | 16:9, 9:16, 1:1 all three presented | 16:9 and 9:16 presented; 1:1 reachable by tap and labelled, not skipped |
-| **POWER (Pro)** | Four Pro panels slide in behind | One Pro panel, the diagnostics row, with the other three named in a list |
+| **Chrome** | Left rail, 88px, `--lt-bg-1`, mark at top, five labelled items, theme toggle, Tour, GitHub | Bottom status bar, `56px + env(safe-area-inset-bottom)`. A 44px top row holds the mark alone. No rail. |
+| **Band** | A reserved region above the surface, `clamp(224px, 27svh, 252px)` | A plate over the desk's lower edge, `clamp(196px, 26svh, 228px)` |
+| **Stage** | Centre column, 16:9 at rest | Full-width, top of the viewport, 9:16 by default (the Vertical Live intent's own shape) |
+| **Destinations** | Six tiles arranged around the stage, overlapping its edge | Below the stage, a horizontal scroll-snap row |
+| **Static falloff** | Present | Present, identical. It is CSS; there is no breakpoint gate left to write (§1.3). |
+| **SIGNAL paths** | Curved beziers from stage ports to tiles around the frame | Short vertical stubs from the stage's lower edge into the tile row |
+| **Parallax** | None anywhere on the page (§2.1) | None anywhere on the page |
+| **Act spans** | As scored (`LIVETAP_SCROLL_STORY.md` §5) | Every span multiplied by 0.85, rewritten before `ScrollCraft.mount()` |
+| **The guided demo** | 4.2s, up to three destinations | 4.2s, two destinations (one fewer connect step) |
+| **SHAPES** | 16:9, 9:16, 1:1 all three presented | All three still reachable; 9:16 is the default a phone visitor already sees |
+| **PRO** | Four panels | Same four panels; no layout reduction beyond the desk's own responsive stacking |
 
 ### 6.2 What does not change
 
-Depth is preserved, not flattened: the stage is still the brightest and sharpest plane, the tiles
-still sit in front of it and overlap it, ATMOSPHERE is still behind everything, and the chrome is
-still above everything. The eight layers all still exist and keep their z-bands. What is removed is
-motion that costs a phone more than it gives it, not structure.
+Depth is preserved, not flattened: the stage is still the brightest and sharpest plane, the tiles still
+sit in front of it and overlap it, the band still reserves its own space rather than floating over the
+surface, and the chrome is still above everything. What is different from v1.0 is not a further
+reduction for mobile, it is that **there is nothing left to reduce**, because parallax, the chaos
+lattice and the canvas were removed for every breakpoint, not just for phones.
 
 ### 6.3 Touch-first
 
-- **44 × 44px minimum** on every interactive element, per DESIGN_SYSTEM §6.2, including the drag grip
-  on a LIVE tile and the format segments (which currently fail this in the app at 46×32 and are fixed
-  here rather than reproduced).
+Unchanged from v1.0.
+
+- **44 × 44px minimum** on every interactive element, including the drag grip and the format segments.
 - ≥ 8px of clear space between adjacent targets.
-- `touch-action: none` is scoped to the **drag grip only**, never to a tile, never to a section, never
-  to the page. Everything else scrolls.
-- A drag needs 6px of slop before it captures, and if no drag has started within 400ms of
-  `touchstart` the gesture is released back to the page scroller.
-- Nothing depends on hover. Every tooltip's content is also a `metadata` line or an `aria-label`.
-- Safe-area insets honoured on the status bar and on any pinned action.
+- `touch-action: none` scoped to the drag grip only.
+- Nothing depends on hover.
+- Safe-area insets honoured on the status bar.
 
 ---
 
 ## 7. The anti-patterns, as a checklist
 
-These are the cheap-website tests referenced by the owner's directive. The directive names them
-without enumerating them, so they are derived here **directly from the directive's own verdict on the
-current site**, one test per symptom it lists. They are pass/fail, and they are repeated as line items
-in `PLAN.md`.
+Unchanged in method from v1.0: pass/fail, derived from the owner's directive's own verdict, now also
+cross-checked against the first-time-creator audit's own findings, which named several of these tests
+by the symptom they describe.
 
 | # | Test | Passes when | Fails when |
 |---|---|---|---|
-| **1** | **The text test** — "too much text" | No run of prose longer than two lines anywhere on the page. Every string is a label, a status, a value, a control, a hint or an empty state. | Any section reads as a paragraph of marketing prose. Any sentence would be equally at home on a competitor's page. |
-| **2** | **The static test** — "static sections" | At every scroll position, something on screen is in a state that changed because of scroll or because of a tap. | Any full screen would survive unchanged as a JPEG. |
-| **3** | **The feature-list test** — "feature lists, cards on backgrounds" | Zero bulleted feature lists. Zero three-up feature-card grids. Zero icon-plus-heading-plus-text cards used as page structure. Zero rectangles whose only job is to hold content. | A grid of identical cards appears anywhere, at any breakpoint. |
-| **4** | **The depth test** — "no depth" | At least three independent planes are visible at every scroll position, with contrast and scale falling off away from the stage, and no plane that is a card floating on a background. | Depth is asserted by a shadow rather than produced by falloff, overlap and scale. |
-| **5** | **The demonstration test** — "weak product demonstration, no product-state storytelling" | Every claim the page makes is demonstrated by an operable element within one screen of the claim. | A claim is asserted in words only. |
+| **1** | **The text test** | No run of prose longer than two lines anywhere on the page. | Any section reads as a paragraph of marketing prose. |
+| **2** | **The static test** | Something on screen changes because of scroll or a tap, at every position. | Any full screen would survive unchanged as a JPEG. |
+| **3** | **The feature-list test** | Zero bulleted feature lists, zero three-up feature-card grids. The close's six intent chips are operable controls that re-compose the stage, not a bullet grid, the exact thing the audit named as the one generic screen on the old page (`AUDIT_CLOSURE.md` P1 #24). | A grid of identical cards appears anywhere. |
+| **4** | **The depth test** | At least three independent planes visible at every scroll position, falling off away from the stage. | Depth is asserted by a shadow rather than produced by falloff, overlap and scale. |
+| **5** | **The demonstration test** | Every claim is demonstrated by an operable element, or now a real picture, within one screen of the claim. | A claim is asserted in words only, the exact failure the audit found in the stage's empty rectangle. |
 | **C** | **The category-defining test** | After the visit, the visitor can name an action **they performed** that no other site let them perform. | The most memorable thing about the page is an effect they watched. |
 
 ### 7.1 The standing bans
 
-Shipping blockers, not preferences. The first group is the Scroll Craft taste floor; the second is
-specific to this page.
+Unchanged from v1.0, and still shipping blockers.
 
 - No em dash anywhere visible. Period, comma, colon or parentheses.
 - No `01 / 06` counters, no section numbers, no progress readout.
-- No scroll cue: no "scroll", no arrow, no animated mouse.
-- No eyebrow above every heading.
+- No scroll cue.
 - No gradient text, no neon, no outer glow, no zero-offset coloured halo.
-- No custom cursor.
 - No `transition: all`. No animation of `width`, `height`, `top`, `left`, `margin` or `padding`.
-- No `scale(0)` entrances. Enter from `scale(0.95)` and `opacity: 0`.
-- No full-frame dark overlay to fix contrast. Density only where the text sits, and it must be a
-  **sibling** of the copy, never a `::before` on it, or the verification pass cannot measure it.
-- No invented statistics. No counter without a real number behind it.
+- No full-frame dark overlay to fix contrast; density is a sibling of the copy, never a `::before` on it.
+- No invented statistics.
 - No autoplaying audio, and no audio at all.
 - No text baked into an image.
-- No monospace as a costume. Mono is for stream keys, error codes and log lines, which is what the
-  app already uses it for.
-- No pills or tags overlaid on media. No version stamps. No locale or weather strip.
+- No download link while no build exists, the footer says so instead (§8, `AUDIT_CLOSURE.md` P1 #19).
 - No cookie banner: the site sets no non-essential cookies, and the footer says so.
 
 ---
@@ -417,66 +364,58 @@ specific to this page.
 
 | Asset | Status | Note |
 |---|---|---|
-| The LIVETAP mark | Exists · DESIGN_SYSTEM §1.2, inline SVG | Used in the chrome and in the close. Ripples never animate here. |
-| The hero plate | Exists · `apps/web/public/brand/hero-a.webp` | Used once, as the stage's held frame before the first camera source resolves, and as the poster for the stage's picture area. Nothing else. |
-| The icon set | Exists · `packages/ui/src/components/Icons.tsx` | Shared verbatim. |
-| Archivo variable woff2, subset | **To produce** | One file, self-hosted under `apps/web/public/fonts/`. The only new asset. |
-| Photography, footage, illustration, 3D, platform logos | **None, and none needed** | The grammar forbids the first four and §4.4 forbids the fifth. |
+| The LIVETAP mark | Exists, inline SVG | Used in the chrome and in the close. Ripples never animate here. |
+| `creator.mp4` / `creator.webm` / `creator.webp` | **New in this version.** Generated sample creator footage, 960×540. Plays on the stage from first paint, standing in for the visitor's own camera. | Replaces the empty stage the audit scored worst. |
+| `guest.mp4` / `guest.webm` / `guest.webp` | **New.** A second generated clip, composited only during the Guest Moment. | |
+| `screen.svg` | **New.** A drawn screen asset, built from the same three brand colours as the composed canvas, used only during Screen Share. | |
+| `hero-a.webp` | Exists | Now used only as the `apple-touch-icon` and the Open Graph image, social preview, not the stage. |
+| `hero-b.webp` | Exists | Not used by this page. |
+| The icon set | Exists | Shared verbatim. |
+| `archivo-latin.woff2`, subset | Exists | Self-hosted, `font-display: swap`, preloaded. |
+| Photography, illustration, 3D, platform logos | None, and none needed | The grammar forbids the first three and §4.4 forbids the fourth. |
 
-Nothing on this page is generated by an image model. The product is the picture.
+Nothing on this page is generated by an image model at request time; the sample footage above is
+pre-generated content checked into the repository, not a live call. The product is the picture, and the
+picture now actually exists.
 
 ---
 
 ## 9. What this direction is accountable for
 
-Three claims, each checkable against a screenshot rather than an opinion:
+Three claims, each checkable against a screenshot rather than an opinion. Unchanged in kind from v1.0,
+with the first claim now able to withstand the audit's own sharpest question.
 
-1. **It is one product.** Every colour, size, radius, duration, easing, icon and component class on
-   the public page is the same token or the same class the app uses. A visitor who lands on `/` and
-   then opens `/app/start` should not be able to tell where the marketing stopped.
+1. **It is one product, and it now shows one.** Every colour, size, radius, duration, easing, icon and
+   component class on the public page is the same token or the same class the app uses, and the stage
+   carries a real picture, not a placeholder, the specific gap the audit's visual-quality score (4/10)
+   was built on.
 2. **It reads with most colour removed.** §4.3, as a one-line CSS override and a screenshot.
-3. **It is not a template.** §7, six pass/fail tests, and the Scroll Craft fingerprint row in
-   `LIVETAP_SCROLL_STORY.md` §8.
+3. **It is not a template.** §7, and the fingerprint row in `LIVETAP_SCROLL_STORY.md` §8, updated for
+   this rebuild rather than left describing a build that no longer ships.
 
 ---
 
 ## 10. Research basis, and what was rejected
 
-The owner's directive requires the UI/UX Pro Max skill
-(`.agents/skills/ui-ux-pro-max/scripts/search.py`). It was run. What it returned is recorded here,
-including the part that was not used, because a direction that cites a tool without saying which of its
-answers it took is not auditable.
+Unchanged from v1.0; the typography, colour and style research that grounded the original direction did
+not change in the rebuild, because the audit's findings were about the stage, the intro and the scroll
+mechanism, not about the token system or the type pairing.
 
 ### 10.1 What was used
 
 | Query | Result taken |
 |---|---|
-| `--domain typography` "display typeface paired with Inter text face technical grotesque" | **"Modern Dark Cinema (Inter System)"**: keywords `dark, cinematic, technical, precision, clean, premium`, "Best For: Developer tools, fintech, AI dashboards, **streaming platforms**". Its tracking scheme is the one this page follows: tight negative tracking on display, uppercase labels with positive tracking. Its Inter-only conclusion is **not** taken, because the directive requires a real display face; the display slot goes to Archivo (§3.1) and Inter keeps the text, metadata, status, navigation and CTA roles. |
-| `--domain style` "dark dimensional product interface depth layers" | **`dimensional-layering`**: dark mode supported, `performance: cost:low, drivers:none`, and a four-level elevation token set. This page uses the app's **three** elevation steps rather than four, because DESIGN_SYSTEM §4.3 fixes three and "if everything is elevated, nothing is". The style's accessibility note (`risk:high, requires: contrast-text-4.5, keyboard, visible-focus, reduced-motion`) is answered by §4.3, §7 and the Interaction System. |
-| `--domain ux` "reduced motion scroll performance touch target size accessibility" | All three results are adopted: platform-specific touch targets with the WCAG web rule handled separately (this page holds 44px everywhere, which is stricter than the 24 CSS px web floor); `prefers-reduced-motion` honoured; and the explicit finding that **parallax and scroll-jacking cause nausea**, answered by presenting the final readable state with no parallax under reduced motion. |
-| `--design-system` pattern block | **"Scroll-Triggered Storytelling"**'s conversion guidance is adopted almost verbatim as engineering rules: keep the narrative understandable without scroll-driven effects, keep the DOM reading order complete, disable parallax and scroll-scrub under reduced motion, pause scroll animation when off-screen or hidden, render each chapter in its final readable state under reduced motion, and simplify animation on mobile. Its **progress indicator** recommendation is **rejected**: a progress readout is banned by the owner's rules and by the taste floor. |
-| Priority table | The skill's ten-priority ordering is carried into `PLAN.md` §8.4 as an acceptance list. Note the table is **1 to 10**, not 1 to 7. |
+| `--domain typography` "display typeface paired with Inter text face technical grotesque" | **"Modern Dark Cinema (Inter System)"**: dark, cinematic, technical, "Best For: Developer tools, fintech, AI dashboards, streaming platforms." Its tracking scheme is the one this page follows. Its Inter-only conclusion is not taken; the display slot goes to Archivo. |
+| `--domain style` "dark dimensional product interface depth layers" | **`dimensional-layering`**: dark mode supported, low cost, four-level elevation. This page uses the app's three elevation steps rather than four. |
+| `--domain ux` "reduced motion scroll performance touch target size accessibility" | All three adopted: 44px targets everywhere, `prefers-reduced-motion` honoured, and the explicit finding that parallax and scroll-jacking cause nausea, answered in this rebuild by removing parallax from the page entirely (§2.1), which is a stronger answer than v1.0's "present the final state under reduced motion only." |
+| `--design-system` pattern block | "Scroll-Triggered Storytelling"'s conversion guidance, adopted as engineering rules. Its progress-indicator recommendation is rejected: banned by the owner's rules and by the taste floor. |
+| Priority table | Carried into `PLAN.md` §8.4 as an acceptance list. |
 
 ### 10.2 What was rejected, and why
 
-The `--design-system` run for `"live broadcasting creator tool premium dark interactive product demo"`
-with `--variance 6 --motion 8 --density 5` matched the product category **"Luxury/Premium Brand"** on
-the words *premium* and *dark*, and returned:
-
-- a **light** palette (`--color-background: #FAFAF9`, `--color-foreground: #0C0A09`) with a gold accent;
-- a luxury-fashion serif pairing, **Cormorant / Montserrat**, whose own "Best For" is
-  "Fashion brands, luxury e-commerce, jewelry";
-- a checklist item reading "Light mode: text contrast 4.5:1 minimum";
-- a GSAP `Flip` page-transition snippet;
-- `source_identities.style: null`, meaning the returned "Minimalism" style was a variance-dial fallback
-  rather than a database match.
-
-**None of it is used.** It is the opposite of a dark broadcasting tool, it proposes a library this
-project is not using, and the skill's own query contract says to retry once and, failing that, to label
-anything general as a fallback and not persist unverified output. Two narrower retries on
-`--domain landing` returned zero results, and `landing.csv` has no anti-pattern field at all, so there
-is **no verified database answer** for landing cliches. The anti-patterns in §7 are therefore derived
-from the owner's directive's own verdict rather than from the skill, and they say so.
-
-The colour system in §4 is the app's existing verified-contrast palette, which is stronger evidence
-than any search result: every ratio in DESIGN_SYSTEM §2.2 and §2.3 was computed rather than guessed.
+Unchanged from v1.0: a `--variance 6 --motion 8 --density 5` run matched "Luxury/Premium Brand" on the
+words *premium* and *dark* and returned a light palette, a luxury-fashion serif pairing and a GSAP
+snippet this project does not use. None of it was used, for the reasons v1.0 recorded, it is the
+opposite of a dark broadcasting tool, and its own `source_identities.style: null` marks it a
+variance-dial fallback rather than a database match. The colour system in §4 remains the app's existing
+verified-contrast palette, stronger evidence than any search result.

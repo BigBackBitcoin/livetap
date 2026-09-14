@@ -60,4 +60,11 @@ Format per entry: Category | Exact requirement | Why autonomous resolution faile
 - Exact human action: enable B-001 (CI) or run compose on any Linux box; nothing else.
 - What resumes: PASS label for container packaging.
 
+## B-009 | Growth / infrastructure | Early-access notification endpoint
+- Exact requirement: somewhere for a "get notified" signup to go. There is no database, KV, Blob or mail provider configured on this Vercel project, and none will be added silently, so `POST /api/early-access` needs an https URL the owner controls (a form backend such as Formspree/Basin, a mailing-list provider's API, or any endpoint that accepts a JSON POST) set as the `LIVETAP_EARLY_ACCESS_WEBHOOK` environment variable in Vercel.
+- Why autonomous resolution failed: choosing and paying for a third-party form/mail service, or standing up the owner's own collector, is a product and billing decision this session cannot make on its own; adding one without asking would violate the "no silent third-party services" constraint.
+- Already completed: `GET /api/early-access` (reports `{ enabled, method }`, never the URL itself), `POST /api/early-access` (validates email/consent/platform, same-origin and rate-limit checks reusing the OAuth broker's helpers, 5-second-timeout forward to the configured webhook, 202/400/403/429/502/503 responses, no logging of the email, no storage in the function), and `apps/web/src/public/capture.ts` (`mountCapture`, a dependency-free form that renders only when the endpoint is configured). Privacy policy §11 documents the data flow.
+- Exact human action: pick an https endpoint that accepts `{ email, platform, consentAt, source }` as JSON, then set `LIVETAP_EARLY_ACCESS_WEBHOOK` to it in the Vercel project's environment variables.
+- What resumes: the "Notify me" form appears on the public page in place of nothing; until then, visitors see only the existing "Download watches GitHub Releases" fallback link.
+
 (other environment-derived candidates to be finalized: Apple Developer account + macOS/Xcode host, Google Play console + Android SDK host, platform OAuth client credentials, code-signing certificates, GPU host for hardware-encoder verification, physical camera/mic for capture verification)

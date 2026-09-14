@@ -1,0 +1,1358 @@
+{
+  "base": "https://livetap.vercel.app",
+  "when": "2026-09-14T07:15:58.149Z",
+  "results": {
+    "desktop": {
+      "status": 200,
+      "loadMs": 1751,
+      "vp": {
+        "width": 1440,
+        "height": 900
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": false,
+          "t": 0.24,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "16:9|rrrxxx|main-camera|0|simple",
+        "format": "16:9",
+        "intent": "talking",
+        "overflowX": false,
+        "cls": 0.027,
+        "lcp": "1424ms video.ltp-media",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 11160
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 787,
+      "end": 10260,
+      "home": 0,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 329,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 568,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        }
+      },
+      "live": {
+        "state": "16:9|LLLxxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|cLLxxx|main-camera|5|simple",
+        "card": "YouTube stopped accepting the picture. WHY The connection to YouTube dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own"
+      },
+      "healed": "16:9|LLLxxx|main-camera|6|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          145,
+          257
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "3 destinations, 2 shapes (16:9 and 9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "camera": {
+        "source": "camera",
+        "label": "Stop my camera",
+        "stream": true,
+        "note": "Live from your camera. Local only, never uploaded."
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    },
+    "desktop-short": {
+      "status": 200,
+      "loadMs": 487,
+      "vp": {
+        "width": 1280,
+        "height": 720
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": false,
+          "t": 0.22,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "16:9|rrrxxx|main-camera|0|simple",
+        "format": "16:9",
+        "intent": "talking",
+        "overflowX": false,
+        "cls": 0.007,
+        "lcp": "404ms video.ltp-media",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 8928
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 630,
+      "end": 8208,
+      "home": 0,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 224,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 224,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 224,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 224,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 329,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 528,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 224,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        }
+      },
+      "live": {
+        "state": "16:9|LLLxxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|cLLxxx|main-camera|4|simple",
+        "card": "YouTube stopped accepting the picture. WHY The connection to YouTube dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own"
+      },
+      "healed": "16:9|LLLxxx|main-camera|4|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          133,
+          236
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "3 destinations, 2 shapes (16:9 and 9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    },
+    "phone-390": {
+      "status": 200,
+      "loadMs": 479,
+      "vp": {
+        "width": 390,
+        "height": 844
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": false,
+          "t": 0.23,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "9:16|xxrrxx|main-camera|0|simple",
+        "format": "9:16",
+        "intent": "vertical",
+        "overflowX": false,
+        "cls": 0.004,
+        "lcp": "380ms video.ltp-media",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 9284
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 738,
+      "end": 8440,
+      "home": 0,
+      "touchSwipe": 325,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 569,
+          "bandBottom": 788,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeControlVisibleHere": false
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 569,
+          "bandBottom": 788,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeControlVisibleHere": false
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 569,
+          "bandBottom": 788,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "9:16"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 569,
+          "bandBottom": 788,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeControlVisibleHere": false
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 298,
+          "bandBottom": 788,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeControlVisibleHere": false
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 298,
+          "bandBottom": 788,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeControlVisibleHere": false
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 569,
+          "bandBottom": 788,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeControlVisibleHere": false
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeControlVisibleHere": false
+        }
+      },
+      "live": {
+        "state": "16:9|xxLLxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|xxcLxx|main-camera|4|simple",
+        "card": "TikTok stopped accepting the picture. WHY The connection to TikTok dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own. "
+      },
+      "healed": "16:9|xxLLxx|main-camera|4|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          153,
+          273
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "2 destinations, 1 shape (9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    },
+    "phone-375": {
+      "status": 200,
+      "loadMs": 564,
+      "vp": {
+        "width": 375,
+        "height": 667
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": false,
+          "t": 0.23,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "9:16|xxrrxx|main-camera|0|simple",
+        "format": "9:16",
+        "intent": "vertical",
+        "overflowX": false,
+        "cls": 0.007,
+        "lcp": "616ms h2.ltp-band__title",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 7337
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 583,
+      "end": 6670,
+      "home": 0,
+      "touchSwipe": 325,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 455,
+          "bandBottom": 611,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeControlVisibleHere": false
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 455,
+          "bandBottom": 611,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeControlVisibleHere": false
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 455,
+          "bandBottom": 611,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "9:16"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 455,
+          "bandBottom": 611,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeControlVisibleHere": false
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 224,
+          "bandBottom": 611,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeControlVisibleHere": false
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 224,
+          "bandBottom": 611,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeControlVisibleHere": false
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 455,
+          "bandBottom": 611,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeControlVisibleHere": false
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeControlVisibleHere": false
+        }
+      },
+      "live": {
+        "state": "16:9|xxLLxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|xxcLxx|main-camera|4|simple",
+        "card": "TikTok stopped accepting the picture. WHY The connection to TikTok dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own. "
+      },
+      "healed": "16:9|xxLLxx|main-camera|4|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          89,
+          159
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "2 destinations, 1 shape (9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    },
+    "phone-412": {
+      "status": 200,
+      "loadMs": 612,
+      "vp": {
+        "width": 412,
+        "height": 915
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": false,
+          "t": 0.23,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "9:16|xxrrxx|main-camera|0|simple",
+        "format": "9:16",
+        "intent": "vertical",
+        "overflowX": false,
+        "cls": 0.003,
+        "lcp": "412ms video.ltp-media",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 10065
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 800,
+      "end": 9150,
+      "home": 0,
+      "touchSwipe": 324,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 631,
+          "bandBottom": 859,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeControlVisibleHere": false
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 631,
+          "bandBottom": 859,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeControlVisibleHere": false
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 631,
+          "bandBottom": 859,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "9:16"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 631,
+          "bandBottom": 859,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeControlVisibleHere": false
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 328,
+          "bandBottom": 859,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeControlVisibleHere": false
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 328,
+          "bandBottom": 859,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeControlVisibleHere": false
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 631,
+          "bandBottom": 859,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeControlVisibleHere": false
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeControlVisibleHere": false
+        }
+      },
+      "live": {
+        "state": "16:9|xxLLxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|xxcLxx|main-camera|4|simple",
+        "card": "TikTok stopped accepting the picture. WHY The connection to TikTok dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own. "
+      },
+      "healed": "16:9|xxLLxx|main-camera|4|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          188,
+          335
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "2 destinations, 1 shape (9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    },
+    "tablet-768": {
+      "status": 200,
+      "loadMs": 527,
+      "vp": {
+        "width": 768,
+        "height": 1024
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": false,
+          "t": 0.21,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "16:9|rrrxxx|main-camera|0|simple",
+        "format": "16:9",
+        "intent": "talking",
+        "overflowX": false,
+        "cls": 0.002,
+        "lcp": "448ms video.ltp-media",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 12698
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 896,
+      "end": 11674,
+      "home": 0,
+      "touchSwipe": 325,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 740,
+          "bandBottom": 968,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeControlVisibleHere": false
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 740,
+          "bandBottom": 968,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeControlVisibleHere": false
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 740,
+          "bandBottom": 968,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 740,
+          "bandBottom": 968,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeControlVisibleHere": false
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 484,
+          "bandBottom": 968,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeControlVisibleHere": false
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 374,
+          "bandBottom": 968,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeControlVisibleHere": false
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 740,
+          "bandBottom": 968,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeControlVisibleHere": false
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeControlVisibleHere": false
+        }
+      },
+      "live": {
+        "state": "16:9|LLLxxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|cLLxxx|main-camera|4|simple",
+        "card": "YouTube stopped accepting the picture. WHY The connection to YouTube dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own"
+      },
+      "healed": "16:9|LLLxxx|main-camera|4|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          254,
+          452
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "3 destinations, 2 shapes (16:9 and 9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    },
+    "reduced": {
+      "status": 200,
+      "loadMs": 391,
+      "vp": {
+        "width": 1440,
+        "height": 900
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": true,
+          "t": 0,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "16:9|rrrxxx|main-camera|0|simple",
+        "format": "16:9",
+        "intent": "talking",
+        "overflowX": false,
+        "cls": 0.026,
+        "lcp": "344ms video.ltp-media",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 11160
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 787,
+      "end": 10260,
+      "home": 0,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 329,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 568,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        }
+      },
+      "live": {
+        "state": "16:9|LLLxxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|cLLxxx|main-camera|4|simple",
+        "card": "YouTube stopped accepting the picture. WHY The connection to YouTube dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own"
+      },
+      "healed": "16:9|LLLxxx|main-camera|6|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          145,
+          257
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "3 destinations, 2 shapes (16:9 and 9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    },
+    "dark": {
+      "status": 200,
+      "loadMs": 498,
+      "vp": {
+        "width": 1440,
+        "height": 900
+      },
+      "first": {
+        "bandHere": true,
+        "title": "Go live everywhere.Without becoming a broadcast engineer.",
+        "titleCoveredBy": "band",
+        "video": {
+          "paused": false,
+          "t": 0.22,
+          "ready": 4
+        },
+        "yourTurn": "true",
+        "liveCount": 0,
+        "state": "16:9|rrrxxx|main-camera|0|simple",
+        "format": "16:9",
+        "intent": "talking",
+        "overflowX": false,
+        "cls": 0.004,
+        "lcp": "452ms video.ltp-media",
+        "listeners": [
+          "touchstart:passive:window",
+          "touchstart:BLOCKING:window"
+        ],
+        "downloadWord": false,
+        "docH": 11160
+      },
+      "wheelFromCentre": 500,
+      "wheelFromTile": 500,
+      "pageDown": 787,
+      "end": 10260,
+      "home": 0,
+      "chapters": {
+        "act-hero": {
+          "active": "act-hero",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Go live everywhere.Without becoming a broadcast engineer.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-break": {
+          "active": "act-break",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Break it yourself.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-shape": {
+          "active": "act-shape",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "One production. Every shape.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-moments": {
+          "active": "act-moments",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Tap a Moment. The picture changes.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-outputs": {
+          "active": "act-outputs",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 329,
+          "bandInside": true,
+          "title": "One production. Six correct pictures.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-versus": {
+          "active": "act-versus",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 568,
+          "bandInside": true,
+          "title": "Instead of OBS.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-pro": {
+          "active": "act-pro",
+          "bandHere": true,
+          "bandTop": 0,
+          "bandBottom": 243,
+          "bandInside": true,
+          "title": "Simple by default. Pro when you want it.",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        },
+        "act-make": {
+          "active": "act-make",
+          "bandHere": null,
+          "bandTop": null,
+          "bandBottom": null,
+          "bandInside": null,
+          "title": "What are you making?",
+          "shapeAfterClick": "9:16",
+          "shapeBefore": "16:9"
+        }
+      },
+      "live": {
+        "state": "16:9|LLLxxx|main-camera|4|simple",
+        "badge": true,
+        "label": "END"
+      },
+      "broken": {
+        "state": "16:9|cLLxxx|main-camera|5|simple",
+        "card": "YouTube stopped accepting the picture. WHY The connection to YouTube dropped. Your other destinations are not affected. DOING LIVETAP is reconnecting on its own"
+      },
+      "healed": "16:9|LLLxxx|main-camera|6|simple",
+      "vertical": {
+        "format": "9:16",
+        "canvas": [
+          145,
+          257
+        ],
+        "zones": 2
+      },
+      "screenShare": {
+        "moment": "screen-share",
+        "screenOn": true,
+        "screenInput": "true"
+      },
+      "outputs": {
+        "figures": 6,
+        "lede": "3 destinations, 2 shapes (16:9 and 9:16), one production. Each platform gets what it accepts."
+      },
+      "versus": "obs",
+      "pro": {
+        "panels": 4,
+        "hidden": false
+      },
+      "intent": {
+        "format": "16:9",
+        "moment": "screen-share",
+        "answer": "Gaming: Your game, with you in the corner. Composing in 16:9, Gameplay first, YouTube and Twitch suggested.",
+        "open": "./app/start?intent=gaming",
+        "watch": "https://github.com/BigBackBitcoin/livetap"
+      },
+      "errors": [],
+      "links": [
+        "/",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app/start",
+        "./app/start?intent=gaming",
+        "https://github.com/BigBackBitcoin/livetap",
+        "https://github.com/BigBackBitcoin/livetap",
+        "./app",
+        "/privacy",
+        "/terms"
+      ]
+    }
+  },
+  "links": {
+    "/": 200,
+    "https://github.com/BigBackBitcoin/livetap": 200,
+    "./app/start": 200,
+    "./app/start?intent=gaming": 200,
+    "./app": 200,
+    "/privacy": 200,
+    "/terms": 200,
+    "/nope": 404
+  }
+}

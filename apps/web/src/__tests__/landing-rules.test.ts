@@ -59,7 +59,9 @@ describe('colour comes from tokens, in both themes', () => {
         '--ltp-topbar',
         '--ltp-status',
         '--ltp-band',
+        '--ltp-band-hero',
         '--ltp-desk',
+        '--ltp-desk-pro',
         '--ltp-col',
         '--ltp-pad',
         '--ltp-overlap',
@@ -120,8 +122,8 @@ describe('the standing bans hold', () => {
     }
   });
 
-  it('drifts the ground exactly twice', () => {
-    expect(Array.from(html.matchAll(/data-sc-drift=/g))).toHaveLength(2);
+  it('never drifts the ground: the picture is the drama, the ground stays still', () => {
+    expect(Array.from(html.matchAll(/data-sc-drift=/g))).toHaveLength(0);
   });
 
   it('has no scroll cue, no section counter and no progress readout', () => {
@@ -150,58 +152,62 @@ describe('the standing bans hold', () => {
   });
 });
 
-describe('the score is the one the design documents wrote', () => {
+describe('the score is the one the audit closure wrote', () => {
   const acts = Array.from(html.matchAll(/data-sc-act="(\w+)"[^>]*?(?:data-sc-span="([\d.]+)")?/g));
 
-  it('runs eight acts and two declared silences', () => {
+  it('runs eight pinned chapters and one declared silence, the peak second', () => {
     const devices = Array.from(html.matchAll(/data-sc-act="(\w+)"/g), (m) => m[1]!);
-    expect(devices).toEqual([
-      'pin',
-      'flow',
-      'pan',
-      'pin',
-      'flow',
-      'pin',
-      'flow',
-      'pin',
-      'flow',
-      'pin',
+    expect(devices).toEqual(['pin', 'flow', 'pin', 'pin', 'pin', 'pin', 'pin', 'pin', 'pin']);
+    expect(acts.length).toBe(9);
+    expect(Array.from(html.matchAll(/data-lt-rest="/g))).toHaveLength(1);
+    const ids = Array.from(html.matchAll(/<section\s+id="(act-[a-z]+)"/g), (m) => m[1]!);
+    expect(ids).toEqual([
+      'act-hero',
+      'act-break',
+      'act-shape',
+      'act-moments',
+      'act-outputs',
+      'act-versus',
+      'act-pro',
+      'act-make',
     ]);
-    expect(acts.length).toBe(10);
-    expect(Array.from(html.matchAll(/data-lt-rest="/g))).toHaveLength(2);
   });
 
-  it('spends 12.8 viewport-heights, with the peak the largest span by a visible margin', () => {
+  it('spends 12.4 viewport-heights, with the peak the largest span', () => {
     const spans = Array.from(html.matchAll(/data-sc-span="([\d.]+)"/g), (m) => Number(m[1]));
-    expect(spans).toEqual([1.3, 1.6, 1.4, 1.4, 2.8, 1.2]);
+    expect(spans).toEqual([1.2, 2.4, 1.4, 1.4, 1.4, 1.6, 1.2, 1.4]);
     const pinned = spans.reduce((a, b) => a + b, 0);
-    /* Plus the two flow acts at 0.9 each and the two silences at 0.7 and 0.6. */
-    expect(pinned + 0.9 * 2 + 0.7 + 0.6).toBeCloseTo(12.8, 5);
+    /* Plus the one silence at 0.4. */
+    expect(pinned + 0.4).toBeCloseTo(12.4, 5);
     const peak = Math.max(...spans);
+    expect(spans.indexOf(peak)).toBe(1);
     const next = spans.filter((s) => s !== peak).sort((a, b) => b - a)[0]!;
-    expect(peak / next).toBeGreaterThan(1.7);
+    expect(peak / next).toBeGreaterThan(1.4);
   });
 
   it('lets only the closing act hold its final cue', () => {
     const cues = Array.from(html.matchAll(/data-sc-cue="([^"]+)"/g), (m) => m[1]!);
     const holds = cues.filter((c) => c.trim().split(/\s+/).length === 1);
     expect(holds).toEqual([]);
-    /* ACT 8 is the one cue whose window ends at 1 with no ramp out, so the last screen still
-       has content on it. Every other cue closes with a window that ends. */
     const closing = cues.filter((c) => c.endsWith('1 0 0'));
     expect(closing).toHaveLength(1);
   });
 
-  it('uses the page-only iris exactly once', () => {
-    expect(Array.from(html.matchAll(/data-sc-reveal="iris"/g))).toHaveLength(1);
-    expect(Array.from(html.matchAll(/data-sc-reveal="/g))).toHaveLength(1);
+  it('has no scroll-driven counter and no reveal: nothing a visitor needs waits for scroll', () => {
+    expect(Array.from(html.matchAll(/data-sc-count="/g))).toHaveLength(0);
+    expect(Array.from(html.matchAll(/data-sc-reveal="/g))).toHaveLength(0);
   });
 
-  it('counts only numbers the visitor produced', () => {
-    const counters = Array.from(html.matchAll(/data-sc-count="([^"]+)"/g), (m) => m[1]!);
-    expect(counters).toHaveLength(2);
-    /* Both start at zero and are re-targeted from the visitor's own picks at runtime, so a
-       hard-coded target here would be an invented statistic. */
-    for (const c of counters) expect(c).toBe('0 0');
+  it('puts the statement, the picture control and the demo link in the hero band', () => {
+    const hero = html.slice(html.indexOf('data-lt-band="act-hero"'), html.indexOf('data-lt-band="act-break"'));
+    expect(hero).toContain('Go live everywhere.');
+    expect(hero).toContain('data-lt-camera-cta');
+    expect(hero).toContain('href="./app/start"');
+  });
+
+  it('never offers a download while there is nothing to download', () => {
+    const text = visibleMarkup().replace(/<[^>]*>/g, ' ');
+    expect(text).not.toMatch(/Download/);
+    expect(html).not.toContain('/releases');
   });
 });

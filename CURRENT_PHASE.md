@@ -1,6 +1,7 @@
 # CURRENT PHASE
 
-PHASE 0-11: COMPLETE for the autonomous portion; PUBLIC EXPERIENCE REDESIGN (directive 10) shipped 2026-09-12 and deployed.
-All P2 polish items from docs/qa/PRODUCT_REVIEW.md are fixed.
+AUDIT CLOSURE (directive docs/prompt-pack/11, audit docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT.md): DELIVERED 2026-09-14 and deployed to https://livetap.vercel.app.
 
-Next action on resume: only external-dependency-gated work remains (BLOCKERS.md B-001..B-008). Optional follow-ups: throttled LCP/INP profiling on a real device, Windows High Contrast pass, atmosphere canvas profiling, Vertical-as-orientation-control experiment (owner decision).
+Closure matrix: docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md (33 of 34 actionable items closed, 1 external: the early-access endpoint, B-009). Retest: docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_RETEST.md (59 -> 132 / 150 self-assessed; Desire to Download and OBS motivation capped by external facts). Gates: tsc/eslint clean, 1122 unit, 88 E2E, harness clean, production review at 8 viewports clean.
+
+Next on resume: only owner-gated work remains (BLOCKERS.md B-001..B-009). Optional polish recorded in the retest's remaining issues: real licensed footage, a smaller first-second clip if a device measurement shows the cold LCP matters, an independent re-audit by the original auditor.

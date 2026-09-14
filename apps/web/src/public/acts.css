@@ -1,0 +1,875 @@
+/*
+ * The act stack, the band, and the close.
+ *
+ * Everything in this file is the scroll story's own chrome: the transparent sections that own
+ * scroll, the band where each chapter's copy sits, and the close. The surface, the tiles, the
+ * desk and the chat live in `landing.css` and never change per chapter.
+ *
+ * Two rules from the first-time-creator audit, kept as code:
+ *   1. The band is a REAL panel with a title, a lede and controls, in type meant to be read. It
+ *      is never pale, never clipped and never overlaps the surface: on desktop it is a reserved
+ *      region above the surface, on a phone it is a plate over the desk's lower edge.
+ *   2. Nothing on this page ever covers the headline, and nothing is driven by scroll that a
+ *      visitor needs before they scroll. The hero band is visible at progress zero.
+ */
+
+/* ============================================================== the act stack */
+
+.ltp-acts {
+  position: relative;
+  z-index: var(--ltp-z-acts);
+  pointer-events: none;
+}
+
+.ltp-act {
+  position: relative;
+}
+
+/* An act's stage is the engine's own sticky frame: transparent, and it lets every pointer
+   through. Only the band takes one, so the fixed surface beneath stays operable everywhere. */
+.ltp-act,
+.ltp-rest,
+.ltp-act [data-sc-stage] {
+  pointer-events: none;
+  background: transparent;
+}
+
+.ltp-band,
+.ltp-close {
+  pointer-events: auto;
+}
+
+/* The one declared silence, short: the peak is next and it should arrive soon. */
+.ltp-rest {
+  min-block-size: 40svh;
+}
+
+/* ------------------------------------------------------------ the band layer */
+
+/*
+ * One fixed layer for the bands. On desktop it is the reserved region above the surface; on a
+ * phone it is the strip above the status bar, on a plate. Bands stack inside it and only the
+ * active one is visible, so a chapter's copy arrives by cross-fade and never by motion.
+ */
+.ltp-bands {
+  position: fixed;
+  inset-block-end: var(--ltp-status);
+  inset-inline: 0;
+  block-size: var(--ltp-band);
+  z-index: var(--ltp-z-acts);
+  pointer-events: none;
+}
+
+@media (min-width: 1025px) {
+  .ltp-bands {
+    inset-block: 0 auto;
+    inset-inline: var(--ltp-rail) 0;
+  }
+}
+
+/* Below the rail breakpoint the band overlays the desk's lower edge, so it sits on a plate
+   that is opaque where the text is and fades above it. Never a full-frame overlay. */
+.ltp-act__plate {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  block-size: calc(var(--ltp-band) + 3rem);
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--lt-bg-0) 0%,
+    var(--lt-bg-0) 72%,
+    color-mix(in oklab, var(--lt-bg-0) 70%, transparent) 88%,
+    transparent 100%
+  );
+}
+
+@media (min-width: 1025px) {
+  /* On desktop the band is reserved, not overlaid: there is nothing to protect. */
+  .ltp-act__plate {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------- the band */
+
+.ltp-band {
+  position: absolute;
+  inset-block: 0;
+  inset-inline: var(--ltp-pad);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--lt-space-2);
+  padding-block: var(--lt-space-2) var(--lt-space-1);
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--lt-dur-2) var(--lt-ease-standard),
+    visibility 0s linear var(--lt-dur-2);
+}
+
+.ltp-band.is-here {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+@media (min-width: 1025px) {
+  .ltp-band {
+    padding-block: var(--lt-space-4) var(--lt-space-2);
+  }
+}
+
+/*
+ * Two chapters need more room than the band: the six outputs and the comparison. Their band
+ * grows downward over the surface as a panel, scrolls inside itself if it must, and never
+ * pushes anything.
+ */
+.ltp-band--tall.is-here {
+  inset-block-end: auto;
+  block-size: auto;
+  min-block-size: 100%;
+  /* Never over the desk: GO LIVE and the toolbar stay visible and operable under the panel. */
+  max-block-size: calc(100svh - var(--ltp-status) - var(--ltp-desk) - 56px);
+  padding-block-end: var(--lt-space-3);
+  overflow-y: auto;
+  background: color-mix(in oklab, var(--lt-bg-0) 97%, transparent);
+  border-block-end: 1px solid var(--lt-border);
+  box-shadow: var(--lt-shadow-2);
+}
+
+@media (max-width: 1024.98px) {
+  .ltp-band--tall.is-here {
+    inset-block: auto 0;
+    max-block-size: 58svh;
+    background: var(--lt-bg-0);
+    border-block-start: 1px solid var(--lt-border);
+    border-block-end: 0;
+  }
+}
+
+.ltp-band__title {
+  margin: 0;
+  max-inline-size: 46rem;
+  font-family: var(--ltp-font-display);
+  font-size: var(--lt-text-22);
+  line-height: var(--lt-leading-22);
+  letter-spacing: var(--lt-tracking-22);
+  font-weight: var(--lt-weight-bold);
+  color: var(--lt-text-primary);
+  text-wrap: balance;
+}
+
+.ltp-band__title--hero {
+  max-inline-size: 56rem;
+  font-size: clamp(1.5rem, 5.6vw, 1.75rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: var(--lt-weight-extrabold);
+}
+
+.ltp-band__lede {
+  margin: 0;
+  max-inline-size: 56rem;
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  color: var(--lt-text-secondary);
+  text-wrap: pretty;
+}
+
+/* On a phone the lede is one line short of the band; the title and the controls come first. */
+@media (max-width: 1024.98px) {
+  .ltp-band__lede {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .ltp-band--hero .ltp-band__lede {
+    -webkit-line-clamp: 3;
+  }
+}
+
+@media (min-width: 1025px) {
+  .ltp-band__title {
+    font-size: var(--lt-text-28);
+    line-height: var(--lt-leading-28);
+    letter-spacing: var(--lt-tracking-28);
+  }
+
+  .ltp-band__title--hero {
+    font-size: clamp(1.75rem, 2.5vw, 2.125rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+  }
+
+  .ltp-band__lede {
+    font-size: var(--lt-text-16);
+    line-height: var(--lt-leading-16);
+  }
+
+  .ltp-band--hero .ltp-band__lede {
+    font-size: var(--lt-text-16);
+    line-height: var(--lt-leading-16);
+  }
+}
+
+.ltp-band__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lt-space-2) var(--lt-space-3);
+  min-block-size: 0;
+}
+
+.ltp-band__tools--wide {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  align-items: stretch;
+}
+
+.ltp-band__tools--wide > * {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.ltp-band__hint,
+.ltp-band__trust {
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  letter-spacing: var(--lt-tracking-12);
+  font-weight: var(--lt-weight-medium);
+  color: var(--lt-text-secondary);
+}
+
+.ltp-band__trust {
+  flex-basis: 100%;
+  color: var(--lt-text-tertiary);
+}
+
+@media (min-width: 1280px) {
+  .ltp-band__trust {
+    flex-basis: auto;
+    margin-inline-start: var(--lt-space-2);
+  }
+}
+
+/* The Moment mirror in the band: the same six buttons the desk has, one row, compact. */
+.ltp-band__moments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-1);
+}
+
+.ltp-band__moments .lt-btn {
+  min-block-size: 40px;
+}
+
+.ltp-band__moments .lt-btn[aria-pressed='true'] {
+  border-color: var(--lt-accent-focus);
+  background: var(--lt-bg-3);
+  color: var(--lt-text-primary);
+}
+
+/* The six outputs and the comparison scroll sideways in the band on a phone. */
+.ltp-outputs,
+.ltp-versus {
+  min-inline-size: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+/* ------------------------------------------------------------------- the close */
+
+/*
+ * The close sits over the monitor and leaves the desk on screen, so the console the visitor
+ * spent seven chapters learning is still there while they answer the product's first question.
+ */
+.ltp-close {
+  position: absolute;
+  inset-block: var(--ltp-topbar) var(--ltp-status);
+  inset-inline: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--lt-space-3);
+  padding: var(--ltp-pad);
+  overflow-y: auto;
+  background: var(--lt-bg-0);
+}
+
+.ltp-surface.is-closing .ltp-monitor {
+  opacity: 0.07;
+  transition: opacity var(--lt-dur-3) var(--lt-ease-standard);
+}
+
+@media (min-width: 1025px) {
+  .ltp-close {
+    inset-block: 0 calc(var(--ltp-status) + var(--ltp-desk) + var(--lt-space-2));
+    inset-inline: var(--ltp-rail) 0;
+    justify-content: center;
+    overflow: visible;
+  }
+}
+
+.ltp-close__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+}
+
+.ltp-close__q {
+  margin: 0;
+  font-family: var(--ltp-font-display);
+  font-size: var(--lt-text-28);
+  line-height: var(--lt-leading-28);
+  letter-spacing: var(--lt-tracking-28);
+  font-weight: var(--lt-weight-bold);
+  color: var(--lt-text-primary);
+}
+
+.ltp-close__lede,
+.ltp-close__answer {
+  margin: 0;
+  max-inline-size: 44rem;
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  color: var(--lt-text-secondary);
+}
+
+.ltp-close__answer {
+  color: var(--lt-text-primary);
+  font-weight: var(--lt-weight-medium);
+  min-block-size: var(--lt-leading-14);
+}
+
+.ltp-close__answer:empty {
+  display: none;
+}
+
+/* Six chips, one row on desktop. A chip, not a card: no bullets, no spec sheet. */
+.ltp-intents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-2);
+}
+
+.ltp-intentchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+  min-block-size: var(--lt-touch-min);
+  padding: var(--lt-space-1) var(--lt-space-3) var(--lt-space-1) var(--lt-space-2);
+  background: var(--lt-bg-2);
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius-full);
+  box-shadow: var(--lt-shadow-1), var(--ltp-edge);
+  color: var(--lt-text-secondary);
+  text-align: start;
+  transition:
+    border-color var(--lt-dur-1) var(--lt-ease-standard),
+    background-color var(--lt-dur-1) var(--lt-ease-standard);
+}
+
+.ltp-intentchip:hover {
+  background: var(--lt-bg-3);
+  color: var(--lt-text-primary);
+}
+
+.ltp-intentchip[aria-pressed='true'] {
+  border-color: var(--lt-accent-focus);
+  background: var(--lt-bg-3);
+  color: var(--lt-text-primary);
+}
+
+.ltp-intentchip__title {
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  font-weight: var(--lt-weight-semibold);
+  color: var(--lt-text-primary);
+}
+
+.ltp-intentchip__tag {
+  display: none;
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  color: var(--lt-text-tertiary);
+}
+
+@media (min-width: 1025px) {
+  .ltp-intentchip__tag {
+    display: inline;
+  }
+}
+
+.ltp-close__bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
+@media (max-width: 639.98px) {
+  .ltp-close__bar .lt-btn--primary {
+    inline-size: 100%;
+  }
+}
+
+.ltp-capture:empty {
+  display: none;
+}
+
+.ltp-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lt-space-2) var(--lt-space-4);
+  padding-block-start: var(--lt-space-2);
+  border-block-start: 1px solid var(--lt-border);
+}
+
+.ltp-foot__note {
+  margin: 0;
+  max-inline-size: 40rem;
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  color: var(--lt-text-secondary);
+}
+
+.ltp-foot__nav {
+  display: flex;
+  gap: var(--lt-space-3);
+  margin-inline-start: auto;
+  font-size: var(--lt-text-12);
+}
+
+.ltp-foot__nav a {
+  color: var(--lt-text-secondary);
+}
+
+/* ================================================== the surface's new parts */
+
+/* The picture's own badges: LIVE, and the shape. */
+.ltp-stage__badges {
+  position: absolute;
+  inset-block-start: var(--lt-space-2);
+  inset-inline-end: var(--lt-space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-1);
+  z-index: 3;
+}
+
+.ltp-stage__live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lt-space-1);
+  padding: var(--lt-space-05) var(--lt-space-2);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-accent-live-solid);
+  color: var(--lt-on-live, #fff);
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  letter-spacing: 0.06em;
+  font-weight: var(--lt-weight-bold);
+}
+
+.ltp-stage__live[hidden] {
+  display: none;
+}
+
+.ltp-stage__live .lt-dot {
+  background: currentColor;
+}
+
+/* The camera control lives on the picture, bottom-left, where a creator looks for it. */
+.ltp-stage__source {
+  position: absolute;
+  inset-block-end: var(--lt-space-2);
+  inset-inline-start: var(--lt-space-2);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--lt-space-1);
+  max-inline-size: calc(100% - var(--lt-space-4));
+}
+
+.ltp-stage__sourcenote {
+  max-inline-size: 24rem;
+  padding: var(--lt-space-05) var(--lt-space-2);
+  border-radius: var(--lt-radius-sm);
+  background: color-mix(in oklab, var(--lt-bg-0) 78%, transparent);
+  color: var(--lt-text-secondary);
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  letter-spacing: var(--lt-tracking-12);
+  font-weight: var(--lt-weight-medium);
+}
+
+@media (max-width: 639.98px) {
+  .ltp-stage__sourcenote {
+    display: none;
+  }
+}
+
+/* Labelled safe zones, drawn on the picture in the shapes that keep them. */
+.ltp-guides__zone {
+  position: absolute;
+  display: none;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: var(--lt-space-1) var(--lt-space-2);
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--lt-accent-focus) 22%, transparent) 0 6px,
+    transparent 6px 14px
+  );
+  color: var(--lt-text-primary);
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  letter-spacing: var(--lt-tracking-12);
+  font-weight: var(--lt-weight-semibold);
+  text-shadow: 0 1px 2px var(--lt-bg-0);
+}
+
+.ltp-guides__zone--bottom {
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: calc(var(--sa-b, 0.06) * 100%);
+}
+
+.ltp-guides__zone--right {
+  inset-block: 0 calc(var(--sa-b, 0.06) * 100%);
+  inset-inline-end: 0;
+  inline-size: calc(var(--sa-r, 0.05) * 100%);
+  align-items: flex-start;
+  justify-content: flex-end;
+  writing-mode: vertical-rl;
+}
+
+.ltp-stage[data-lt-format='9:16'] .ltp-guides.is-on .ltp-guides__zone,
+.ltp-stage[data-lt-format='1:1'] .ltp-guides.is-on .ltp-guides__zone--bottom {
+  display: flex;
+}
+
+/* The Simple / Pro control: labelled, in the toolbar, mirrored in the Pro chapter's band. */
+.ltp-toolbar__mode {
+  flex: none;
+  display: flex;
+  gap: var(--lt-space-1);
+  padding: var(--lt-space-1);
+  background: var(--ltp-field);
+  border-radius: var(--lt-radius-md);
+  margin-inline-start: auto;
+}
+
+/* Pro's four panels open ABOVE the desk row, inside the surface, and the desk grows for them. */
+.ltp-prolayers {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+  min-inline-size: 0;
+}
+
+.ltp-prolayers[hidden] {
+  display: none;
+}
+
+.ltp-surface.is-pro {
+  --ltp-desk: var(--ltp-desk-pro);
+}
+
+@media (max-width: 1024.98px) {
+  .ltp-prolayers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ltp-prolayers [data-lt-prorow='audio'],
+  .ltp-prolayers [data-lt-prorow='log'] {
+    display: none;
+  }
+}
+
+.ltp-prorow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-05);
+  padding: var(--lt-space-2) var(--lt-space-3);
+  background: var(--lt-bg-2);
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-radius-md);
+  box-shadow: var(--ltp-edge);
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.ltp-prorow__title {
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: var(--lt-weight-semibold);
+  color: var(--lt-text-tertiary);
+}
+
+.ltp-prorow__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  color: var(--lt-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ltp-prorow__lines > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ltp-prorow__lines .lt-mono {
+  color: var(--lt-text-tertiary);
+}
+
+/*
+ * "Your turn": the demo's hand-over, written where GO LIVE already explains itself, under the
+ * button. No bubble, so it can never cover a control. The button breathes twice to be found.
+ */
+.ltp-toolbar__sub[data-lt-yourturn='true'] {
+  color: var(--lt-text-primary);
+  font-weight: var(--lt-weight-semibold);
+}
+
+/* Two lines are reserved under GO LIVE so the hand-over never pushes the desk down. */
+@media (min-width: 1025px) {
+  .ltp-toolbar__sub {
+    min-block-size: calc(var(--lt-leading-12) * 2);
+  }
+}
+
+.lt-golive.is-turn {
+  animation: ltp-breathe 1.6s var(--lt-ease-standard) 2;
+}
+
+@keyframes ltp-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--lt-info) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 10px color-mix(in oklab, var(--lt-info) 0%, transparent);
+  }
+}
+
+/* A tile's own picture: the destination's shape, from the same production, beside its chip. */
+.ltp-tile__row {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.ltp-tile__row .lt-chip {
+  min-inline-size: 0;
+}
+
+.ltp-tile__thumb {
+  display: block;
+  flex: none;
+  block-size: 40px;
+  inline-size: auto;
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-bg-1);
+  outline: 1px solid var(--ltp-hair);
+}
+
+.ltp-tile__thumb[hidden] {
+  display: none;
+}
+
+/* With the picture beside it the chip keeps its word and drops its sentence. */
+.ltp-tile__thumb:not([hidden]) + .lt-chip .lt-chip__status {
+  display: none;
+}
+
+@media (max-width: 1024.98px) {
+  .ltp-tile__thumb {
+    display: none;
+  }
+}
+
+/* The tile's hint is for the tile under the pointer, or an armed one. Six hints at once is noise. */
+@media (min-width: 1025px) {
+  .ltp-dest:not(.is-armed) .ltp-tile__hint {
+    display: none;
+  }
+
+  .ltp-dest:not(.is-armed) .ltp-tile:is(:hover, :focus-visible) .ltp-tile__hint:not(:empty) {
+    display: block;
+  }
+}
+
+/* Suggested by the chosen intent. */
+.ltp-dest.is-suggested .ltp-tile {
+  border-color: var(--lt-accent-focus);
+}
+
+/* The one explanation a refused control gives, under the control that refused. */
+.ltp-toolbar__sub.is-warning {
+  color: var(--lt-warning);
+  font-weight: var(--lt-weight-semibold);
+}
+
+/* The toolbar's inputs are real buttons now. */
+.ltp-input {
+  border: 1px solid transparent;
+  border-radius: var(--lt-radius-sm);
+  padding-inline: var(--lt-space-1);
+  min-block-size: 32px;
+}
+
+.ltp-input:hover {
+  background: var(--lt-bg-3);
+}
+
+.ltp-input[aria-pressed='true'] {
+  color: var(--lt-text-primary);
+}
+
+/* ================================================================ the phone */
+
+/*
+ * A phone is its own composition, not a squeezed desk.
+ *
+ * The band is the plate at the bottom, so the surface stops above it instead of running under
+ * it. The desk is one row, GO LIVE and the shape; the Moments live in their chapter's band and
+ * the chat, which is a paragraph of caveats at this width, is not shown. The stage is vertical
+ * by default and takes what is left, which is most of the screen.
+ */
+@media (max-width: 1024.98px) {
+  .ltp-surface {
+    padding-block-end: calc(var(--ltp-band) + var(--lt-space-2));
+  }
+
+  .ltp-desk {
+    block-size: auto;
+  }
+
+  .ltp-desk__row,
+  .ltp-prolayers {
+    display: none;
+  }
+
+  .ltp-stage__detail {
+    display: none;
+  }
+
+  /* The shape and Simple/Pro controls are in their chapters' bands on a phone: the desk is
+     GO LIVE, so the vertical picture takes the screen. */
+  .ltp-toolbar .ltp-toolbar__mode,
+  .ltp-toolbar .ltp-toolbar__formats,
+  .ltp-toolbar .ltp-toolbar__inputs {
+    display: none;
+  }
+
+  .ltp-tile__hint,
+  .ltp-tile .lt-chip__status {
+    display: none;
+  }
+
+  .ltp-guides__zone {
+    font-size: 0;
+  }
+
+  .ltp-camerabtn span:not(.lt-icon) {
+    display: none;
+  }
+
+  .ltp-camerabtn {
+    min-inline-size: var(--lt-touch-min);
+    padding-inline: var(--lt-space-2);
+  }
+
+  .ltp-band__trust {
+    display: none;
+  }
+
+  .ltp-band__moments {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-block-end: var(--lt-space-1);
+  }
+
+  .ltp-band__moments .lt-btn {
+    flex: none;
+  }
+
+  .ltp-stage__state {
+    font-size: var(--lt-text-22);
+    line-height: var(--lt-leading-22);
+    letter-spacing: var(--lt-tracking-22);
+  }
+}
+
+/* A short phone: the hero lede goes, the picture stays. */
+@media (max-width: 639.98px) and (max-height: 700px) {
+  :root {
+    --ltp-band: 156px;
+  }
+
+  .ltp-band__lede {
+    display: none;
+  }
+}
+
+/* ========================================================== short viewports */
+
+@media (min-width: 1025px) and (max-height: 760px) {
+  :root {
+    --ltp-desk: 96px;
+    --ltp-desk-pro: 192px;
+  }
+
+  /* The Moments and the chat live in their chapters' bands at this height; the desk is the
+     toolbar alone, so the stage and the tiles keep the room. */
+  .ltp-desk__row {
+    display: none;
+  }
+
+  .ltp-band__lede {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* =========================================================== reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .ltp-intentchip,
+  .ltp-input,
+  .ltp-band {
+    transition: none;
+  }
+}
+
+/* The engine's film grain is a full-viewport compositing layer this page does not need. */
+.sc-grain {
+  display: none;
+}

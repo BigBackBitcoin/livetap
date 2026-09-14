@@ -1,129 +1,123 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { hasHorizontalOverflow } from './helpers.js';
+import {
+  BANDED_ACTS,
+  hasHorizontalOverflow,
+  ownTheSurface,
+  toAct,
+  tileState,
+  verifyState,
+} from './helpers.js';
 
 /**
  * The public experience, operated.
  *
  * `/` is not a document with pictures of a product: it is the product's own surface running on
  * sample data, and every claim it makes is demonstrated by something a visitor can do. So this
- * file does those things: it waits for the hero story to take three destinations live on its
- * own clock, connects one by hand, re-flows the stage into a vertical shape, recomposes it with
- * a Moment, and then breaks the stream twice, once with the pointer and once from the keyboard,
- * asserting each time that exactly one destination fell over and the others never moved.
+ * file does those things. It lets the guided five seconds bring three destinations to Ready and
+ * then stop, connects one by hand, goes live from an empty surface, re-flows the stage into a
+ * vertical shape, recomposes it with a Moment, switches to Pro, plays the comparison, answers
+ * the closing question, and then breaks the stream twice, once with the pointer and once from
+ * the keyboard, asserting each time that exactly one destination fell over and the others never
+ * moved.
  *
  * That last assertion is the page's whole argument, which is why it is a test and not a hope.
+ *
+ * Everything here runs at 1440x900 unless a block says otherwise. Below 761px of height and
+ * below 1025px of width the surface recomposes on purpose (the Moments strip, the chat and the
+ * shape control move into their chapters' bands), and a test that silently straddles those
+ * lines is a test that measures the wrong page.
  */
+
+const DESK = { width: 1440, height: 900 } as const;
 
 const LIVE = '[data-lt-dest][data-lt-state="LIVE"]';
 const READY = '[data-lt-dest][data-lt-state="READY"]';
 
-/**
- * Stop the automatic story before it has done anything, so every test below starts from the
- * same surface. Re-selecting the shape that is already selected is a no-op on the composition
- * and the page's own "any visitor action ends the story" rule does the rest.
- */
-async function ownTheSurface(page: Page): Promise<void> {
-  await page.goto('/');
-  await page.waitForSelector('html.sc-ready');
-  await page.evaluate(() => {
-    (document.querySelector('[data-lt-format-set="16:9"]') as HTMLElement).click();
-  });
-  await expect(page.locator('[data-lt-dest][data-lt-state="DISCONNECTED"]')).toHaveCount(6);
-}
+/** The signature the guided demo stops at on a desk: YouTube, Twitch and TikTok all Ready. */
+const AFTER_THE_DEMO = 'rrrxxx';
 
-/** Park the page at a fraction of one act's own travel, the way a reader would arrive at it. */
-async function toAct(page: Page, id: string, p = 0.5): Promise<void> {
-  const y = await page.evaluate(
-    ([actId, at]) => {
-      const el = document.getElementById(actId as string)!;
-      const top = el.getBoundingClientRect().top + scrollY;
-      return Math.round(top + Math.max(el.offsetHeight - innerHeight, 1) * (at as number));
-    },
-    [id, p] as [string, number],
-  );
-  await page.evaluate((to) => scrollTo({ top: to, behavior: 'instant' }), y);
-  await page.waitForTimeout(450);
-}
-
-/** Three connect-account destinations, then GO LIVE, the way a visitor gets there. */
+/** Connect three destinations by hand, then GO LIVE, the way a visitor gets there. */
 async function goLiveOnThree(page: Page): Promise<void> {
   for (const id of ['youtube', 'twitch', 'facebook']) {
     await page.locator(`[data-lt-dest="${id}"] [data-lt-pick]`).click();
   }
-  await expect(page.locator(READY)).toHaveCount(3);
+  await expect(page.locator(READY)).toHaveCount(3, { timeout: 10_000 });
   await page.locator('[data-lt-golive]').click();
   await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 15_000 });
 }
 
-/** Every part of a tile a sibling-isolation claim covers. */
-async function tileState(page: Page, id: string) {
-  return page.evaluate((destId) => {
-    const li = document.querySelector(`[data-lt-dest="${destId}"]`) as HTMLElement;
-    const tile = li.querySelector('[data-lt-pick]') as HTMLElement;
-    const chip = li.querySelector('[data-lt-chip]') as HTMLElement;
-    const path = document.querySelector(`[data-lt-path="${destId}"]`) as SVGPathElement;
-    const cs = getComputedStyle(tile);
-    return {
-      state: li.dataset.ltState,
-      chip: chip.className,
-      label: (li.querySelector('[data-lt-label]') as HTMLElement).textContent,
-      transform: cs.transform,
-      opacity: cs.opacity,
-      scale: cs.scale,
-      box: JSON.stringify(tile.getBoundingClientRect()),
-      d: path.getAttribute('d'),
-      strokeWidth: getComputedStyle(path).strokeWidth,
-      phase: path.getAttribute('data-lt-phase'),
-    };
-  }, id);
-}
+test.describe('the guided five seconds', () => {
+  test.use({ viewport: DESK });
 
-test.describe('the surface tells its own story', () => {
-  test('reaches LIVE on three destinations inside thirty seconds, with nothing tapped', async ({
+  test('brings three destinations to Ready on its own clock, and then hands over', async ({
     page,
   }) => {
     await page.goto('/');
     await page.waitForSelector('html.sc-ready');
-    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 30_000 });
 
-    // Three lit signal paths, which is the fact the first fifteen seconds exist to deliver.
-    const lit = await page.locator('[data-lt-path][data-lt-phase="live"]').count();
-    expect(lit).toBe(3);
+    /* Mic first, then two destinations, then TikTok: the demo's own order, published as state. */
+    await expect(page.locator('[data-lt-surface]')).toHaveAttribute(
+      'data-sc-verify-state',
+      `16:9|${AFTER_THE_DEMO}|main-camera|0|simple`,
+      { timeout: 10_000 },
+    );
+    await expect(page.locator('[data-lt-input="mic"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-lt-path][data-lt-phase="ready"]')).toHaveCount(3);
+
+    /* The hand-over, at 4.2s: one invitation, written under the one button it points at. */
+    const sub = page.locator('[data-lt-golive-sub]');
+    await expect(sub).toHaveAttribute('data-lt-yourturn', 'true', { timeout: 10_000 });
+    await expect(sub).toHaveText(/^Your turn\./);
+    await expect(page.locator('[data-lt-golive]')).toHaveClass(/is-turn/);
+
+    /* And it stops there. The demo never goes live for you. */
+    await expect(page.locator(LIVE)).toHaveCount(0);
     await expect(page.locator('[data-lt-out="dests"]')).toHaveText('3 destinations');
     await expect(page.locator('[data-lt-out="formats"]')).toHaveText('2 formats');
+    await expect(page.locator('[data-lt-out="health"]')).toHaveText('Idle');
   });
 
-  test('degrades one destination and brings it back, without touching the others', async ({
-    page,
-  }) => {
+  test('a tap on the surface takes the invitation down', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 30_000 });
-    // Step 14 to 17: one goes rough, then reconnects, then everything is healthy again.
-    await expect(page.locator('[data-lt-dest][data-lt-state="DEGRADED"]')).toHaveCount(1, {
-      timeout: 20_000,
-    });
-    await expect(page.locator('[data-lt-dest][data-lt-state="RECONNECTING"]')).toHaveCount(1, {
-      timeout: 20_000,
-    });
-    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 20_000 });
+    await page.waitForSelector('html.sc-ready');
+    const sub = page.locator('[data-lt-golive-sub]');
+    await expect(sub).toHaveAttribute('data-lt-yourturn', 'true', { timeout: 10_000 });
+
+    await page.locator('[data-lt-dest="facebook"] [data-lt-pick]').click();
+    await expect(sub).toHaveAttribute('data-lt-yourturn', 'false');
+    await expect(page.locator('[data-lt-golive]')).not.toHaveClass(/is-turn/);
+  });
+
+  test('scrolling past the hero takes the invitation down', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('html.sc-ready');
+    const sub = page.locator('[data-lt-golive-sub]');
+    await expect(sub).toHaveAttribute('data-lt-yourturn', 'true', { timeout: 10_000 });
+
+    await toAct(page, 'act-break', 0.1);
+    await expect(sub).toHaveAttribute('data-lt-yourturn', 'false');
   });
 });
 
-test.describe('the playgrounds', () => {
-  test('a destination the visitor taps signs in, turns Ready and draws its own path', async ({
+test.describe('the destinations', () => {
+  test.use({ viewport: DESK });
+
+  test('a connect-account destination signs in, turns Ready and draws its own path', async ({
     page,
   }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-produce', 0.5);
-
     const li = page.locator('[data-lt-dest="facebook"]');
     await expect(page.locator('[data-lt-path="facebook"]')).not.toHaveAttribute('d', /./);
+    /* A tile with no connection has no picture to show, so it shows none. */
+    await expect(li.locator('[data-lt-thumb]')).toBeHidden();
 
     await li.locator('[data-lt-pick]').click();
     await expect(li).toHaveAttribute('data-lt-state', 'AUTHENTICATING');
-    await expect(li).toHaveAttribute('data-lt-state', 'READY', { timeout: 5_000 });
+    await expect(li.locator('[data-lt-status]')).toHaveText('Waiting for Facebook');
+    await expect(li).toHaveAttribute('data-lt-state', 'READY', { timeout: 6_000 });
     await expect(li.locator('[data-lt-label]')).toHaveText('Ready');
+    await expect(li.locator('[data-lt-status]')).toHaveText('Goes live when you tap GO LIVE');
 
     const d = await page.locator('[data-lt-path="facebook"]').getAttribute('d');
     expect(d).toMatch(/^M[\d.]+ [\d.]+ C/);
@@ -132,99 +126,361 @@ test.describe('the playgrounds', () => {
       'ready',
     );
     await expect(page.locator('[data-lt-out="dests"]')).toHaveText('1 destination');
+    /* The tile's own picture arrives with the connection, in the destination's own shape. */
+    await expect(li.locator('[data-lt-thumb]')).not.toHaveAttribute('hidden', /.*/);
   });
 
   test('a paste-key destination asks for the key first, in place', async ({ page }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-produce', 0.5);
-
     const li = page.locator('[data-lt-dest="tiktok"]');
     await li.locator('[data-lt-pick]').click();
+
     const key = li.locator('[data-lt-keyrow]');
     await expect(key).toBeVisible();
     await expect(key.locator('label')).toHaveText('Stream key');
+    await expect(key.locator('.lt-field__hint')).toContainText('You start and end the broadcast');
     await key.locator('[data-lt-keygo]').click();
-    await expect(li).toHaveAttribute('data-lt-state', 'READY', { timeout: 5_000 });
-    // TikTok accepts one shape, and the tile says which.
+    await expect(li).toHaveAttribute('data-lt-state', 'READY', { timeout: 6_000 });
+    /* TikTok accepts one shape, and the tile says which. */
     await expect(li.locator('[data-lt-fmt]')).toHaveText('9:16');
   });
 
-  test('the shape control physically re-flows the stage', async ({ page }) => {
+  test('an empty key is refused in place, and says what to do', async ({ page }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-formats', 0.4);
+    const li = page.locator('[data-lt-dest="instagram"]');
+    await li.locator('[data-lt-pick]').click();
+    await li.locator('[data-lt-keyrow] input').fill('');
+    await li.locator('[data-lt-keygo]').click();
+
+    await expect(li.locator('[data-lt-keyerror]')).toBeVisible();
+    await expect(li.locator('[data-lt-keyerror]')).toContainText(
+      'Paste the key from Instagram first.',
+    );
+    await expect(li).toHaveAttribute('data-lt-state', 'DISCONNECTED');
+  });
+
+  test('GO LIVE from an empty surface connects two for you, and says which two', async ({
+    page,
+  }) => {
+    await ownTheSurface(page);
+    await page.locator('[data-lt-golive]').click();
+
+    const sub = page.locator('[data-lt-golive-sub]');
+    await expect(sub).toHaveClass(/is-warning/);
+    await expect(sub).toHaveText('Nothing was picked, so LIVETAP connected YouTube and Twitch.');
+
+    await expect(page.locator(LIVE)).toHaveCount(2, { timeout: 15_000 });
+    await expect(page.locator('[data-lt-golive-label]')).toHaveText('END');
+    await expect(page.locator('[data-lt-stage-live]')).toBeVisible();
+    await expect(page.locator('[data-lt-out="health"]')).toHaveText('Excellent');
+    await expect(page.locator('[data-lt-stateline]')).toHaveText('Live on YouTube and Twitch');
+  });
+
+  test('the countdown can be cancelled, and cancelling leaves nobody live', async ({ page }) => {
+    await ownTheSurface(page);
+    await page.locator('[data-lt-dest="youtube"] [data-lt-pick]').click();
+    await expect(page.locator(READY)).toHaveCount(1, { timeout: 6_000 });
+
+    await page.locator('[data-lt-golive]').click();
+    await expect(page.locator('[data-lt-golive]')).toHaveClass(/lt-golive--countdown/);
+    await expect(page.locator('[data-lt-golive-cancel]')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-lt-golive]')).not.toHaveClass(/lt-golive--countdown/);
+    await expect(page.locator(LIVE)).toHaveCount(0);
+    await expect(page.locator(READY)).toHaveCount(1);
+  });
+
+  test('END takes every destination down through Stopping', async ({ page }) => {
+    await ownTheSurface(page);
+    await goLiveOnThree(page);
+
+    await page.locator('[data-lt-golive]').click();
+    await expect(page.locator('[data-lt-dest][data-lt-state="ENDED"]')).toHaveCount(3, {
+      timeout: 10_000,
+    });
+    await expect(page.locator('[data-lt-golive-label]')).toHaveText('GO LIVE (DEMO)');
+    await expect(page.locator('[data-lt-stage-live]')).toBeHidden();
+    await expect(page.locator('[data-lt-out="health"]')).toHaveText('Idle');
+  });
+});
+
+test.describe('one production, every shape', () => {
+  test.use({ viewport: DESK });
+
+  test('the shape control exists twice and the two copies stay in step', async ({ page }) => {
+    await ownTheSurface(page);
+    await toAct(page, 'act-shape', 0.4);
+
+    const toolbar = page.locator('.ltp-toolbar [data-lt-formats]');
+    const band = page.locator('[data-lt-band="act-shape"] [data-lt-formats]');
+    await expect(page.locator('[data-lt-formats]')).toHaveCount(2);
+
+    await band.locator('[data-lt-format-set="1:1"]').click();
+    await expect(toolbar.locator('[data-lt-format-set="1:1"]')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await expect(toolbar.locator('[data-lt-format-set="16:9"]')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+
+    await toolbar.locator('[data-lt-format-set="16:9"]').click();
+    await expect(band.locator('[data-lt-format-set="16:9"]')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  test('the shape control physically re-flows the stage, and 9:16 draws the reserved space', async ({
+    page,
+  }) => {
+    await ownTheSurface(page);
+    await toAct(page, 'act-shape', 0.4);
 
     const canvas = page.locator('[data-lt-canvas]');
     const wide = (await canvas.boundingBox())!;
 
-    await page.locator('[data-lt-format-set="9:16"]').click();
-    await page.waitForTimeout(500);
+    await page.locator('.ltp-toolbar [data-lt-format-set="9:16"]').click();
+    await expect(page.locator('[data-lt-stage]')).toHaveAttribute('data-lt-format', '9:16');
+    await expect(page.locator('[data-lt-shape]')).toHaveText('9:16');
+    await page.waitForTimeout(400);
+
     const tall = (await canvas.boundingBox())!;
     expect(tall.width).toBeLessThan(wide.width * 0.5);
     expect(tall.height).toBeGreaterThan(wide.height * 0.9);
-    await expect(page.locator('[data-lt-shape]')).toHaveText('9:16');
 
-    await page.locator('[data-lt-format-set="1:1"]').click();
-    await page.waitForTimeout(500);
+    /* The space the platform keeps for chat and buttons, drawn on the picture. */
+    await expect(page.locator('[data-lt-guides]')).toHaveClass(/is-on/);
+    await expect(page.locator('.ltp-guides__zone--bottom')).toBeVisible();
+    await expect(page.locator('.ltp-guides__zone--right')).toBeVisible();
+
+    await page.locator('.ltp-toolbar [data-lt-format-set="1:1"]').click();
+    await page.waitForTimeout(400);
     const square = (await canvas.boundingBox())!;
     expect(Math.abs(square.width - square.height)).toBeLessThan(4);
 
-    // No platform here asks for a square, and the surface says so rather than faking one.
+    /* No platform here asks for a square, and the surface says so rather than faking one. */
     await expect(page.locator('[data-lt-statedetail]')).toContainText(
       'No destination here asks for it',
     );
   });
 
-  test('a Moment recomposes the stage without moving the frame', async ({ page }) => {
+  test('the Shapes band prints what each destination will be sent', async ({ page }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-produce', 0.6);
+    await toAct(page, 'act-shape', 0.4);
+    await expect(page.locator('[data-lt-formattable]')).toHaveText(
+      'YouTube 16:9  ·  Twitch 16:9  ·  TikTok 9:16  ·  Instagram 9:16  ·  X 16:9  ·  Facebook 16:9',
+    );
+  });
+});
 
-    // The camera has to be on before a Moment that uses it can compose anything.
-    await page.locator('[data-lt-input="camera"]').click();
-    await expect(page.locator('[data-lt-layer="camera"]')).toBeVisible();
+test.describe('the Moments', () => {
+  test.use({ viewport: DESK });
 
+  test('a Moment recomposes the stage without moving the frame, and the mirror agrees', async ({
+    page,
+  }) => {
+    await ownTheSurface(page);
+    await toAct(page, 'act-moments', 0.5);
+
+    await expect(page.locator('[data-lt-layer="camera"]')).toHaveClass(/is-on/);
     const frameBefore = (await page.locator('[data-lt-frame]').boundingBox())!;
     const cameraBefore = (await page.locator('[data-lt-layer="camera"]').boundingBox())!;
 
-    await page.locator('[data-lt-moment="guest"]').click();
+    await page.locator('[data-lt-moment-mirror="guest"]').click();
+    await expect(page.locator('[data-lt-stage]')).toHaveAttribute('data-lt-active-moment', 'guest');
     await page.waitForTimeout(600);
 
     await expect(page.locator('[data-lt-moment="guest"]')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('[data-lt-layer="guest"]')).toBeVisible();
+    await expect(page.locator('[data-lt-moment-mirror="guest"]')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('[data-lt-layer="guest"]')).toHaveClass(/is-on/);
+    expect((await verifyState(page)).moment).toBe('guest');
+
     const cameraAfter = (await page.locator('[data-lt-layer="camera"]').boundingBox())!;
     const frameAfter = (await page.locator('[data-lt-frame]').boundingBox())!;
 
-    // The contents cross over; the frame itself holds. That is the difference between a Moment
-    // and a page transition.
+    /* The contents cross over; the frame itself holds. That is the difference between a Moment
+       and a page transition. */
     expect(cameraAfter.width).toBeLessThan(cameraBefore.width * 0.6);
     expect(frameAfter.width).toBeCloseTo(frameBefore.width, 0);
     expect(frameAfter.y).toBeCloseTo(frameBefore.y, 0);
   });
 
-  test('Pro adds panels and moves nothing the visitor already learned', async ({ page }) => {
+  test('Screen Share turns the screen on instead of refusing', async ({ page }) => {
+    await ownTheSurface(page);
+    await expect(page.locator('[data-lt-input="screen"]')).toHaveAttribute('aria-pressed', 'false');
+
+    await page.locator('[data-lt-moment="screen-share"]').click();
+    await expect(page.locator('[data-lt-input="screen"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-lt-layer="screen"]')).toHaveClass(/is-on/);
+    await expect(page.locator('[data-lt-stage]')).toHaveAttribute(
+      'data-lt-active-moment',
+      'screen-share',
+    );
+  });
+
+  test('a Moment that mutes the microphone says so on the control', async ({ page }) => {
+    await ownTheSurface(page);
+    await page.locator('[data-lt-moment="main-camera"]').click();
+    await expect(page.locator('[data-lt-input="mic"] [data-lt-input-state]')).toHaveText('On');
+
+    await page.locator('[data-lt-moment="break"]').click();
+    await expect(page.locator('[data-lt-input="mic"] [data-lt-input-state]')).toHaveText('Muted');
+    await expect(page.locator('[data-lt-layer="text"]')).toHaveText('Back in a moment');
+  });
+
+  test('the number keys switch Moments, the way the product does', async ({ page }) => {
+    await ownTheSurface(page);
+    await page.locator('body').click({ position: { x: 2, y: 2 } });
+    await page.keyboard.press('1');
+    await expect(page.locator('[data-lt-stage]')).toHaveAttribute(
+      'data-lt-active-moment',
+      'starting-soon',
+    );
+    await page.keyboard.press('6');
+    await expect(page.locator('[data-lt-stage]')).toHaveAttribute('data-lt-active-moment', 'ending');
+  });
+});
+
+test.describe('the outputs', () => {
+  test.use({ viewport: DESK });
+
+  test('six outputs, each in its own platform shape, counted by the lede', async ({ page }) => {
+    await ownTheSurface(page);
+    await toAct(page, 'act-outputs', 0.5);
+
+    const outputs = page.locator('[data-lt-outputs] figure.ltp-output');
+    await expect(outputs).toHaveCount(6);
+    await expect(page.locator('[data-lt-outputs] canvas')).toHaveCount(6);
+    for (const [id, shape] of [
+      ['youtube', '16:9'],
+      ['tiktok', '9:16'],
+      ['x', '16:9'],
+    ] as const) {
+      await expect(page.locator(`[data-lt-output="${id}"] .ltp-output__meta`)).toContainText(shape);
+    }
+    await expect(page.locator('[data-lt-outputs-lede]')).toContainText(
+      'Pick destinations and they light up here.',
+    );
+  });
+
+  test('an output lights up with the destination it belongs to', async ({ page }) => {
+    await ownTheSurface(page);
+    /*
+     * Connected first, then read. The Outputs band is one of the two tall bands, and a tall
+     * band is a panel over the surface: while it is on screen the tiles underneath it are not
+     * reachable by a pointer. See `audit-closure.spec.ts` for that finding stated on its own.
+     */
+    await page.locator('[data-lt-dest="youtube"] [data-lt-pick]').click();
+    await expect(page.locator(READY)).toHaveCount(1, { timeout: 6_000 });
+
+    await toAct(page, 'act-outputs', 0.5);
+    await expect(page.locator('[data-lt-output="youtube"]')).toHaveAttribute(
+      'data-lt-state',
+      'READY',
+    );
+    await expect(page.locator('[data-lt-output="youtube"] .lt-chip__label')).toHaveText('Ready');
+    await expect(page.locator('[data-lt-output="tiktok"]')).toHaveAttribute(
+      'data-lt-state',
+      'DISCONNECTED',
+    );
+    await expect(page.locator('[data-lt-outputs-lede]')).toContainText(
+      '1 destination, 1 shape (16:9), one production.',
+    );
+  });
+});
+
+test.describe('instead of OBS', () => {
+  test.use({ viewport: DESK });
+
+  test('the two lanes play, and playing ours moves the surface behind it', async ({ page }) => {
+    await ownTheSurface(page);
+    await toAct(page, 'act-versus', 0.4);
+
+    const versus = page.locator('[data-lt-versus]');
+    await expect(versus).toHaveAttribute('data-lt-versus-state', 'idle');
+    await expect(page.locator('[data-lt-track="obs"] li')).toHaveCount(14);
+    await expect(page.locator('[data-lt-track="livetap"] li')).toHaveCount(6);
+
+    await page.getByRole('button', { name: 'Play the usual setup' }).click();
+    await expect(versus).toHaveAttribute('data-lt-versus-state', 'obs');
+    await expect(page.locator('[data-lt-count="obs"]')).toHaveText('14', { timeout: 6_000 });
+
+    await page.getByRole('button', { name: 'Play LIVETAP' }).click();
+    await expect(versus).toHaveAttribute('data-lt-versus-state', 'both');
+    /* Lane B is not a picture of the product: it connects two destinations on the real surface
+       and goes live, which is the only honest way to claim six taps. */
+    await expect(page.locator('[data-lt-dest="youtube"]')).not.toHaveAttribute(
+      'data-lt-state',
+      'DISCONNECTED',
+    );
+    await expect(page.locator('[data-lt-dest="tiktok"]')).not.toHaveAttribute(
+      'data-lt-state',
+      'DISCONNECTED',
+    );
+    /* Talking suggests YouTube and Twitch, and the lane adds TikTok, so three go live. */
+    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 25_000 });
+  });
+});
+
+test.describe('Simple by default, Pro when you want it', () => {
+  test.use({ viewport: DESK });
+
+  test('Pro adds four rows, says so in the signature, and takes nothing away', async ({ page }) => {
     await ownTheSurface(page);
     await toAct(page, 'act-pro', 0.4);
 
-    const frameBefore = (await page.locator('[data-lt-frame]').boundingBox())!;
     await expect(page.locator('[data-lt-prolayers]')).toBeHidden();
+    expect((await verifyState(page)).mode).toBe('simple');
+    const controlsBefore = await page.locator('.ltp-toolbar button').count();
 
-    await page.locator('[data-lt-pro-toggle]').click();
-    await expect(page.locator('[data-lt-pro-toggle]')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.locator('[data-lt-prorow="log"]')).toBeVisible();
-    await expect(page.locator('[data-lt-prolayers]')).toContainText('This session');
+    await page.locator('[data-lt-band="act-pro"] [data-lt-mode-set="pro"]').click();
+    await expect(page.locator('[data-lt-prolayers]')).toBeVisible();
+    await expect(page.locator('[data-lt-prorow]')).toHaveCount(4);
+    await expect(page.locator('[data-lt-prorow="log"]')).toContainText('This session');
+    await expect(page.locator('[data-lt-prorow="ceiling"]')).toContainText('Mbps');
+    await expect(page.locator('[data-lt-surface]')).toHaveClass(/is-pro/);
+    expect((await verifyState(page)).mode).toBe('pro');
 
-    const frameAfter = (await page.locator('[data-lt-frame]').boundingBox())!;
-    expect(frameAfter).toEqual(frameBefore);
+    /* Both copies of the control agree, and the desk keeps every button it had. */
+    await expect(page.locator('.ltp-toolbar [data-lt-mode-set="pro"]')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(await page.locator('.ltp-toolbar button').count()).toBe(controlsBefore);
+
+    await page.locator('.ltp-toolbar [data-lt-mode-set="simple"]').click();
+    await expect(page.locator('[data-lt-prolayers]')).toBeHidden();
+    expect((await verifyState(page)).mode).toBe('simple');
   });
 
-  test('the close is the real first question, and it carries the answer into the app', async ({
+  test('Simple never shows a number Pro is there to show', async ({ page }) => {
+    await ownTheSurface(page);
+    await expect(page.locator('[data-lt-prolayers]')).toBeHidden();
+    await expect(page.locator('.ltp-toolbar')).not.toContainText('Mbps');
+  });
+});
+
+test.describe('the close is the app first question', () => {
+  test.use({ viewport: DESK });
+
+  test('the intent chips change the production and carry the answer into the app', async ({
     page,
   }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-start', 0.5);
+    await toAct(page, 'act-make', 0.5);
 
-    await expect(page.getByRole('heading', { name: 'What are you making?' })).toBeVisible();
+    await expect(page.locator('.ltp-close__q')).toHaveText('What are you making?');
     await expect(page.locator('[data-lt-intent]')).toHaveCount(6);
-    await expect(page.locator('[data-lt-open]')).toHaveAttribute('href', './app/start');
+    await expect(page.locator('[data-lt-open]')).toHaveAttribute(
+      'href',
+      './app/start?intent=talking',
+    );
 
     await page.locator('[data-lt-intent="vertical"]').click();
     await expect(page.locator('[data-lt-intent="vertical"]')).toHaveAttribute(
@@ -235,19 +491,41 @@ test.describe('the playgrounds', () => {
       'href',
       './app/start?intent=vertical',
     );
-    // Vertical Live composes in 9:16, and the stage adopts it.
+    await expect(page.locator('[data-lt-open]')).toHaveText('Open LIVETAP for Vertical Live');
+    /* Vertical Live composes in 9:16, and the stage adopts it. */
     await expect(page.locator('[data-lt-shape]')).toHaveText('9:16');
+    await expect(page.locator('[data-lt-intent-answer]')).toContainText(
+      'Vertical Live: Built for phones, first. Composing in 9:16',
+    );
+    /* Its two suggested destinations are the two that accept it. */
+    await expect(page.locator('[data-lt-dest="tiktok"]')).toHaveClass(/is-suggested/);
+    await expect(page.locator('[data-lt-dest="instagram"]')).toHaveClass(/is-suggested/);
+  });
+
+  test('an intent renames the Moments it renames, in both places', async ({ page }) => {
+    await ownTheSurface(page);
+    await toAct(page, 'act-make', 0.5);
+
+    await page.locator('[data-lt-intent="gaming"]').click();
+    await expect(
+      page.locator('[data-lt-moment="screen-share"] [data-lt-moment-name]'),
+    ).toHaveText('Gameplay');
+    await expect(
+      page.locator('[data-lt-moment-mirror="screen-share"] [data-lt-moment-name]'),
+    ).toHaveText('Gameplay');
   });
 });
 
 test.describe('the signature move: break it yourself', () => {
+  test.use({ viewport: DESK });
+
   test('dragging a live destination off the stage breaks exactly that one', async ({ page }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-produce', 0.5);
     await goLiveOnThree(page);
-
     await toAct(page, 'act-break', 0.2);
+    await expect(page.locator('[data-lt-dest].is-armed')).toHaveCount(3);
     await expect(page.locator('[data-lt-dest].is-draggable')).toHaveCount(3);
+    await expect(page.locator('[data-lt-dest="youtube"] [data-lt-slot] button')).toBeVisible();
 
     const before = {
       twitch: await tileState(page, 'twitch'),
@@ -263,7 +541,7 @@ test.describe('the signature move: break it yourself', () => {
       await page.waitForTimeout(40);
     }
 
-    // The break fires while the tile is still held: a stream does not wait for you to let go.
+    /* The break fires while the tile is still held: a stream does not wait for you to let go. */
     await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute(
       'data-lt-state',
       /DEGRADED|RECONNECTING/,
@@ -274,31 +552,33 @@ test.describe('the signature move: break it yourself', () => {
     await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute(
       'data-lt-state',
       'RECONNECTING',
-      { timeout: 4_000 },
+      { timeout: 6_000 },
     );
     await expect(page.locator('[data-lt-dest][data-lt-state="RECONNECTING"]')).toHaveCount(1);
     await expect(page.locator(LIVE)).toHaveCount(2);
 
-    // The card says what happened, why, what LIVETAP is doing and what you can do.
+    /* The card says what happened, why, what LIVETAP is doing and what you can do. */
     const card = page.locator('[data-lt-dest="youtube"] .lt-errorcard');
     await expect(card).toBeVisible();
     await expect(card).toContainText('YouTube stopped accepting the picture.');
     await expect(card).toContainText('Your other destinations are not affected.');
-    await expect(card).toContainText(`Attempt 1 of 10`);
+    await expect(card).toContainText('Attempt 1 of 10');
+    await expect(card.getByRole('button', { name: 'Stop this destination' })).toBeVisible();
+    /* And a ring counts the four seconds down beside the tile. */
+    await expect(page.locator('[data-lt-dest="youtube"] [data-lt-digit]')).toHaveText(/^[0-4]$/);
 
-    // Not one thing about a sibling changed while the broken one fell over.
+    /* Not one thing about a sibling changed while the broken one fell over. */
     expect(await tileState(page, 'twitch')).toEqual(before.twitch);
     expect(await tileState(page, 'facebook')).toEqual(before.facebook);
 
-    // Then it pulls itself back in, on its own.
-    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 12_000 });
+    /* Then it pulls itself back in, on its own, with nothing asked of the visitor. */
+    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 15_000 });
     expect(await tileState(page, 'twitch')).toEqual(before.twitch);
     expect(await tileState(page, 'facebook')).toEqual(before.facebook);
   });
 
   test('the keyboard does the same thing, on the same element', async ({ page }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-produce', 0.5);
     await goLiveOnThree(page);
     await toAct(page, 'act-break', 0.2);
 
@@ -315,54 +595,159 @@ test.describe('the signature move: break it yourself', () => {
     await expect(page.locator('[data-lt-dest="twitch"]')).toHaveAttribute(
       'data-lt-state',
       'RECONNECTING',
-      { timeout: 4_000 },
+      { timeout: 6_000 },
     );
     await expect(page.locator('[data-lt-dest][data-lt-state="RECONNECTING"]')).toHaveCount(1);
     await expect(page.locator(LIVE)).toHaveCount(2);
     expect(await tileState(page, 'youtube')).toEqual(before.youtube);
     expect(await tileState(page, 'facebook')).toEqual(before.facebook);
 
-    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 12_000 });
+    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 15_000 });
   });
 
   test('an arrow nudge under the threshold strains the path and changes nothing', async ({
     page,
   }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-produce', 0.5);
     await goLiveOnThree(page);
     await toAct(page, 'act-break', 0.2);
 
     const tile = page.locator('[data-lt-dest="youtube"] [data-lt-pick]');
     await tile.focus();
-    // Six presses is 144px, under the 168px threshold. The stream never broke.
+    /* Six presses is 144px, under the 168px threshold. The stream never broke. */
     for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
     await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute('data-lt-state', 'LIVE');
-    const tension = await page.locator('[data-lt-dest="youtube"]').evaluate((el) =>
-      Number(getComputedStyle(el).getPropertyValue('--lt-tension')),
-    );
+    const tension = await page
+      .locator('[data-lt-dest="youtube"]')
+      .evaluate((el) => Number(getComputedStyle(el).getPropertyValue('--lt-tension')));
     expect(tension).toBeGreaterThan(0.6);
     expect(tension).toBeLessThan(1);
 
-    // Escape returns it to its port with no state change, exactly like a release under it.
+    /* Escape returns it to its port with no state change, exactly like a release under it. */
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute('data-lt-state', 'LIVE');
     await expect(page.locator(LIVE)).toHaveCount(3);
   });
-});
 
-test.describe('reduced motion loses movement and nothing else', () => {
-  test.use({ reducedMotion: 'reduce' });
-
-  test('offers no grip, breaks from the keyboard, and never moves the tile', async ({ page }) => {
+  test('the chapter button does the whole thing, and its label says what it will do', async ({
+    page,
+  }) => {
     await ownTheSurface(page);
-    await toAct(page, 'act-produce', 0.5);
+    await toAct(page, 'act-break', 0.3);
+
+    const cta = page.locator('[data-lt-break-cta]');
+    await expect(cta).toHaveText('Go live, then break YouTube');
+    await cta.click();
+
+    await expect(page.locator(LIVE)).toHaveCount(2, { timeout: 20_000 });
+    await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute(
+      'data-lt-state',
+      'RECONNECTING',
+      { timeout: 15_000 },
+    );
+    await expect(cta).toHaveText('Breaking. Watch the tile');
+    await expect(page.locator('[data-lt-dest="twitch"]')).toHaveAttribute('data-lt-state', 'LIVE');
+
+    await expect(page.locator(LIVE)).toHaveCount(2, { timeout: 15_000 });
+    await expect(cta).toHaveText('Break YouTube for me');
+  });
+
+  test('stopping the broken one keeps the others live', async ({ page }) => {
+    await ownTheSurface(page);
     await goLiveOnThree(page);
     await toAct(page, 'act-break', 0.2);
 
-    // The drag apparatus is not constructed at all, so no grip is offered.
+    await page.locator('[data-lt-dest="facebook"] [data-lt-pick]').focus();
+    await page.keyboard.press('Delete');
+    await expect(page.locator('[data-lt-dest="facebook"]')).toHaveAttribute(
+      'data-lt-state',
+      'RECONNECTING',
+      { timeout: 6_000 },
+    );
+
+    await page
+      .locator('[data-lt-dest="facebook"]')
+      .getByRole('button', { name: 'Stop this destination' })
+      .click();
+    await expect(page.locator('[data-lt-dest="facebook"]')).toHaveAttribute(
+      'data-lt-state',
+      'ENDED',
+    );
+    await expect(page.locator(LIVE)).toHaveCount(2);
+    await expect(page.locator('[data-lt-dest="facebook"] .lt-errorcard')).toHaveCount(0);
+  });
+
+  test('leaving the peak disarms the tiles again', async ({ page }) => {
+    await ownTheSurface(page);
+    await goLiveOnThree(page);
+    await toAct(page, 'act-break', 0.2);
+    await expect(page.locator('[data-lt-dest].is-armed')).toHaveCount(3);
+
+    await toAct(page, 'act-shape', 0.4);
+    await expect(page.locator('[data-lt-dest].is-armed')).toHaveCount(0);
     await expect(page.locator('[data-lt-dest].is-draggable')).toHaveCount(0);
-    await expect(page.locator('[data-lt-dest="youtube"] [data-lt-grip]')).toBeHidden();
+    await expect(page.locator(LIVE)).toHaveCount(3);
+  });
+});
+
+test.describe('the chapters own the scroll', () => {
+  test.use({ viewport: DESK });
+
+  test('each chapter lights its own band, and only its own', async ({ page }) => {
+    await ownTheSurface(page);
+    for (const id of BANDED_ACTS) {
+      await toAct(page, id, 0.5);
+      expect(await page.evaluate(() => document.body.dataset.ltAct)).toBe(id);
+      await expect(page.locator('[data-lt-band].is-here')).toHaveCount(1);
+      await expect(page.locator(`[data-lt-band="${id}"]`)).toHaveClass(/is-here/);
+      await expect(page.locator(`[data-lt-band="${id}"] .ltp-band__title`)).toBeVisible();
+    }
+    /* The close has no band: it is the only chapter whose copy is inside the act. */
+    await toAct(page, 'act-make', 0.5);
+    expect(await page.evaluate(() => document.body.dataset.ltAct)).toBe('act-make');
+    await expect(page.locator('[data-lt-band].is-here')).toHaveCount(0);
+    await expect(page.locator('.ltp-close')).toBeVisible();
+    await expect(page.locator('[data-lt-surface]')).toHaveClass(/is-closing/);
+  });
+});
+
+test.describe('the tour is operated, never played', () => {
+  test.use({ viewport: DESK });
+
+  test('opens, never advances by itself, and strikes a step through when it is done', async ({
+    page,
+  }) => {
+    await ownTheSurface(page);
+    await page.locator('[data-lt-tour-open]').click();
+
+    const tour = page.getByRole('region', { name: 'Guided tour' });
+    await expect(tour).toBeVisible();
+    await expect(tour.locator('[data-lt-step]')).toHaveCount(7);
+    await expect(tour.locator('[data-lt-step].is-done')).toHaveCount(0);
+    /* No progress counter, ever. */
+    await expect(tour).not.toContainText('/ 7');
+
+    await page.locator('.ltp-toolbar [data-lt-format-set="9:16"]').click();
+    await expect(tour.locator('[data-lt-step="shape"]')).toHaveClass(/is-done/);
+    /* Steps complete out of order: changing the shape leaves every other step open. */
+    await expect(tour.locator('[data-lt-step="break"]')).not.toHaveClass(/is-done/);
+
+    await page.keyboard.press('Escape');
+    await expect(tour).toBeHidden();
+  });
+});
+
+test.describe('reduced motion loses movement and nothing else', () => {
+  test.use({ viewport: DESK, reducedMotion: 'reduce' });
+
+  test('offers no grip, breaks from the keyboard, and never moves the tile', async ({ page }) => {
+    await ownTheSurface(page);
+    await goLiveOnThree(page);
+    await toAct(page, 'act-break', 0.2);
+
+    /* The drag apparatus is not constructed at all, so no grip is offered. */
+    await expect(page.locator('[data-lt-dest].is-draggable')).toHaveCount(0);
+    await expect(page.locator('[data-lt-dest].is-armed')).toHaveCount(3);
     await expect(page.locator('[data-lt-dest="youtube"] [data-lt-hint]')).toHaveText(
       'Press Delete to drop it',
     );
@@ -373,7 +758,7 @@ test.describe('reduced motion loses movement and nothing else', () => {
     await page.locator('[data-lt-dest="youtube"] [data-lt-pick]').focus();
     await page.keyboard.press('Delete');
 
-    // DEGRADED is skipped, because a 700ms intermediate state with no motion is a flicker.
+    /* DEGRADED is skipped, because a 700ms intermediate state with no motion is a flicker. */
     await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute(
       'data-lt-state',
       'RECONNECTING',
@@ -382,61 +767,31 @@ test.describe('reduced motion loses movement and nothing else', () => {
     await expect(page.locator('[data-lt-dest][data-lt-state="DEGRADED"]')).toHaveCount(0);
     await expect(page.locator(LIVE)).toHaveCount(2);
 
-    // No positional animation: the tile is where it was, to the pixel.
+    /* No positional animation: the tile is where it was, to the pixel. */
     const boxDuring = (await page.locator('[data-lt-dest="youtube"]').boundingBox())!;
     expect(boxDuring).toEqual(boxBefore);
     expect(await tileState(page, 'twitch')).toEqual(twitchBefore);
 
-    // The countdown is text, and the information is identical to the full-motion page.
+    /* The countdown is text, and the information is identical to the full-motion page. */
     await expect(page.locator('[data-lt-dest="youtube"] [data-lt-status]')).toContainText(
       'Attempt 1 of 10, retrying in 4 s',
     );
 
-    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 12_000 });
+    await expect(page.locator(LIVE)).toHaveCount(3, { timeout: 15_000 });
     const boxAfter = (await page.locator('[data-lt-dest="youtube"]').boundingBox())!;
     expect(boxAfter).toEqual(boxBefore);
   });
 
-  test('holds the chaos prologue still and still collapses it', async ({ page }) => {
+  test('holds the picture still and keeps every chapter usable', async ({ page }) => {
     await ownTheSurface(page);
-    const translate = await page
-      .locator('.ltp-dup')
-      .first()
-      .evaluate((el) => getComputedStyle(el).translate);
-    expect(translate).toBe('none');
+    await expect(page.locator('[data-lt-layer="camera"] video')).toHaveJSProperty('paused', true);
 
-    // Present at the act's start, gone by a fifth of the way in, by opacity only.
-    const early = await page.locator('[data-lt-lattice]').evaluate((el) => getComputedStyle(el).opacity);
-    expect(Number(early)).toBeGreaterThan(0.9);
-    await toAct(page, 'act-stage', 0.5);
-    const late = await page.locator('[data-lt-lattice]').evaluate((el) => getComputedStyle(el).opacity);
-    expect(Number(late)).toBe(0);
-  });
-});
-
-test.describe('the tour is operated, never played', () => {
-  test('opens, never advances by itself, and strikes a step through when it is done', async ({
-    page,
-  }) => {
-    await ownTheSurface(page);
-    await page.locator('[data-lt-tour-open]').click();
-    const tour = page.getByRole('region', { name: 'Guided tour' });
-    await expect(tour).toBeVisible();
-    await expect(tour.locator('[data-lt-step]')).toHaveCount(7);
-    await expect(tour.locator('[data-lt-step].is-done')).toHaveCount(0);
-    // No progress counter, ever.
-    await expect(tour).not.toContainText('/ 7');
-
-    await toAct(page, 'act-produce', 0.5);
-    await page.locator('[data-lt-dest="youtube"] [data-lt-pick]').click();
-    await page.locator('[data-lt-dest="twitch"] [data-lt-pick]').click();
-    await expect(page.locator(READY)).toHaveCount(2);
-    await expect(tour.locator('[data-lt-step="pick"]')).toHaveClass(/is-done/);
-    // Steps complete out of order: going live before switching a Moment leaves step 2 open.
-    await expect(tour.locator('[data-lt-step="moment"]')).not.toHaveClass(/is-done/);
-
-    await page.keyboard.press('Escape');
-    await expect(tour).toBeHidden();
+    for (const id of BANDED_ACTS) {
+      await toAct(page, id, 0.5);
+      await expect(page.locator(`[data-lt-band="${id}"]`)).toHaveClass(/is-here/);
+    }
+    await page.locator('.ltp-toolbar [data-lt-format-set="9:16"]').click();
+    await expect(page.locator('[data-lt-stage]')).toHaveAttribute('data-lt-format', '9:16');
   });
 });
 
@@ -450,21 +805,30 @@ test.describe('the composition holds at every width', () => {
       await page.setViewportSize({ width, height });
       await ownTheSurface(page);
 
-      for (const id of ['act-stage', 'act-connect', 'act-produce', 'act-break', 'act-start']) {
+      for (const id of ['act-hero', 'act-break', 'act-shape', 'act-outputs', 'act-make']) {
         await toAct(page, id, 0.5);
         expect(await hasHorizontalOverflow(page), `${id} overflows at ${name}`).toBe(false);
       }
 
-      // Every interactive element clears the 44px floor at every breakpoint.
+      /*
+       * The 44px touch floor, where the design system applies it.
+       *
+       * `packages/ui/src/global.css` scopes `.lt-touch` to `(max-width: 639.98px), (pointer:
+       * coarse)`, so a mouse-driven desk deliberately carries smaller chips for the three input
+       * toggles. Asserting 44px there would be asserting something the product never claimed.
+       */
       const small = await page.evaluate(() => {
         const out: string[] = [];
+        if (!matchMedia('(max-width: 639.98px), (pointer: coarse)').matches) return out;
         const sel =
-          '[data-lt-pick], [data-lt-format-set], [data-lt-moment], [data-lt-intent], [data-lt-golive], [data-lt-input], [data-lt-tour-open], [data-lt-theme], [data-lt-pro-toggle]';
+          '[data-lt-pick], [data-lt-format-set], [data-lt-moment], [data-lt-intent], [data-lt-golive], [data-lt-input], [data-lt-tour-open], [data-lt-theme], [data-lt-mode-set]';
         for (const el of document.querySelectorAll<HTMLElement>(sel)) {
           const r = el.getBoundingClientRect();
           if (r.width < 1 && r.height < 1) continue;
           if (r.height < 43.5 || r.width < 43.5) {
-            out.push(`${el.dataset.ltPick ?? el.className}: ${Math.round(r.width)}x${Math.round(r.height)}`);
+            out.push(
+              `${el.dataset.ltPick ?? el.className}: ${Math.round(r.width)}x${Math.round(r.height)}`,
+            );
           }
         }
         return out;

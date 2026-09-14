@@ -4,17 +4,20 @@
  * Two motion systems and one boundary between them (`LIVETAP_MOTION_SYSTEM.md` §2):
  *
  *   Scroll Craft is the only thing that reads scroll position. It pins the acts, publishes
- *   `--sc-p`, runs the cues, the `pan` travel, the `reveal` wipe, the `count` bloom, the
- *   `parallax` rate and the ground drift, and it owns the reduced-motion floor.
+ *   `--sc-p`, runs the cues and owns the reduced-motion floor.
  *
- *   Anime.js owns everything on a clock or on a pointer: the hero story, every state-change
- *   transition, the countdowns, the path draws, chat arrival, the Pro reveal and the drag. It
- *   never reads scroll except through a `ScrollObserver` threshold, and `sync` on this page
- *   only ever carries playback-method names.
+ *   Anime.js owns everything on a clock or on a pointer: the five-second guided demo, every
+ *   state-change transition, the countdowns, the path draws, chat arrival and the drag. It never
+ *   reads scroll except through a `ScrollObserver` threshold.
  *
- * Everything the page paints is computed from `./data.ts`, whose every array names its source
- * in `packages/*` and is covered by a drift test. Nothing here invents a state, a capability,
- * a placement or a number.
+ * Everything the page paints is computed from `./data.ts`, whose every array names its source in
+ * `packages/*` and is covered by a drift test. Nothing here invents a state, a capability, a
+ * placement or a number.
+ *
+ * The first-time-creator audit (docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md) is the reason
+ * for most of the shape of this file: the picture is real from the first frame, nothing goes live
+ * until the visitor does, every control works at every scroll position, and a control that cannot
+ * do something says why in words next to itself.
  */
 
 /* The engine, vendored verbatim and imported for its one side effect: `window.ScrollCraft`. */
@@ -42,7 +45,6 @@ import {
   INTENTS,
   MAX_ATTEMPTS,
   METHOD_LABEL,
-  METHOD_TONE,
   MOMENTS,
   RENAME,
   RETRY_SECONDS,
@@ -54,6 +56,12 @@ import {
   nextState,
 } from './data.js';
 import type { Format, IntentDef, MomentDef, Rect, State } from './data.js';
+import { createPicture } from './picture.js';
+import type { ComposedLayer } from './picture.js';
+import { mountOutputs } from './outputs.js';
+import type { OutputRow } from './outputs.js';
+import { mountVersus } from './versus.js';
+import { mountCapture } from './capture.js';
 
 /* ============================================================== the engine floor */
 
@@ -85,16 +93,23 @@ const canvas = $('[data-lt-canvas]')!;
 const guides = $('[data-lt-guides]')!;
 const guidesBox = $('.ltp-guides__box')!;
 const shapeBadge = $('[data-lt-shape]')!;
+const stageLive = $('[data-lt-stage-live]')!;
 const stateLine = $('[data-lt-stateline]')!;
 const stateDetail = $('[data-lt-statedetail]')!;
 const signal = $<SVGSVGElement>('[data-lt-signal]')!;
 const destList = $('[data-lt-dests]')!;
 const momentStrip = $('[data-lt-moments]')!;
-const shelf = $('[data-lt-shelf]')!;
+const momentMirror = $('[data-lt-moments-mirror]')!;
 const intentGrid = $('[data-lt-intents]')!;
+const intentAnswer = $('[data-lt-intent-answer]')!;
 const openLink = $<HTMLAnchorElement>('[data-lt-open]')!;
 const interaction = $('[data-lt-interaction]')!;
-const lattice = $('[data-lt-lattice]')!;
+const breakCta = $<HTMLButtonElement>('[data-lt-break-cta]')!;
+const outputsHost = $('[data-lt-outputs]')!;
+const outputsLede = $('[data-lt-outputs-lede]')!;
+const versusHost = $('[data-lt-versus]')!;
+const captureHost = $('[data-lt-capture]')!;
+const cameraNote = $('[data-lt-camera-note]')!;
 
 const golive = $<HTMLButtonElement>('[data-lt-golive]')!;
 const goliveLabel = $('[data-lt-golive-label]')!;
@@ -112,7 +127,6 @@ const chatLog = $('[data-lt-chatlog]')!;
 const chatEmpty = $('[data-lt-chatempty]')!;
 const chatPanel = $('[data-lt-chat]')!;
 
-const proToggle = $<HTMLButtonElement>('[data-lt-pro-toggle]')!;
 const proLayers = $('[data-lt-prolayers]')!;
 
 const sayDest = $('[data-lt-say="dest"]')!;
@@ -128,7 +142,6 @@ interface DestRow {
   name: string;
   state: State;
   attempt: number;
-  /** The li, its tile button, and every part of it the page repaints. */
   li: HTMLElement;
   tile: HTMLButtonElement;
   chip: HTMLElement;
@@ -146,15 +159,18 @@ interface DestRow {
   keyrow: HTMLElement;
   path: SVGPathElement;
   hint: HTMLElement;
+  thumb: HTMLCanvasElement;
   drag: ReturnType<typeof createDraggable> | null;
   nudge: { x: number; y: number };
   tension: number;
 }
 
 const rows: DestRow[] = [];
-let format: Format = '16:9';
+let format: Format = phone.matches ? '9:16' : '16:9';
 let momentId = 'main-camera';
-let intent: IntentDef = INTENTS[0]!;
+let intent: IntentDef = phone.matches
+  ? (INTENTS.find((i) => i.id === 'vertical') ?? INTENTS[0]!)
+  : INTENTS[0]!;
 let pro = false;
 const inputs = { camera: false, mic: false, screen: false };
 let liveAt = 0;
@@ -164,6 +180,18 @@ const log: string[] = [];
 const RING_R = 10;
 const RING_C = 2 * Math.PI * RING_R;
 
+/** The picture engine: a sample creator until the visitor lends their own camera. */
+const picture = createPicture(
+  {
+    creator: { mp4: '/brand/creator.mp4', webm: '/brand/creator.webm', poster: '/brand/creator.webp' },
+    guest: { mp4: '/brand/guest.mp4', webm: '/brand/guest.webm', poster: '/brand/guest.webp' },
+    screen: '/brand/screen.svg',
+  },
+  { reduced },
+);
+
+let outputs: ReturnType<typeof mountOutputs> | null = null;
+
 /* ============================================================= small utilities */
 
 function icon(id: string, size: 20 | 24 = 20): string {
@@ -172,7 +200,6 @@ function icon(id: string, size: 20 | 24 = 20): string {
 
 function say(region: HTMLElement, text: string): void {
   region.textContent = '';
-  // A live region only announces a change, so the text has to land after the clear.
   requestAnimationFrame(() => {
     region.textContent = text;
   });
@@ -189,13 +216,6 @@ function note(line: string): void {
   if (pro) paintPro();
 }
 
-/**
- * The two-system contract, enforced in development rather than trusted.
- *
- * Scroll Craft writes `transform` and `opacity` on anything carrying a cue, a pan or a
- * parallax rate. Anime.js must never write the same property on the same node, so this fails
- * loudly in `vite dev` and compiles out of the production bundle.
- */
 function ownsTransform(el: Element): void {
   if (!import.meta.env.DEV) return;
   if (el.closest('[data-sc-cue],[data-sc-pan],[data-sc-parallax]')) {
@@ -206,28 +226,38 @@ function ownsTransform(el: Element): void {
 /* =============================================================== layout + paths */
 
 /**
- * One measurement pass. It writes the frame's box, the visible canvas's box and the signal
- * layer's own coordinate system, then redraws every path. Called on mount, on resize and on a
- * format change, never per frame.
+ * One measurement pass. On desktop the frame is a constant 16:9 box and the canvas re-flows
+ * inside it. On a phone the frame IS the canvas, so a vertical production stands tall instead of
+ * sitting letterboxed inside a landscape box built for a desk.
  */
 function layout(): void {
   const box = stage.getBoundingClientRect();
   const wrap = (stage.parentElement as HTMLElement).getBoundingClientRect();
-  /* Reserve exactly what the two state lines take rather than a guessed constant, so the stage
-     is as large as the composition actually allows at every viewport. */
   const reserve = stateLine.offsetHeight + stateDetail.offsetHeight + 16;
   const maxH = Math.max(120, wrap.height - reserve);
   const maxW = Math.max(200, box.width);
-  let w = maxW;
-  let h = w / (16 / 9);
-  if (h > maxH) {
-    h = maxH;
-    w = h * (16 / 9);
+  const ar = format === '16:9' ? 16 / 9 : format === '9:16' ? 9 / 16 : 1;
+
+  let w: number;
+  let h: number;
+  if (wide.matches) {
+    w = maxW;
+    h = w / (16 / 9);
+    if (h > maxH) {
+      h = maxH;
+      w = h * (16 / 9);
+    }
+  } else {
+    w = maxW;
+    h = w / ar;
+    if (h > maxH) {
+      h = maxH;
+      w = h * ar;
+    }
   }
   frame.style.setProperty('--ltp-frame-w', `${Math.round(w)}px`);
   frame.style.setProperty('--ltp-frame-h', `${Math.round(h)}px`);
 
-  const ar = format === '16:9' ? 16 / 9 : format === '9:16' ? 9 / 16 : 1;
   let cw = w;
   let ch = w / ar;
   if (ch > h) {
@@ -247,8 +277,6 @@ interface Point {
   y: number;
 }
 
-/** The stage's port for a destination: three down each side on desktop, six along the lower
- *  edge on a phone, allocated in the destinations' own order and never re-sorted. */
 function port(i: number): Point {
   const s = surface.getBoundingClientRect();
   const c = canvas.getBoundingClientRect();
@@ -259,7 +287,6 @@ function port(i: number): Point {
   return { x: (i < 3 ? c.left : c.right) - s.left, y: c.top - s.top + c.height * slot };
 }
 
-/** The tile's own port, on its leading edge. */
 function tilePort(row: DestRow, i: number): Point {
   const s = surface.getBoundingClientRect();
   const t = row.tile.getBoundingClientRect();
@@ -267,11 +294,6 @@ function tilePort(row: DestRow, i: number): Point {
   return { x: (i < 3 ? t.right : t.left) - s.left, y: t.top - s.top + t.height / 2 };
 }
 
-/**
- * A cubic bezier with slack, so the line reads as a cable rather than a leader line. The
- * perpendicular offset collapses toward a straight line as the drag's tension rises, which is
- * the only thing on the page tension drives.
- */
 function pathD(a: Point, b: Point, tension = 0): string {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -342,11 +364,14 @@ function buildTiles(): void {
           <span class="ltp-tile__sep" aria-hidden="true">·</span>
           <span class="lt-num" data-lt-fmt>${d.preferred}</span>
         </span>
-        <span class="lt-chip lt-chip--disconnected" data-lt-chip>
-          <span class="lt-dot lt-dot--ring" data-lt-dot aria-hidden="true"></span>
-          <span class="lt-chip__text">
-            <span class="lt-chip__label" data-lt-label>${STATE_LABEL.DISCONNECTED}</span>
-            <span class="lt-chip__status" data-lt-status>${METHOD_LABEL[d.method]}</span>
+        <span class="ltp-tile__row">
+          <canvas class="ltp-tile__thumb" data-lt-thumb width="176" height="88" hidden aria-hidden="true"></canvas>
+          <span class="lt-chip lt-chip--disconnected" data-lt-chip>
+            <span class="lt-dot lt-dot--ring" data-lt-dot aria-hidden="true"></span>
+            <span class="lt-chip__text">
+              <span class="lt-chip__label" data-lt-label>${STATE_LABEL.DISCONNECTED}</span>
+              <span class="lt-chip__status" data-lt-status>${METHOD_LABEL[d.method]}</span>
+            </span>
           </span>
         </span>
         <span class="ltp-tile__hint" data-lt-hint></span>
@@ -385,6 +410,7 @@ function buildTiles(): void {
       errorslot: $('[data-lt-errorslot]', li)!,
       keyrow: $('[data-lt-keyrow]', li)!,
       path: $<SVGPathElement>(`[data-lt-path="${d.id}"]`, signal)!,
+      thumb: $<HTMLCanvasElement>('[data-lt-thumb]', li)!,
       drag: null,
       nudge: { x: 0, y: 0 },
       tension: 0,
@@ -399,33 +425,18 @@ function buildTiles(): void {
   });
 }
 
-function buildShelf(): void {
-  const trail = $('.ltp-shelf__trail', shelf)!;
-  DESTINATIONS.forEach((d, i) => {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'ltp-shelfcard lt-touch';
-    card.setAttribute('aria-pressed', 'false');
-    card.dataset.ltShelfpick = d.id;
-    card.innerHTML = `
-      <span class="ltp-shelfcard__name">${d.name}</span>
-      <span class="lt-badge lt-badge--${METHOD_TONE[d.method]}">${METHOD_LABEL[d.method]}</span>
-      <span class="lt-chip lt-chip--disconnected" data-lt-shelfchip>
-        <span class="lt-dot lt-dot--ring" aria-hidden="true"></span>
-        <span class="lt-chip__text"><span class="lt-chip__label">${STATE_LABEL.DISCONNECTED}</span></span>
-      </span>
-      ${d.note ? `<span class="ltp-shelfcard__note">${d.note}</span>` : ''}
-    `;
-    card.addEventListener('click', () => {
-      interrupt();
-      toggleDest(i);
-    });
-    shelf.insertBefore(card, trail);
-  });
-}
-
 function momentName(m: MomentDef): string {
   return RENAME[intent.id]?.[m.id] ?? m.name;
+}
+
+function momentGlyph(m: MomentDef): string {
+  return m.id === 'main-camera'
+    ? 'i-camera'
+    : m.id === 'screen-share'
+      ? 'i-screen'
+      : m.id === 'guest'
+        ? 'i-users'
+        : `m-${m.id}`;
 }
 
 function buildMoments(): void {
@@ -435,16 +446,8 @@ function buildMoments(): void {
     b.className = 'lt-moment lt-touch';
     b.setAttribute('aria-pressed', String(m.id === momentId));
     b.dataset.ltMoment = m.id;
-    const glyph =
-      m.id === 'main-camera'
-        ? 'i-camera'
-        : m.id === 'screen-share'
-          ? 'i-screen'
-          : m.id === 'guest'
-            ? 'i-users'
-            : `m-${m.id}`;
     b.innerHTML = `
-      <span class="lt-moment__icon lt-moment__icon--glyph">${icon(glyph, 24)}</span>
+      <span class="lt-moment__icon lt-moment__icon--glyph">${icon(momentGlyph(m), 24)}</span>
       <span class="lt-moment__name" data-lt-moment-name>${momentName(m)}</span>
       <span class="lt-moment__meta" data-lt-moment-meta>${i + 1}</span>
     `;
@@ -453,6 +456,19 @@ function buildMoments(): void {
       setMoment(m.id);
     });
     momentStrip.append(b);
+
+    /* The same six, mirrored into the Moments chapter's band as compact buttons. */
+    const mb = document.createElement('button');
+    mb.type = 'button';
+    mb.className = 'lt-btn lt-btn--secondary lt-btn--sm lt-touch';
+    mb.setAttribute('aria-pressed', String(m.id === momentId));
+    mb.dataset.ltMomentMirror = m.id;
+    mb.innerHTML = `${icon(momentGlyph(m), 20)}<span data-lt-moment-name>${momentName(m)}</span>`;
+    mb.addEventListener('click', () => {
+      interrupt();
+      setMoment(m.id);
+    });
+    momentMirror.append(mb);
   });
 }
 
@@ -460,35 +476,15 @@ function buildIntents(): void {
   INTENTS.forEach((it) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'ltp-intent lt-touch';
-    b.setAttribute('aria-pressed', 'false');
+    b.className = 'ltp-intentchip lt-touch';
+    b.setAttribute('aria-pressed', String(it.id === intent.id));
     b.dataset.ltIntent = it.id;
-    b.dataset.scTilt = '5';
-    b.innerHTML = `
-      <span class="ltp-intent__head">${icon(`n-${it.id}`, 24)}<span class="ltp-intent__title">${it.title}</span></span>
-      <span class="ltp-intent__tag">${it.tagline}</span>
-      <ul class="ltp-intent__gets">${it.whatYouGet.map((g) => `<li>${g}</li>`).join('')}</ul>
-    `;
+    b.innerHTML = `${icon(`n-${it.id}`, 24)}<span class="ltp-intentchip__title">${it.title}</span><span class="ltp-intentchip__tag">${it.tagline}</span>`;
     b.addEventListener('click', () => {
       interrupt();
       setIntent(it);
     });
     intentGrid.append(b);
-  });
-}
-
-/** Six copies of each duplicated control, so "six of everything" is literal rather than said. */
-function buildLattice(): void {
-  $$('.ltp-dup', lattice).forEach((dup) => {
-    const first = $('.ltp-dup__copy', dup)!;
-    first.style.setProperty('--i', '0');
-    for (let i = 1; i < 6; i++) {
-      const copy = first.cloneNode(true) as HTMLElement;
-      copy.style.setProperty('--i', String(i));
-      $$('input', copy).forEach((input) => input.setAttribute('tabindex', '-1'));
-      $$('button', copy).forEach((b) => b.setAttribute('tabindex', '-1'));
-      dup.insertBefore(copy, first);
-    }
   });
 }
 
@@ -541,12 +537,8 @@ const CHIP_CLASS: Record<State, string> = {
 };
 
 /**
- * Paint one destination, and only that one.
- *
- * The peak's whole claim is that a break touches nothing else, so there is deliberately no
- * "repaint everything" path through the break sequence: a sibling's chip class, dot class and
- * pulse animation are never rewritten, so its halo never restarts and stays out of phase with
- * its neighbours exactly as it was.
+ * Paint one destination, and only that one. The peak's whole claim is that a break touches
+ * nothing else, so there is deliberately no "repaint everything" path through the break.
  */
 function paintDest(i: number): void {
   const row = rows[i]!;
@@ -568,8 +560,6 @@ function paintDest(i: number): void {
   const fmt = aspectFor(d);
   if (row.fmt.textContent !== fmt) row.fmt.textContent = fmt;
 
-  /* The state is published on the tile as well as drawn, so a test and a screen reader read
-     the same thing the eye does. */
   row.li.dataset.ltState = row.state;
   const mine = row.state !== 'DISCONNECTED';
   row.li.classList.toggle('is-mine', mine);
@@ -579,18 +569,21 @@ function paintDest(i: number): void {
     'aria-label',
     `${d.name}, ${label}, ${METHOD_LABEL[d.method]}, demo destination`,
   );
+  /* The tile's own picture, in the destination's own shape, appears once it is connected. */
+  row.thumb.hidden = !mine || row.state === 'ENDED';
+  if (!row.thumb.hidden) sizeThumb(row, fmt);
 
-  const shelfCard = $(`[data-lt-shelfpick="${d.id}"]`, shelf);
-  if (shelfCard) {
-    shelfCard.setAttribute('aria-pressed', String(mine));
-    const chip = $('[data-lt-shelfchip]', shelfCard);
-    if (chip) {
-      chip.className = chipClass;
-      const l = $('.lt-chip__label', chip);
-      if (l) l.textContent = label;
-      const dot = $('.lt-dot', chip);
-      if (dot) dot.className = dotClass;
-    }
+  /* An armed tile says how to break it; a disconnected one says how to start. */
+  if (!peakArmed || row.state !== 'LIVE') {
+    const hint =
+      row.state === 'DISCONNECTED'
+        ? d.method === 'key'
+          ? 'Tap to paste a key'
+          : 'Tap to connect'
+        : peakArmed && row.state !== 'LIVE'
+          ? 'Go live to break it'
+          : '';
+    if (row.hint.textContent !== hint) row.hint.textContent = hint;
   }
 
   drawPath(row, i);
@@ -633,13 +626,16 @@ function paintReadouts(): void {
     outHealth.textContent = word;
     healthPill.className = `lt-pill lt-pill--${HEALTH[word]}`;
   }
+  stageLive.hidden = !anyLive;
 
   const ready = rows.filter((r) => r.state === 'READY' || r.state === 'ENDED').length;
-  goliveSub.textContent = anyLive
-    ? `Live on ${liveCount()}`
-    : ready
-      ? `Going live on ${ready}`
-      : 'No destination is ready';
+  if (!goliveSub.classList.contains('is-warning') && goliveSub.dataset.ltYourturn !== 'true') {
+    goliveSub.textContent = anyLive
+      ? `Live on ${liveCount()}`
+      : ready
+        ? `Going live on ${ready}`
+        : 'Pick a destination, or tap GO LIVE and LIVETAP picks two';
+  }
   if (!countdown) {
     goliveLabel.textContent = anyLive ? 'END' : 'GO LIVE (DEMO)';
     golive.classList.toggle('ltp-golive--end', anyLive);
@@ -649,14 +645,15 @@ function paintReadouts(): void {
         ? `END the demo on ${liveCount()} destinations`
         : ready
           ? `GO LIVE on ${ready} demo destinations`
-          : 'GO LIVE, no destination is ready yet',
+          : 'GO LIVE, LIVETAP connects two demo destinations first',
     );
   }
-  golive.setAttribute('aria-disabled', String(!ready && !anyLive));
 
-  updateCounters();
+  paintBreakCta();
   paintStateLine();
   paintFormatTable();
+  paintOutputs();
+  drawThumbs(true);
   if (pro) paintPro();
 }
 
@@ -728,6 +725,8 @@ function setFormat(next: Format, announce = true): void {
   guidesBox.style.setProperty('--sa-r', String(sa.right));
   guidesBox.style.setProperty('--sa-b', String(sa.bottom));
   guidesBox.style.setProperty('--sa-l', String(sa.left));
+  guides.style.setProperty('--sa-r', String(sa.right));
+  guides.style.setProperty('--sa-b', String(sa.bottom));
   layout();
   paintGuides();
   applyMoment(true);
@@ -743,24 +742,23 @@ function setFormat(next: Format, announce = true): void {
   }
 }
 
-/**
- * The safe-area guides.
- *
- * They are on while ADAPT is the act on screen, and they stay on in any shape but 16:9, which
- * is where the bottom 28% and the right 16% are the whole point. Everything they carry is also
- * in text, so they are `aria-hidden` decoration.
- */
+/** The safe-area guides: on while SHAPES is the chapter on screen, and in any shape but 16:9. */
 let guidesAct = false;
 function paintGuides(): void {
   guides.classList.toggle('is-on', guidesAct || format !== '16:9');
 }
 
+/**
+ * A Moment never refuses. Screen Share needs the screen, so choosing it switches the screen on
+ * and says so, instead of declining in silence.
+ */
 function setMoment(id: string, announce = true): void {
   const m = MOMENTS.find((x) => x.id === id);
   if (!m) return;
+  let extra = '';
   if (m.id === 'screen-share' && !inputs.screen) {
-    say(sayDest, 'Screen Share needs the screen switched on first.');
-    return;
+    setInput('screen', true, false);
+    extra = ' Screen switched on for it.';
   }
   momentId = id;
   stage.dataset.ltActiveMoment = id;
@@ -773,39 +771,41 @@ function setMoment(id: string, announce = true): void {
       meta.textContent = on && liveCount() ? 'Live now' : String(i + 1);
     }
   });
+  $$('[data-lt-moment-mirror]', momentMirror).forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.ltMomentMirror === id)),
+  );
   applyMoment();
   setInput('mic', !m.micMuted, false);
   publish();
   note(`Moment ${momentName(m)}`);
-  if (announce) say(sayDest, `Moment: ${momentName(m)}.`);
+  if (announce) say(sayDest, `Moment: ${momentName(m)}.${extra}`);
 }
 
-/**
- * Where a layer sits, for the shape the stage is currently in.
- *
- * This mirrors `applyIntentToLayer()`: a text layer is always pushed inside the safe area, and
- * a camera layer is only pushed inside it where the product pushes it, which is the vertical
- * screen-share inset. Insetting a full-frame camera would letterbox a picture the product
- * deliberately re-crops, and it is how the stage came to render a pale rectangle with a border
- * on the first verification pass.
- */
-function placement(layer: MomentDef['layers'][number]): Rect {
+/** Where a layer sits, for a given shape. Mirrors the product's applyIntentToLayer(). */
+function placementFor(layer: MomentDef['layers'][number], fmt: Format): Rect {
   const at = layer.at ?? { default: { x: 0, y: 0, w: 1, h: 1 } };
-  const base = (format === '9:16' && at['9:16']) || at.default;
-  if (layer.kind === 'text') return insetToSafeArea(base, format);
-  if (layer.kind === 'camera' && momentId === 'screen-share' && format === '9:16') {
-    return insetToSafeArea(base, format);
+  const base = (fmt === '9:16' && at['9:16']) || at.default;
+  if (layer.kind === 'text') return insetToSafeArea(base, fmt);
+  if (layer.kind === 'camera' && momentId === 'screen-share' && fmt === '9:16') {
+    return insetToSafeArea(base, fmt);
   }
   return base;
 }
 
-/**
- * The Moment's layers, placed for the current format through the product's own maths.
- *
- * The placement itself lands in one frame, because it is a layout change and layout changes are
- * not animated on this page. The motion is a transform-and-opacity settle staggered from the
- * middle outward, so the picture re-composes rather than sweeping.
- */
+/** The current Moment's active layers, placed for a shape, for the composer. */
+function layersFor(fmt: Format): ComposedLayer[] {
+  const m = MOMENTS.find((x) => x.id === momentId)!;
+  const out: ComposedLayer[] = [];
+  for (const layer of m.layers) {
+    if (layer.visible === false || !hasInput(layer.kind)) continue;
+    const l: ComposedLayer = { kind: layer.kind, rect: placementFor(layer, fmt) };
+    if (layer.radius !== undefined) l.radius = layer.radius;
+    if (layer.text !== undefined) l.text = layer.text;
+    out.push(l);
+  }
+  return out;
+}
+
 function applyMoment(reflow = false): void {
   const m = MOMENTS.find((x) => x.id === momentId)!;
   const live = new Map(m.layers.map((l) => [l.kind, l] as const));
@@ -817,7 +817,7 @@ function applyMoment(reflow = false): void {
     const on = !!layer && layer.visible !== false && hasInput(kind);
     el.classList.toggle('is-on', on);
     if (!on) continue;
-    const r = placement(layer!);
+    const r = placementFor(layer!, format);
     el.style.setProperty('--lx', String(r.x));
     el.style.setProperty('--ly', String(r.y));
     el.style.setProperty('--lw', String(r.w));
@@ -826,6 +826,7 @@ function applyMoment(reflow = false): void {
     if (kind === 'text') el.textContent = layer!.text ?? '';
     active.push(el);
   }
+  drawThumbs(true);
 
   if (reduced || !active.length) return;
   active.forEach((el) => ownsTransform(el));
@@ -856,19 +857,14 @@ function hasInput(kind: string): boolean {
 function setInput(which: 'camera' | 'mic' | 'screen', on: boolean, announce = true): void {
   inputs[which] = on;
   const word = which === 'mic' ? (on ? 'On' : 'Muted') : on ? 'On' : 'Off';
-  const rowBtn = $(`[data-lt-input="${which}"]`);
-  if (rowBtn) {
-    rowBtn.setAttribute('aria-pressed', String(on));
-    const s = $('[data-lt-input-state]', rowBtn);
+  $$(`[data-lt-input="${which}"]`).forEach((b) => {
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('is-on', on);
+    const s = $('[data-lt-input-state]', b);
     if (s) s.textContent = word;
-  }
-  const ind = $(`[data-lt-indicator="${which}"]`);
-  if (ind) {
-    ind.classList.toggle('is-on', on);
-    const s = $('[data-lt-indicator-state]', ind);
-    if (s) s.textContent = word;
-  }
+  });
   if (which === 'mic') meter(on);
+  if (which === 'camera' && !on && picture.source === 'camera') picture.stopCamera();
   applyMoment();
   publish();
   if (announce) say(sayDest, `${which === 'mic' ? 'Microphone' : which === 'camera' ? 'Camera' : 'Screen'} ${word.toLowerCase()}.`);
@@ -906,16 +902,48 @@ function meter(on: boolean): void {
   }, 220);
 }
 
+/* ================================================================= the camera */
+
+let cameraBusy = false;
+
+async function useCamera(): Promise<void> {
+  if (cameraBusy) return;
+  interrupt();
+  if (picture.source === 'camera') {
+    picture.stopCamera();
+    paintCamera('Camera stopped. Back to the sample picture.');
+    return;
+  }
+  cameraBusy = true;
+  $$('[data-lt-camera-label]').forEach((l) => (l.textContent = 'Asking your browser'));
+  const outcome = await picture.useCamera();
+  cameraBusy = false;
+  if (outcome === 'granted') {
+    setInput('camera', true, false);
+    setMoment('main-camera', false);
+    paintCamera('Your camera is on the stage. It stays in this tab and is never uploaded.');
+    tourDone('camera');
+  } else if (outcome === 'denied') {
+    paintCamera('No camera permission, so the sample picture stays. Nothing was recorded.');
+  } else if (outcome === 'insecure') {
+    paintCamera('A camera needs a secure page. The sample picture stays.');
+  } else {
+    paintCamera('No camera was found, so the sample picture stays.');
+  }
+}
+
+function paintCamera(line: string): void {
+  const on = picture.source === 'camera';
+  surface.dataset.ltSource = picture.source;
+  $$('[data-lt-camera-label]').forEach((l) => (l.textContent = on ? 'Stop my camera' : 'Use my camera'));
+  $$('[data-lt-camera-cta]').forEach((b) => b.setAttribute('aria-pressed', String(on)));
+  cameraNote.textContent = on ? 'Live from your camera. Local only, never uploaded.' : line;
+  say(sayDest, line);
+  publish();
+}
+
 /* ================================================= the destination state machine */
 
-/**
- * Every state change on this page goes through the product's own transition table.
- *
- * The table is mirrored in `data.ts` from `packages/core/src/destination/stateMachine.ts`, so a
- * move the product would refuse is refused here too, and the mirror is load-bearing rather than
- * decorative: a drift in the copy shows up as a demo that stops working, not as a comment that
- * stopped being true.
- */
 function advance(i: number, event: string): boolean {
   const row = rows[i]!;
   const next = nextState(row.state, event);
@@ -923,7 +951,6 @@ function advance(i: number, event: string): boolean {
   row.state = next;
   return true;
 }
-
 
 function toggleDest(i: number): void {
   const row = rows[i]!;
@@ -943,6 +970,10 @@ function toggleDest(i: number): void {
     publish();
     note(`${d.name} not connected`);
     say(sayDest, `${d.name} is not connected.`);
+  } else if (row.state === 'LIVE' || row.state === 'DEGRADED') {
+    /* A live tile tapped is not a refusal: it says what a tap cannot do and what can. */
+    say(sayDest, `${d.name} is live. Use END to stop everything, or drag this tile off the stage to break just this one.`);
+    row.hint.textContent = 'Live. END stops it, or drag it off';
   }
 }
 
@@ -998,10 +1029,39 @@ function connect(i: number): void {
   );
 }
 
+/** Connect without the sign-in wait: for the guided demo and for "do it for me" buttons. */
+function connectNow(i: number): void {
+  if (i < 0) return;
+  const row = rows[i]!;
+  if (row.state !== 'DISCONNECTED') return;
+  advance(i, 'CONNECT');
+  advance(i, 'AUTH_OK');
+  paintDest(i);
+  drawPath(row, i, true);
+  paintReadouts();
+  publish();
+  note(`${row.name} ready`);
+}
+
+/** The two destinations an intent suggests: the first two whose own shape is the intent's. */
+function suggestedFor(it: IntentDef): number[] {
+  const out: number[] = [];
+  DESTINATIONS.forEach((d, i) => {
+    if (out.length < 2 && d.preferred === it.master) out.push(i);
+  });
+  if (out.length < 2) DESTINATIONS.forEach((_, i) => out.length < 2 && !out.includes(i) && out.push(i));
+  return out;
+}
+
 /* ================================================================== GO LIVE */
 
 let countdown: ReturnType<typeof createTimer> | null = null;
 
+/**
+ * GO LIVE works from any state. With nothing connected it connects the two destinations the
+ * chosen intent suggests, says so under the button, and then counts down. A button that only
+ * explains why it did nothing is the thing the audit called a trust killer.
+ */
 function goLive(): void {
   if (countdown) {
     cancelGoLive();
@@ -1013,9 +1073,18 @@ function goLive(): void {
   }
   const ready = rows.filter((r) => r.state === 'READY' || r.state === 'ENDED');
   if (!ready.length) {
-    say(sayBroadcast, 'No destination is ready. Pick one first.');
+    const pending = rows.some((r) => r.state === 'AUTHENTICATING');
+    if (pending) {
+      warnGoLive('Still signing in. GO LIVE is a tap away once a destination is Ready.');
+      return;
+    }
+    const picks = suggestedFor(intent);
+    picks.forEach((i) => connectNow(i));
+    warnGoLive(`Nothing was picked, so LIVETAP connected ${names(picks.map((i) => rows[i]!.name))}.`);
+    window.setTimeout(() => goLive(), 700);
     return;
   }
+  goliveSub.classList.remove('is-warning');
   golive.classList.add('lt-golive--countdown');
   goliveCount.hidden = false;
   goliveCancel.hidden = false;
@@ -1043,6 +1112,18 @@ function goLive(): void {
   });
 }
 
+let warnTimer = 0;
+function warnGoLive(text: string): void {
+  goliveSub.textContent = text;
+  goliveSub.classList.add('is-warning');
+  say(sayBroadcast, text);
+  clearTimeout(warnTimer);
+  warnTimer = window.setTimeout(() => {
+    goliveSub.classList.remove('is-warning');
+    paintReadouts();
+  }, 4000);
+}
+
 function cancelGoLive(): void {
   if (!countdown) return;
   countdown.revert();
@@ -1068,8 +1149,6 @@ function startAll(): void {
   publish();
   say(sayBroadcast, `Going live on ${ready.length} destinations.`);
   window.setTimeout(() => {
-    /* Every path lights in the same frame: a coordinated broadcast is the claim, so staggering
-       them would say the opposite. */
     ready.forEach(([, i]) => {
       advance(i, 'STREAM_UP');
       paintDest(i);
@@ -1082,6 +1161,7 @@ function startAll(): void {
     note('Live');
     say(sayBroadcast, `You are live on ${names(ready.map(([r]) => r.name))}.`);
     tourCheck();
+    if (peakArmed) armPeak(true);
   }, 600);
 }
 
@@ -1165,12 +1245,10 @@ function armPeak(on: boolean): void {
     }
     if (!armed) {
       row.slot.replaceChildren();
-      row.hint.textContent = '';
       row.tile.removeAttribute('aria-keyshortcuts');
+      paintDest(i);
     }
     if (armed && !reduced && !row.drag) {
-      /* Only the 44px grip starts a drag, so the rest of the tile stays a normal button, and
-         anime's own 7px of touch slop keeps a vertical flick scrolling the page. */
       row.drag = createDraggable(row.li, {
         trigger: row.grip,
         container: surface as HTMLElement,
@@ -1206,6 +1284,7 @@ function armPeak(on: boolean): void {
       row.drag = null;
     }
   });
+  paintBreakCta();
 }
 
 function onTileKey(e: KeyboardEvent, i: number): void {
@@ -1242,13 +1321,7 @@ function onTileKey(e: KeyboardEvent, i: number): void {
   if (d >= threshold()) breakDest(i);
 }
 
-/**
- * The break, and the four things that happen.
- *
- * Nothing in here touches a sibling. There is no repaint-everything call, no re-sort and no
- * re-layout of the destination row, which is what makes the claim the act exists to make
- * checkable rather than merely intended.
- */
+/** The break, and the four things that happen. Nothing in here touches a sibling. */
 function breakDest(i: number, degradeMs = 700): void {
   const row = rows[i]!;
   const d = DESTINATIONS[i]!;
@@ -1268,7 +1341,6 @@ function breakDest(i: number, degradeMs = 700): void {
   };
 
   if (reduced) {
-    /* `DEGRADED` is skipped: a 700ms intermediate state with no motion is a flicker. */
     toReconnecting();
     return;
   }
@@ -1281,7 +1353,6 @@ function breakDest(i: number, degradeMs = 700): void {
   window.setTimeout(toReconnecting, degradeMs);
 }
 
-/** The path is cut at the tension point: the stage-side segment recoils, the tile side goes. */
 function snapPath(row: DestRow, i: number): void {
   const len = row.path.getTotalLength();
   animeSet(row.path, { strokeDasharray: `${len}`, strokeDashoffset: 0 });
@@ -1331,6 +1402,7 @@ function countRing(row: DestRow, done: () => void): void {
 }
 
 function heal(row: DestRow, i: number): void {
+  if (row.state !== 'RECONNECTING') return;
   advance(i, 'STREAM_UP');
   row.attempt = 0;
   row.nudge = { x: 0, y: 0 };
@@ -1396,6 +1468,45 @@ function openErrorCard(row: DestRow, d: (typeof DESTINATIONS)[number], i: number
   });
 }
 
+/**
+ * The chapter's own button: one press does whatever is needed to show the break, and its
+ * label says exactly what that will be.
+ */
+function paintBreakCta(): void {
+  const live = rows.find((r) => r.state === 'LIVE');
+  const ready = rows.some((r) => r.state === 'READY' || r.state === 'ENDED');
+  const busy = rows.some((r) => r.state === 'RECONNECTING' || r.state === 'DEGRADED' || r.state === 'STARTING');
+  let label: string;
+  if (busy) label = 'Breaking. Watch the tile';
+  else if (live) label = `Break ${live.name} for me`;
+  else if (ready) label = 'Go live, then break the first one';
+  else label = `Go live, then break ${rows[suggestedFor(intent)[0]!]!.name}`;
+  if (breakCta.textContent !== label) breakCta.textContent = label;
+  breakCta.setAttribute('aria-disabled', String(busy));
+}
+
+function breakForMe(): void {
+  interrupt();
+  const live = rows.findIndex((r) => r.state === 'LIVE');
+  if (live >= 0) {
+    if (!peakArmed) armPeak(true);
+    breakDest(live);
+    return;
+  }
+  if (rows.some((r) => r.state === 'RECONNECTING' || r.state === 'DEGRADED')) return;
+  const ready = rows.filter((r) => r.state === 'READY' || r.state === 'ENDED');
+  if (!ready.length) suggestedFor(intent).forEach((i) => connectNow(i));
+  paintReadouts();
+  startAll();
+  window.setTimeout(() => {
+    const first = rows.findIndex((r) => r.state === 'LIVE');
+    if (first >= 0) {
+      if (!peakArmed) armPeak(true);
+      breakDest(first);
+    }
+  }, 1600);
+}
+
 /* ===================================================================== chat */
 
 let chatOn = false;
@@ -1459,11 +1570,7 @@ function paintPro(): void {
   const conn = connected();
   const m = MOMENTS.find((x) => x.id === momentId)!;
   const rowsOut: Array<[string, string, string[]]> = [
-    [
-      'quality',
-      'Quality',
-      [DEFAULT_QUALITY_LABEL, 'Derived from your connection and your machine. Never asked.'],
-    ],
+    ['quality', 'Quality', [DEFAULT_QUALITY_LABEL, 'Derived from your connection and your machine.']],
     [
       'ceiling',
       'What each platform accepts',
@@ -1494,9 +1601,12 @@ function paintPro(): void {
   });
 }
 
-function setPro(on: boolean): void {
+function setPro(on: boolean, announce = true): void {
   pro = on;
-  proToggle.setAttribute('aria-checked', String(on));
+  $$('[data-lt-mode-set]').forEach((b) =>
+    b.setAttribute('aria-checked', String((b.dataset.ltModeSet === 'pro') === on)),
+  );
+  surface.classList.toggle('is-pro', on);
   proLayers.hidden = !on;
   if (on) {
     paintPro();
@@ -1516,234 +1626,164 @@ function setPro(on: boolean): void {
         }),
       );
     }
-    say(sayDest, `Pro shown. ${panels.length} panel${panels.length === 1 ? '' : 's'} added. Nothing moved.`);
+    if (announce) say(sayDest, `Pro. ${panels.length} panel${panels.length === 1 ? '' : 's'} added above the desk. Nothing moved.`);
     tourDone('pro');
-  } else {
-    say(sayDest, 'Pro hidden.');
+  } else if (announce) {
+    say(sayDest, 'Simple. The numbers are put away.');
   }
+  layout();
   publish();
 }
 
 /* ================================================================= the intent */
 
-function setIntent(next: IntentDef): void {
+/**
+ * The app's first question, answered on this stage: the shape, the first Moment and the
+ * destinations change to match, and the sentence under the chips says what changed.
+ */
+function setIntent(next: IntentDef, announce = true): void {
   intent = next;
   $$('[data-lt-intent]').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.ltIntent === next.id)),
   );
-  $$('[data-lt-moment]', momentStrip).forEach((b) => {
-    const m = MOMENTS.find((x) => x.id === b.dataset.ltMoment);
+  $$('[data-lt-moment], [data-lt-moment-mirror]').forEach((b) => {
+    const id = b.dataset.ltMoment ?? b.dataset.ltMomentMirror;
+    const m = MOMENTS.find((x) => x.id === id);
     const nameEl = $('[data-lt-moment-name]', b);
     if (m && nameEl) nameEl.textContent = momentName(m);
   });
   openLink.href = `./app/start?intent=${next.id}`;
+  openLink.textContent = `Open LIVETAP for ${next.title}`;
+
+  const picks = suggestedFor(next);
+  rows.forEach((row, i) => row.li.classList.toggle('is-suggested', picks.includes(i)));
+  if (!connected().length) picks.forEach((i) => connectNow(i));
+
   setFormat(next.master, false);
-  if (next.firstMoment !== 'screen-share' || inputs.screen) setMoment(next.firstMoment, false);
+  setMoment(next.firstMoment, false);
   paintAll();
+  const pickNames = names(picks.map((i) => rows[i]!.name));
+  intentAnswer.textContent = `${next.title}: ${next.tagline} Composing in ${next.master}, ${momentName(MOMENTS.find((m) => m.id === next.firstMoment)!)} first, ${pickNames} suggested.`;
   note(`${next.title} chosen`);
-  say(sayDest, `${next.title}. ${next.tagline} Composing in ${format}.`);
+  if (announce) say(sayDest, intentAnswer.textContent);
   tourDone('intent');
 }
 
-/* ===================================================================== counters */
+/* =============================================================== the outputs */
 
-/**
- * The two counters carry real, computed values.
- *
- * The engine reads `data-sc-count` once at mount, so the targets are updated through the
- * instance API it publishes for exactly this kind of page rather than by editing the engine or
- * by re-mounting it.
- */
-function updateCounters(): void {
+function outputRows(): OutputRow[] {
+  return DESTINATIONS.map((d, i) => {
+    const row = rows[i]!;
+    return {
+      id: d.id,
+      name: d.name,
+      format: aspectFor(d),
+      ceilingMbps: d.ceilingMbps,
+      state: row.state,
+      stateLabel: STATE_LABEL[row.state],
+      chipClass: `lt-chip lt-chip--${CHIP_CLASS[row.state]}`,
+    };
+  });
+}
+
+function paintOutputs(): void {
+  outputs?.update(outputRows(), layersFor);
   const n = connected().length;
-  const f = producedFormats().length;
-  const wrap = $('[data-lt-countwrap]');
-  if (wrap) wrap.classList.toggle('is-empty', n === 0);
-  const inst = window.ScrollCraft?.instances?.[0] as
-    | { acts: Array<{ counts?: Array<{ el: HTMLElement; b: number; tpl: string }> }> }
-    | undefined;
-  if (!inst) return;
-  for (const act of inst.acts) {
-    for (const k of act.counts ?? []) {
-      const which = k.el.dataset.ltCount;
-      const target = which === 'dests' ? n : f;
-      k.b = target;
-      k.tpl = String(target);
-    }
+  const f = producedFormats();
+  outputsLede.textContent = n
+    ? `${n} destination${n === 1 ? '' : 's'}, ${f.length} shape${f.length === 1 ? '' : 's'} (${f.join(' and ')}), one production. Each platform gets what it accepts.`
+    : 'Each platform gets the shape it accepts and the quality it allows, from the same production. Pick destinations and they light up here.';
+}
+
+/* ---- the tiles' own pictures ------------------------------------------------ */
+
+const THUMB: Record<Format, [number, number]> = { '16:9': [176, 99], '9:16': [56, 99], '1:1': [99, 99] };
+
+function sizeThumb(row: DestRow, fmt: Format): void {
+  const [w, h] = THUMB[fmt];
+  if (row.thumb.width !== w * 2 || row.thumb.height !== h * 2) {
+    row.thumb.width = w * 2;
+    row.thumb.height = h * 2;
   }
+  row.thumb.style.aspectRatio = `${w} / ${h}`;
 }
 
-/* ================================================================ the atmosphere */
-
-function mountAtmosphere(): void {
-  const el = $<HTMLCanvasElement>('[data-lt-atmos]');
-  if (!el) return;
-  const ctx = el.getContext('2d');
-  if (!ctx) return;
-  const bands = Array.from({ length: 9 }, (_, i) => ({ y: rng(0, 1, 3), s: 0.5 + i * 0.06 }));
-  const carriers = Array.from({ length: 24 }, () => ({ t: rng(0, 1, 3), lane: Math.floor(rng(0, 5, 0)) }));
-  let raf = 0;
-  let last = 0;
-  let w = 0;
-  let h = 0;
-  const ink = getComputedStyle(document.body).color;
-
-  const size = (): void => {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const r = el.getBoundingClientRect();
-    w = Math.round(r.width);
-    h = Math.round(r.height);
-    el.width = Math.round(w * dpr);
-    el.height = Math.round(h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  };
-
-  const frameFn = (t: number): void => {
-    raf = requestAnimationFrame(frameFn);
-    if (t - last < 33) return; /* 30 fps cap, by an accumulator rather than by hope */
-    const dt = (t - last) / 1000;
-    last = t;
-    ctx.clearRect(0, 0, w, h);
-    ctx.globalAlpha = 0.025;
-    ctx.fillStyle = ink;
-    for (const b of bands) {
-      b.y -= (4 / Math.max(h, 1)) * dt * b.s;
-      if (b.y < 0) b.y += 1;
-      ctx.fillRect(0, Math.round(b.y * h), w, 1);
-    }
-    ctx.globalAlpha = 0.03;
-    for (const c of carriers) {
-      c.t += (12 / Math.max(w, 1)) * dt;
-      if (c.t > 1) c.t -= 1;
-      const y = h * (0.2 + c.lane * 0.15);
-      ctx.fillRect(Math.round(c.t * w), Math.round(y), 2, 2);
-    }
-    ctx.globalAlpha = 1;
-  };
-
-  const start = (): void => {
-    if (raf) return;
-    last = performance.now();
-    raf = requestAnimationFrame(frameFn);
-  };
-  const stop = (): void => {
-    if (!raf) return;
-    cancelAnimationFrame(raf);
-    raf = 0;
-  };
-
-  size();
-  start();
-  new IntersectionObserver((e) => (e[0]?.isIntersecting ? start() : stop())).observe(surface);
-  document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
-  let deb = 0;
-  addEventListener(
-    'resize',
-    () => {
-      clearTimeout(deb);
-      deb = window.setTimeout(size, 150);
-    },
-    { passive: true },
-  );
+let thumbRaf = 0;
+let thumbLast = 0;
+function drawThumbs(once = false): void {
+  const due = performance.now() - thumbLast > 1000 / 10;
+  if (!once && !due) return;
+  thumbLast = performance.now();
+  rows.forEach((row, i) => {
+    if (row.thumb.hidden) return;
+    const ctx = row.thumb.getContext('2d');
+    if (!ctx) return;
+    picture.compose(ctx, row.thumb.width, row.thumb.height, layersFor(aspectFor(DESTINATIONS[i]!)));
+  });
 }
 
-/* ====================================================== the hero automatic story */
+function thumbLoop(): void {
+  thumbRaf = requestAnimationFrame(thumbLoop);
+  if (document.hidden || reduced) return;
+  if (!rows.some((r) => !r.thumb.hidden)) return;
+  drawThumbs();
+}
 
-type Step = [number, () => void];
+/* ====================================================== the guided five seconds */
 
 let storyTimer: ReturnType<typeof createTimer> | null = null;
 let storyDead = false;
-let lastAction = Date.now();
 
-function storySteps(): Step[] {
-  const ids = phone.matches ? ['youtube', 'twitch'] : ['youtube', 'twitch', 'tiktok'];
-  const at = (id: string) => rows.findIndex((r) => r.id === id);
-  const full: Step[] = [
-    [0, () => setMoment('main-camera', false)],
-    [900, () => setInput('camera', true, false)],
-    [1600, () => setInput('mic', true, false)],
-    [2300, () => setInput('screen', true, false)],
-    ...ids.map((id, k): Step => [3000 + k * 700, () => storyConnect(at(id))]),
-    [5400, () => paintReadouts()],
-    [6200, () => paintReadouts()],
-    [7000, () => goLive()],
-    [10600, () => paintReadouts()],
-    [11400, () => startChat()],
-    /* Step 14 to 17: one destination degrades, the others hold for 3 s, then it reconnects on
-       a visible countdown and comes back. The DEGRADED beat is longer here than a visitor's own
-       break, because step 15's content is the ABSENCE of change on the other two. */
-    [14000, () => storyDegrade(at(ids[0]!))],
-  ];
-  return full;
-}
-
-function storyConnect(i: number): void {
-  if (i < 0) return;
-  const row = rows[i]!;
-  if (row.state !== 'DISCONNECTED') return;
-  advance(i, 'CONNECT');
-  advance(i, 'AUTH_OK');
-  paintDest(i);
-  drawPath(row, i, true);
-  paintReadouts();
-  publish();
-}
-
-function storyDegrade(i: number): void {
-  if (i < 0) return;
-  breakDest(i, 3000);
-}
-
-const STORY_END = 22400;
-const STORY_LOOP_FROM = 3000;
-
+/**
+ * Five seconds, then the visitor's. The demo switches the microphone on, connects the two
+ * destinations the intent suggests plus TikTok on a desk, and stops at READY with the one
+ * invitation on the page pointing at GO LIVE. It never goes live by itself.
+ */
 function mountStory(): void {
-  const steps = storySteps();
-  let fired = new Set<number>();
-  let base = 0;
+  const picks = suggestedFor(intent);
+  const extra = phone.matches ? -1 : rows.findIndex((r) => r.id === 'tiktok' && !picks.includes(rows.indexOf(r)));
+  const steps: Array<[number, () => void]> = [
+    [500, () => setInput('mic', true, false)],
+    [1100, () => connectNow(picks[0]!)],
+    [1800, () => connectNow(picks[1]!)],
+    [2500, () => connectNow(extra)],
+    [3300, () => paintReadouts()],
+    [4200, () => yourTurn(true)],
+  ];
+  const fired = new Set<number>();
   storyTimer = createTimer({
-    duration: 1e7,
+    duration: 5000,
     onUpdate: (self) => {
       if (storyDead) return;
-      const local = self.currentTime - base;
       steps.forEach(([t, fn], k) => {
-        if (!fired.has(k) && local >= t) {
+        if (!fired.has(k) && self.currentTime >= t) {
           fired.add(k);
           fn();
         }
       });
-      if (local >= STORY_END + 6000) {
-        /* Hold the resolved state for six seconds, then resume from the destinations rather
-           than from the camera: re-running the switch-on would look like a reboot. */
-        if (Date.now() - lastAction > 45000) {
-          storyDead = true;
-          return;
-        }
-        base = self.currentTime - STORY_LOOP_FROM;
-        fired = new Set(steps.map((_, k) => k).filter((k) => steps[k]![0] < STORY_LOOP_FROM));
-        rows.forEach((r, i) => {
-          if (r.state === 'LIVE' || r.state === 'DEGRADED' || r.state === 'RECONNECTING') {
-            advance(i, 'STOP');
-            advance(i, 'STOPPED');
-            advance(i, 'DISCONNECT');
-            paintDest(i);
-          }
-        });
-        paintReadouts();
-      }
+    },
+    onComplete: () => {
+      storyDead = true;
     },
   });
-
-  new IntersectionObserver((e) => {
-    if (storyDead) return;
-    if (e[0]?.isIntersecting) storyTimer?.play();
-    else storyTimer?.pause();
-  }).observe(surface);
 }
 
-/** Any visitor action cancels the story immediately and permanently. */
+/** The hand-over: written under GO LIVE, where the button already explains itself. */
+function yourTurn(on: boolean): void {
+  goliveSub.dataset.ltYourturn = String(on);
+  golive.classList.toggle('is-turn', on);
+  if (on) {
+    goliveSub.textContent = 'Your turn. Tap GO LIVE. Nothing is broadcast from this page.';
+    say(sayTour, 'Your turn. Tap GO LIVE. Nothing is broadcast from this page.');
+  }
+}
+
+/** Any visitor action ends the demo and takes the invitation down. */
 function interrupt(): void {
-  lastAction = Date.now();
+  if (goliveSub.dataset.ltYourturn === 'true') {
+    yourTurn(false);
+    paintReadouts();
+  }
   if (storyDead) return;
   storyDead = true;
   storyTimer?.pause();
@@ -1752,13 +1792,13 @@ function interrupt(): void {
 /* ====================================================================== the tour */
 
 const TOUR: Array<{ key: string; prompt: string; target: string }> = [
-  { key: 'pick', prompt: 'Pick two destinations.', target: '#act-connect' },
-  { key: 'moment', prompt: 'Switch what viewers see.', target: '#act-produce' },
-  { key: 'shape', prompt: 'Change the shape.', target: '#act-formats' },
-  { key: 'live', prompt: 'Go live.', target: '#act-live' },
+  { key: 'camera', prompt: 'Put your own camera on the stage.', target: '#act-hero' },
+  { key: 'live', prompt: 'Go live.', target: '#act-hero' },
   { key: 'break', prompt: 'Break it. Drag a live destination off the stage.', target: '#act-break' },
+  { key: 'shape', prompt: 'Change the shape.', target: '#act-shape' },
+  { key: 'moment', prompt: 'Switch what viewers see.', target: '#act-moments' },
   { key: 'pro', prompt: 'Look underneath.', target: '#act-pro' },
-  { key: 'intent', prompt: 'Tell LIVETAP what you are making.', target: '#act-start' },
+  { key: 'intent', prompt: 'Tell LIVETAP what you are making.', target: '#act-make' },
 ];
 
 const tourDoneKeys = new Set<string>();
@@ -1817,9 +1857,8 @@ function tourDone(key: string): void {
 }
 
 function tourCheck(): void {
-  if (rows.filter((r) => r.state !== 'DISCONNECTED').length >= 2) tourDone('pick');
   if (momentId !== 'main-camera') tourDone('moment');
-  if (format !== '16:9') tourDone('shape');
+  if (format !== (phone.matches ? '9:16' : '16:9')) tourDone('shape');
   if (liveCount() > 0) tourDone('live');
 }
 
@@ -1835,8 +1874,6 @@ function wire(): void {
     b.addEventListener('click', () => {
       interrupt();
       const next = b.dataset.ltFormatSet as Format;
-      /* The tour step is "change the shape", so re-selecting the shape that is already on does
-         not complete it. A tour that ticks itself off is a funnel, not a description. */
       const changed = next !== format;
       setFormat(next);
       if (changed) tourDone('shape');
@@ -1854,10 +1891,18 @@ function wire(): void {
       interrupt();
       const changed = order[next] !== format;
       setFormat(order[next]!);
-      $<HTMLButtonElement>(`[data-lt-format-set="${order[next]}"]`)?.focus();
+      const group = b.parentElement ?? document;
+      $<HTMLButtonElement>(`[data-lt-format-set="${order[next]}"]`, group)?.focus();
       if (changed) tourDone('shape');
     });
   });
+
+  $$('[data-lt-mode-set]').forEach((b) =>
+    b.addEventListener('click', () => {
+      interrupt();
+      setPro(b.dataset.ltModeSet === 'pro');
+    }),
+  );
 
   $$('[data-lt-input]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -1867,22 +1912,11 @@ function wire(): void {
     }),
   );
 
-  proToggle.addEventListener('click', () => {
-    interrupt();
-    setPro(proToggle.getAttribute('aria-checked') !== 'true');
-  });
+  $$('[data-lt-camera-cta]').forEach((b) => b.addEventListener('click', () => void useCamera()));
+  breakCta.addEventListener('click', breakForMe);
 
   $('[data-lt-tour-open]')!.addEventListener('click', () => openTour());
 
-  /* The six duplicated GO LIVE buttons can be pressed, and they report what they cannot do. */
-  const dupSay = $('[data-lt-dupsay]')!;
-  lattice.addEventListener('click', (e) => {
-    const b = (e.target as HTMLElement).closest('[data-lt-dupgolive]');
-    if (!b) return;
-    dupSay.textContent = 'This one is not connected to anything.';
-  });
-
-  /* The theme toggle, the app's own key. */
   const theme = $<HTMLButtonElement>('[data-lt-theme]')!;
   const paintTheme = (): void => {
     const dark = document.documentElement.getAttribute('data-theme') !== 'light';
@@ -1919,10 +1953,6 @@ function wire(): void {
     }
   });
 
-  addEventListener('scroll', () => {
-    lastAction = Date.now();
-  }, { passive: true });
-
   let deb = 0;
   addEventListener(
     'resize',
@@ -1936,96 +1966,72 @@ function wire(): void {
   new IntersectionObserver((e) => {
     chatVisible = !!e[0]?.isIntersecting;
   }).observe(chatPanel);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      cancelAnimationFrame(thumbRaf);
+      thumbRaf = 0;
+    } else if (!thumbRaf) {
+      thumbLoop();
+    }
+  });
 }
 
 function closing(on: boolean): void {
-  hold('close', on);
   surface.classList.toggle('is-closing', on);
 }
 
-/** Scroll thresholds, the one way Anime.js is allowed to know about scroll on this page. */
-function observeActs(): void {
-  const act1 = $('#act-stage')!;
-  const span1 = Number(act1.dataset.scSpan) || 1.3;
-  const pctOf = (span: number, p: number) => (((span - 1) * p) / span) * 100;
+/**
+ * Which chapter owns the viewport.
+ *
+ * The act whose box contains the point 45% down the viewport is the active one. Its band is
+ * shown, its rail item is lit, and its side effects run: the peak arms the tiles, SHAPES draws
+ * the guides, the close dims the monitor. One passive scroll listener, one rAF, no thresholds
+ * to tune and nothing that can be missed by a fast flick.
+ */
+let activeAct = '';
+let actRaf = 0;
 
-  onScroll({
-    target: act1,
-    enter: `top ${pctOf(span1, 0.35).toFixed(2)}%`,
-    leave: 'top 100%',
-    repeat: true,
-    onEnterForward: () => lattice.classList.add('is-settled'),
-    onLeaveBackward: () => lattice.classList.remove('is-settled'),
-  });
+function watchActs(): void {
+  const acts = $$<HTMLElement>('main.ltp-acts > [id^="act-"]');
+  const bands = $$('[data-lt-band]');
+  const items = $$<HTMLAnchorElement>('.ltp-rail__nav .ltp-rail__item');
 
-  onScroll({
-    target: act1,
-    enter: `top ${pctOf(span1, 0.82).toFixed(2)}%`,
-    leave: 'top 100%',
-    repeat: true,
-    onEnterForward: () => {
-      lattice.classList.add('is-gone');
-      surface.classList.remove('is-collapsing');
-    },
-    onLeaveBackward: () => {
-      lattice.classList.remove('is-gone');
-      surface.classList.add('is-collapsing');
-    },
-  });
+  const apply = (): void => {
+    actRaf = 0;
+    const probe = scrollY + innerHeight * 0.45;
+    let here = acts[0]!;
+    for (const act of acts) {
+      const top = act.offsetTop;
+      if (probe >= top) here = act;
+    }
+    if (here.id === activeAct) return;
+    const prev = activeAct;
+    activeAct = here.id;
+    document.body.dataset.ltAct = activeAct;
+    bands.forEach((b) => b.classList.toggle('is-here', b.dataset.ltBand === activeAct));
+    items.forEach((it) => it.classList.toggle('is-here', it.getAttribute('href') === `#${activeAct}`));
 
-  /* Scrolling into CONNECT hands the surface over: whatever the story made is kept. */
-  onScroll({
-    target: $('#act-connect')!,
-    enter: 'center top',
-    leave: 'start end',
-    repeat: false,
-    onEnter: () => interrupt(),
-  });
+    if (activeAct === 'act-break') {
+      interrupt();
+      armPeak(true);
+    } else if (prev === 'act-break') {
+      armPeak(false);
+    }
+    guidesAct = activeAct === 'act-shape';
+    paintGuides();
+    closing(activeAct === 'act-make');
+    hold('peak', activeAct === 'act-break');
+    hold('close', activeAct === 'act-make');
+    if (activeAct !== 'act-hero') interrupt();
+  };
 
-  onScroll({
-    target: $('#act-formats')!,
-    enter: 'center top',
-    leave: 'start end',
-    repeat: true,
-    onEnter: () => {
-      guidesAct = true;
-      paintGuides();
-    },
-    onLeave: () => {
-      guidesAct = false;
-      paintGuides();
-    },
-  });
-
-  /*
-   * The peak arms as ACT 6's own travel begins, not when its stage becomes visible.
-   *
-   * A pinned stage is on screen for a viewport before its progress leaves 0, and that viewport
-   * is REST B: arming on visibility would put "Drag me off the stage" into the page's authored
-   * silence, which is the one act whose content is the absence of anything happening.
-   */
-  const act6 = $('#act-break')!;
-  const span6 = Number(act6.dataset.scSpan) || 2.8;
-  onScroll({
-    target: act6,
-    enter: `top ${pctOf(span6, 0.02).toFixed(2)}%`,
-    leave: 'start end',
-    repeat: true,
-    onEnterForward: () => armPeak(true),
-    onEnterBackward: () => armPeak(true),
-    onLeaveForward: () => armPeak(false),
-    onLeaveBackward: () => armPeak(false),
-  });
-
-  onScroll({
-    target: act6,
-    enter: `top ${pctOf(span6, 0.82).toFixed(2)}%`,
-    leave: 'top 100%',
-    repeat: true,
-    onEnterForward: () => hold('peak', true),
-    onLeaveBackward: () => hold('peak', false),
-    onLeaveForward: () => hold('peak', false),
-  });
+  const schedule = (): void => {
+    if (!actRaf) actRaf = requestAnimationFrame(apply);
+  };
+  addEventListener('scroll', schedule, { passive: true });
+  addEventListener('resize', schedule, { passive: true });
+  apply();
 
   $$('[data-lt-rest]').forEach((rest) =>
     onScroll({
@@ -2037,43 +2043,6 @@ function observeActs(): void {
       onLeave: () => hold(`rest-${rest.dataset.ltRest}`, false),
     }),
   );
-
-  /*
-   * The console recedes when the question actually arrives.
-   *
-   * Tied to the close's own cue rather than to the act becoming visible: a half-viewport early
-   * left the monitor faded with the close not yet cued in, which is a near-empty screen for a
-   * whole viewport of scroll. The fixed surface is the ground for the entry slide.
-   */
-  const act8 = $('#act-start')!;
-  const span8 = Number(act8.dataset.scSpan) || 1.2;
-  onScroll({
-    target: act8,
-    enter: `top ${pctOf(span8, 0.04).toFixed(2)}%`,
-    leave: 'start end',
-    repeat: true,
-    onEnterForward: () => closing(true),
-    onEnterBackward: () => closing(true),
-    onLeaveForward: () => closing(false),
-    onLeaveBackward: () => closing(false),
-  });
-
-  /* The rail's active item. Four targets, four thresholds, no progress readout. */
-  $$<HTMLAnchorElement>('.ltp-rail__nav .ltp-rail__item').forEach((item) => {
-    const target = $(item.getAttribute('href') ?? '');
-    if (!target) return;
-    onScroll({
-      target,
-      enter: 'center top',
-      leave: 'center bottom',
-      repeat: true,
-      onEnter: () => {
-        $$('.ltp-rail__item').forEach((x) => x.classList.remove('is-here'));
-        item.classList.add('is-here');
-      },
-      onLeave: () => item.classList.remove('is-here'),
-    });
-  });
 }
 
 /* The mobile span rewrite has to happen before the engine reads the attribute once. */
@@ -2087,29 +2056,62 @@ function rewriteSpans(): void {
 
 async function boot(): Promise<void> {
   buildTiles();
-  buildShelf();
   buildMoments();
   buildIntents();
-  buildLattice();
   wire();
 
-  surface.classList.add('is-collapsing');
-  setFormat('16:9', false);
-  setMoment('main-camera', false);
-  setInput('camera', false, false);
+  picture.mount(canvas);
+  picture.onChange(() => {
+    surface.dataset.ltSource = picture.source;
+    setInput('camera', picture.source !== 'none', false);
+  });
+
+  /* The picture is on from the first frame: a stage with nothing on it is the one thing the
+     audit said a production tool cannot open with. */
+  setFormat(format, false);
+  setInput('camera', true, false);
   setInput('mic', false, false);
   setInput('screen', false, false);
+  setMoment('main-camera', false);
+  setPro(false, false);
+  setIntentQuiet(intent);
   paintAll();
+
+  outputs = mountOutputs(outputsHost, picture, { reduced });
+  paintOutputs();
+  outputs.start();
+
+  mountVersus(versusHost, {
+    reduced,
+    onPlayLivetap: () => {
+      interrupt();
+      const talking = INTENTS.find((i) => i.id === 'talking') ?? INTENTS[0]!;
+      setIntent(talking, false);
+      connectNow(rows.findIndex((r) => r.id === 'youtube'));
+      connectNow(rows.findIndex((r) => r.id === 'tiktok'));
+      if (!liveCount() && !countdown) window.setTimeout(() => goLive(), 400);
+    },
+  });
+
+  void mountCapture(captureHost);
 
   rewriteSpans();
   if (document.fonts?.ready) await document.fonts.ready;
   window.ScrollCraft?.mount(document.body);
   layout();
-  observeActs();
-  updateCounters();
-
-  if (!reduced && !phone.matches) mountAtmosphere();
+  watchActs();
+  thumbLoop();
   mountStory();
+}
+
+/** The intent at boot: chips, link, suggestions and names, without connecting anything. */
+function setIntentQuiet(it: IntentDef): void {
+  intent = it;
+  $$('[data-lt-intent]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ltIntent === it.id)));
+  openLink.href = `./app/start?intent=${it.id}`;
+  openLink.textContent = `Open LIVETAP for ${it.title}`;
+  const picks = suggestedFor(it);
+  rows.forEach((row, i) => row.li.classList.toggle('is-suggested', picks.includes(i)));
 }
 
 if (document.readyState === 'loading') {

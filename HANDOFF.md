@@ -29,12 +29,17 @@ human dependency queue.
 - B-004/B-005 signing certificates and store accounts → signed desktop releases, TestFlight/Play testing.
 - B-007 run `npm run verify:engine -w @livetap/desktop` on a machine with a GPU and camera → hardware PASS labels.
 
-## Public experience (2026-09-12)
+## Public experience (rebuilt 2026-09-14 for the first-time creator audit)
 
-https://livetap.vercel.app/ is an interactive product surface, not a marketing page: scroll operates one fixed LIVETAP console through eight acts (chaos, connect, produce, adapt, multistream, resilience, power, action). Try: tap destinations, switch 16:9 / 9:16 / 1:1, change a Moment, GO LIVE (DEMO), then drag a live tile off the stage (or focus it and press Delete) and watch it reconnect while the others stay live. The close is the app's real first question and links into `/app/start`. Design docs: docs/design/LIVETAP_*.md; build report: scrollcraft/builds/livetap-public/REPORT.md; review: docs/qa/EXPERIENCE_REVIEW.md; deployed review: docs/qa/deployed-review/.
+https://livetap.vercel.app/ is an interactive product surface: one fixed LIVETAP console, operated through eight chapters (hero, break it, shapes, moments, outputs, versus, pro, make). What changed on 2026-09-14 (audit docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT.md, closure docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md, retest docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_RETEST.md): the stage shows real footage from first paint and "Use my camera" puts the visitor's own camera on it (local only); the statement is above the fold; chapter copy lives in one fixed band layer; the guided demo stops at READY and hands over ("Your turn"); break-it is chapter two with a one-tap path; six platform-shaped outputs are drawn from the same production; Simple/Pro is a labelled control; the intents change the stage; an OBS comparison with measured numbers only; no Download while nothing ships; phones open vertical.
+
+Deploying: prebuilt from the workspace. `cd apps/web && npx vercel build --prod && npx vercel deploy --prebuilt --prod`. vercel.json's installCommand is deliberately a no-op echo: `vercel build` otherwise runs `npm ci` under the host's Node 20 and wipes node_modules (it did, once). Reinstall with the portable Node 22: `PATH=tools/node22:$PATH npm ci && node node_modules/electron/install.js`.
+
+Regenerating the sample footage: `apps/web/public/brand/creator.*` and `guest.*` were generated (Higgsfield, seedance 2.5) and encoded with ffmpeg (960x540, h264 crf 27 / vp9 crf 36, poster webp). Replace them with real footage the owner licenses whenever available; the page reads them only through picture.ts.
 
 ## How to test (mock mode, no credentials)
 
+0. First-time creator path, on the public page itself: load https://livetap.vercel.app, watch three destinations turn Ready in four seconds, tap GO LIVE, scroll to "Break it yourself" and press "Break YouTube for me" (or drag a live tile off the stage), then tap "Use my camera".
 1. Open https://livetap.vercel.app → Open LIVETAP.
 2. Choose an intent (e.g. Talking), pick YouTube and TikTok, continue past camera/mic (a test pattern appears when no camera exists), Open Studio.
 3. Tap GO LIVE; a 3-second cancellable countdown runs; both destination chips reach LIVE (YouTube 16:9, TikTok 9:16 from one production).

@@ -1,9 +1,20 @@
-# LIVETAP Scroll Story — the Scroll Craft score
+# LIVETAP Scroll Story, the Scroll Craft score
 
-**Version** 1.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
-**Reads from** `scrollcraft/builds/livetap-public/BRIEF.md` (self-authored, not interviewed)
+**Version** 2.0 · **Status** Normative for the public experience (`/`) · **Owner** Design Direction
+**Reads from** `scrollcraft/builds/livetap-public/BRIEF.md` (self-authored, not interviewed) and
+`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT.md` / `LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md`, the
+first-time-creator audit (score 59/150) that drove the rebuild this version documents.
 **Companions** `LIVETAP_VISUAL_DIRECTION.md` · `LIVETAP_INTERACTION_SYSTEM.md` ·
-`LIVETAP_MOTION_SYSTEM.md` · `scrollcraft/builds/livetap-public/PLAN.md`
+`LIVETAP_MOTION_SYSTEM.md` · `scrollcraft/builds/livetap-public/PLAN.md` /
+`REPORT.md`
+
+**What changed since v1.0.** The build this document described shipped, an independent
+first-time-creator audit of the deployed page scored it 59/150 and named a jammed main thread as
+the root cause of nearly everything it disliked (`AUDIT_CLOSURE.md` §0), and the page was rebuilt
+to close every actionable finding. The grammar is unchanged, this is still **Live surface**, but
+the score, the hero, the chaos prologue and the choreography that caused the jam are gone. This
+version records the page as it now is. Sections that are no longer true are replaced, not
+footnoted; where a rule was traded away on purpose, that trade is written down rather than hidden.
 
 ---
 
@@ -11,11 +22,11 @@
 
 Scroll Craft offers eight page grammars and they are mutually exclusive. This page is **Live surface**
 (`references/uniqueness.md` §2.3): the page behaves like the product, running, with scroll driving its
-state.
+state. That has not changed.
 
-It is the only grammar that can carry the brief's answer to interview question 5 — *"the visitor should
-feel like they are using LIVETAP"* — because it is the only one whose close is an input and whose nav is
-the product's own chrome. The other seven do not fit, one line each:
+It is the only grammar that can carry the brief's answer to interview question 5, *"the visitor should
+feel like they are using LIVETAP"*, because it is the only one whose close is an input and whose nav is
+the product's own chrome. The other seven still do not fit, one line each:
 
 | Grammar | Why it lost |
 |---|---|
@@ -31,13 +42,13 @@ the product's own chrome. The other seven do not fit, one line each:
 
 | The grammar bans | This page's substitute |
 |---|---|
-| Marketing chrome: wordmark-plus-CTA bar, scrims, full-bleed photography, kinetic headline stacks, a hero claim over footage | The app's own chrome: an 88px left rail on desktop, a status bar on mobile, both real enough to navigate with |
+| Marketing chrome: wordmark-plus-CTA bar, scrims, full-bleed photography, kinetic headline stacks, a hero claim over footage | The app's own chrome: an 88px left rail on desktop, a top row plus a bottom status bar on phones, both real enough to navigate with |
 | A section heading in display type | The largest type on the page is either a number the surface is counting or a sentence the surface is reporting about itself (VISUAL_DIRECTION §3.2) |
-| `scrub` | No video anywhere. There is no footage and the grammar does not want any. |
-| `kinetic` | No character or line splitting. Type arrives at full opacity on a plateau, the way a status line does. |
-| `spotlight` | No pointer light. The only pointer-driven transforms are the dragged tile in ACT 6 and `tilt` on the close's six intent cards. |
-| `drift` past two stops | Exactly two `data-sc-drift` attributes exist on the page (ACT 1 and ACT 6). |
-| A magnetic button as the ending | The ending is a real input: the onboarding's first question with six operable intent cards. |
+| `scrub` | No scroll-scrubbed video anywhere. The stage does carry real footage now, a sample creator clip and a guest clip (§2.2, and `LIVETAP_INTERACTION_SYSTEM.md` §1a), but it plays on its own clock, mounted once, never tied to `--sc-p`. Nothing on this page ties a video's playhead to scroll. |
+| `kinetic` | No character or line splitting. Type arrives at full opacity, the way a status line does. |
+| `spotlight` | No pointer light. The only pointer-driven transform on the page is the dragged tile in ACT 2 BREAK IT. The close's intent chips do not tilt toward the pointer; that device was dropped in this rebuild along with the rest of the per-act choreography (§5). |
+| `drift` | Zero `data-sc-drift` attributes. The ground is one colour for the whole page. The two-stop drift the first version carried was cut in the rebuild along with the chaos act it decorated (§6). |
+| A magnetic button as the ending | The ending is a real input: the onboarding's first question with six operable intent chips. |
 
 ### 1.2 The honesty rule, discharged
 
@@ -51,9 +62,11 @@ real or clearly-labelled sample data. This page discharges it as follows, and ev
   a designer moved a rectangle.
 - Every connection method shown per platform is derived from `packages/adapters` capability data, not
   written by hand.
-- The page says on its face that the scenario is a demo: the chrome's status bar carries a persistent
+- The page says on its face that the scenario is a demo: the status bar carries a persistent
   `info` line, "Demo surface. Nothing is broadcast anywhere.", non-dismissible, which is the same
-  honesty contract as the app's mock banner (PRODUCT_SPEC §4.4).
+  honesty contract as the app's mock banner.
+- The sample picture is labelled as a sample, and the moment a visitor grants their own camera the
+  stage says so and never uploads the stream (`LIVETAP_INTERACTION_SYSTEM.md` §1a).
 - No painted surface, no screenshot, no div dressed as another company's product. If a panel cannot
   compute, it is not on the page.
 
@@ -61,56 +74,92 @@ real or clearly-labelled sample data. This page discharges it as follows, and ev
 
 ## 2. Nav, hero and close follow from the grammar
 
-These three are not decided separately. The grammar decides them.
+These three are not decided separately. The grammar decides them, and the audit is what forced the
+hero to actually obey it.
 
 ### 2.1 Nav: the app's chrome, and it navigates
 
 **Desktop (> 1024px):** a fixed 88px left rail on `--lt-bg-1`, geometrically identical to the app's
-rail (DESIGN_SYSTEM §9.1): the mark at the top with a `--lt-space-4` inset, then four items, each a
-24px icon above a 12px label, never icon-only. The items are real anchor links to the acts, and the
-active item takes the app's 2px `--lt-accent-focus` left edge:
+rail: the mark at the top, then five real anchor links to the acts, each a 24px icon above a 12px
+label, never icon-only. The active item takes the app's left-edge accent, decided by which act owns
+the viewport (§5.3, `watchActs()`):
 
 | Item | Icon | Target |
 |---|---|---|
-| Stage | `tv` | ACT 1 |
-| Destinations | `globe` | ACT 2 |
-| Formats | `chart` | ACT 4 |
-| Moments | `camera` | ACT 3 |
+| Stage | `tv` | ACT 1 HERO |
+| Break it | `alert` | ACT 2 BREAK IT |
+| Shapes | `chart` | ACT 3 SHAPES |
+| Outputs | `globe` | ACT 5 OUTPUTS |
+| Versus | `sliders` | ACT 6 VERSUS |
 
-Below the rail's spacer, at the bottom where the app puts Settings and the mode switch: the theme
-toggle (`sun` / `moon`, the app's `useTheme`) and one `external-link` item, GitHub.
+Below the nav, at the bottom where the app puts Settings and the mode switch: the theme toggle
+(`sun` / `moon`), a **Tour** item that opens the guided tour (§9), and one `external-link` item,
+GitHub.
 
 A fixed status bar runs along the bottom of the viewport at 40px, carrying the surface's live session
-state — destination count, health word, elapsed time — plus the persistent demo line. That bar is the
-page's only persistent text, and it is a readout, not a message.
+state, destination count, format count, health pill, elapsed clock, plus the persistent demo line
+and "Free. Open source. Runs on your machine." That bar is the page's only persistent text besides the
+active chapter's band, and it is a readout, not a message.
 
 **Mobile (< 640px):** no rail. A 44px top row holds the mark alone. The status bar moves to the bottom
-at 64px plus `env(safe-area-inset-bottom)`, carries the same session state, and gains the one action.
-The four rail items are not reproduced as a menu: on a phone the page is a single column and the acts
-arrive in order, so an index would be chrome for its own sake.
+at 56px plus `env(safe-area-inset-bottom)`, carries the same readouts, and the Tour and GitHub items
+move into it.
 
 **Not present anywhere:** a wordmark-plus-CTA marketing bar, a progress readout, a section counter, a
-scroll cue.
+scroll cue, a Moments or Pro item in the nav, those two chapters are reachable by scrolling, not by
+the rail, because the rail's five items are the acts the audit named as needing to be found fastest
+(the failure demo and the shapes/outputs/versus argument), not an index of everything.
 
-### 2.2 Hero: the surface already in a state
+### 2.2 Hero: the surface already doing something, not hidden behind anything
 
-The hero is not a title and not a claim. At first paint the live surface is **already mounted, already
-live, and already telling its 17-step story on its own clock** (INTERACTION_SYSTEM §9), and the six
-duplicated-control panels of the chaos prologue are stacked over it, jittering.
+This is the section the audit rewrote. The first version's hero was "already mounted, already live,
+already telling its 17-step story on its own clock", **underneath six duplicated-control panels of a
+chaos prologue, jittering, which covered the headline for the audit's entire eighteen-second wait**
+(`AUDIT_CLOSURE.md` P0 #1). That prologue does not exist any more. There is nothing between the visitor
+and the hero.
 
-So the landing view carries, simultaneously: a working console, and six copies of every control on top
-of it. That is the recognition the brief asks for ("that is my Tuesday") and it is honest from frame
-one, because the product is visible through the lattice rather than hidden behind a headline.
+At first paint: the fixed live surface holds a **real sample picture**, a generated creator clip
+playing on the stage from frame one, not a grey rectangle and not a static plate, and the hero band,
+a real panel with real type, is visible and readable at progress zero:
 
-The surface's state line takes the greet-and-hold cue form, `data-sc-cue="0 1 0 0"`, so the one screen
-every visitor sees has content on it at full opacity at `p = 0`.
+- **The product statement**, in `hero` type: *"Go live everywhere. Without becoming a broadcast
+  engineer."*
+- **A lede** naming the category, the audience and the difference: *"LIVETAP is a free, open-source
+  live production app for streamers and creators. Connect YouTube, Twitch, TikTok and more, say what
+  you are making, tap GO LIVE. One production, every platform, each on its own connection."*
+- **"Use my camera"**, real `getUserMedia`, local only, mirrored self-view, never uploaded.
+- **"Try the web demo"**, a real link to `/app/start`.
+- A trust line: *"Runs on your machine. Nothing on this page is broadcast."*
+
+Then a **4.2-second guided demo** runs once, on its own clock, not on scroll: the mic switches on,
+then the intent's two suggested destinations connect, then one more, each reaching `READY`. At 4.2s it
+writes *"Your turn. Tap GO LIVE. Nothing is broadcast from this page."* under the GO LIVE button, and
+the button breathes twice (`ltp-breathe`, 1.6s × 2) to be found. It never goes live by itself, and any
+visitor action, a tap, a scroll, a focus, interrupts it immediately and permanently (`interrupt()` in
+`main.ts`). This is the audit's finding #12 closed by name: "Auto-play steals agency… demonstrate ≤5 s
+then hand over."
+
+The rail, the status bar, the destination tiles, the toolbar and the Moment strip are all real from
+the first frame, exactly as `LIVETAP_INTERACTION_SYSTEM.md` §1 requires: nothing a visitor needs is
+scroll-gated, and nothing is animating that has not been caused by the clock above or by the visitor.
 
 ### 2.3 Close: an actual input
 
-ACT 8 is the real onboarding's first question, **"What are you making?"**, with the six live intent
-cards built from `INTENT_PROFILES`. Picking one is not a link: it re-composes the fixed stage into that
-intent's production, in place, using `buildAutomaticProduction()`'s own output (§9 below).
-Only then does the toolbar's one action become specific.
+ACT 8 MAKE is the real onboarding's first question, **"What are you making?"**, with six live intent
+chips built from `INTENTS`. Picking one is not a link: it re-composes the fixed stage into that
+intent's production, its shape, its first Moment, its renamed Moments and its suggested
+destinations, in place, using the same `chooseAspect()` / `insetToSafeArea()` the app runs.
+Only then does the toolbar's primary action carry the chosen intent forward:
+
+- **Open LIVETAP** → `./app/start`, carrying the picked intent
+- **Watch on GitHub for the first build** → the repository
+- **Code** → the repository
+
+There is no Download link anywhere on the page. Desktop and mobile builds are not published, and the
+footer says so in plain words rather than pointing a button at a release that does not exist
+(`AUDIT_CLOSURE.md` P1 #19). The early-access form appears only when the deployment has
+`LIVETAP_EARLY_ACCESS_WEBHOOK` configured; until then, watching the repository is the honest capture
+path.
 
 A magnetic button would be the wrong ending for a page that spent its whole length being a tool.
 
@@ -118,302 +167,282 @@ A magnetic button would be the wrong ending for a page that spent its whole leng
 
 ## 3. The feeling curve
 
-Written before the acts, per `references/feel.md` §1. The emotion is the constraint; the cause names a
-device second, never first.
+The emotion is the constraint; the cause names a device second, never first. The curve below replaces
+the first version's ten-row table (eight acts, two rests): this version has **eight acts and one
+declared rest**, and the peak has moved from sixth to second.
 
 | # | Act | Feeling | What on screen causes it |
 |---|---|---|---|
-| 1 | **CHAOS** | recognition, then relief | Six panels, each one a duplicate of a control the surface already has — six stream-key fields, six bitrate numbers, six clocks, six GO LIVE buttons — overlapping and jittering over a working console. Across the act they converge and merge into one of each, and the console stands clear. |
-| — | **REST A** | stillness | The collapsed surface, settled, its destination row dim, one empty-state line. Nothing moves until the visitor does. **Authored silence.** |
-| 2 | **CONNECT** | agency | Six destination tiles travel in on a shelf. The visitor taps them; each one draws a signal path into the stage's port and turns `READY`. The ones not tapped stay dim, at 0.98 scale. |
-| 3 | **PRODUCE** | competence | Camera, mic and screen switch on in sequence in the production column; the Moment strip appears; picking a Moment re-composes the stage in place. |
-| 4 | **ADAPT** | surprise | The visitor taps 9:16 and the stage physically re-flows: the camera re-frames, the title moves inside the new safe area, the per-destination format labels change. |
-| 5 | **MULTISTREAM** | pride | GO LIVE, a 3-2-1 countdown they can cancel, then every path lights and every tile turns `LIVE` together. Chat begins, with platform badges. |
-| — | **REST B** | calm | The show is running and nothing is happening. Steady paths, steady pulses, a clock counting. **Authored silence, and the silence before the peak.** |
-| 6 | **RESILIENCE** | dread, then trust | **PEAK.** The visitor drags one `LIVE` tile away from the stage with their own pointer. Its path strains, snaps, and recoils. The tile goes `DEGRADED`, then `RECONNECTING` with a visible countdown. The others never flicker. Then it snaps back `LIVE`. |
-| 7 | **POWER** | respect | One toggle, and the same surface gains a Pro layer behind it: encoder, per-format bitrate, audio routing, diagnostics. Nothing the visitor already learned moves by one pixel. |
-| 8 | **ACTION** | readiness | The surface settles into "What are you making?" with six live intent cards. Download, GitHub and Try demo sit in the surface's own toolbar. |
+| 1 | **HERO** | recognition | A real production statement over a real picture already on the stage: a working console with something on it, not a claim about one. "Use my camera" and "Try the web demo" are both real, both one tap away. |
+| · | **REST** | stillness | 40svh of nothing. The hero has resolved, the guided demo has handed over or is still counting down, and nothing moves until the visitor scrolls or taps. **Authored silence, and the silence in front of the peak.** |
+| 2 | **BREAK IT** | dread, then trust | **PEAK.** One tap, "Go live, then break YouTube", or a drag, or `Delete` on a focused live tile. The connection snaps, the chip tells the truth, a countdown runs, the others never flicker, then it heals. |
+| 3 | **SHAPES** | clarity | The 16:9 / 9:16 / 1:1 control, mirrored in the band, re-flows the picture in place, with the chat-safe and button-safe zones drawn directly on it. |
+| 4 | **MOMENTS** | competence | The six Moments, mirrored in the band, each producing a genuinely different picture: Screen Share turns the screen input on, Guest brings in a second clip, Break and Ending change the words on the ground. |
+| 5 | **OUTPUTS** | pride | Six small live canvases, each the same production re-cropped into its own platform's shape, with a name, a shape, an "up to N Mbps" ceiling and a state chip underneath. |
+| 6 | **VERSUS** | conviction | "Instead of OBS.", two playable lanes, side by side, that let the visitor press through fourteen named concepts on one side and six measured taps on the other, then read one honest line each about Restream, StreamYard, Streamlabs and Riverside. |
+| 7 | **PRO** | respect | A labelled Simple/Pro control, mirrored in the band, opens four real panels, quality, per-platform ceilings, audio, the session log, above the desk. Nothing the visitor already learned moves. |
+| 8 | **MAKE** | readiness | The surface settles into "What are you making?" with six live intent chips, then Open LIVETAP, Watch on GitHub, Code, and an honest footer: no download exists yet. |
 
-No two adjacent rows carry the same feeling. Two rows are rests and both are declared.
+No two adjacent rows carry the same feeling. There is exactly one declared rest, and it sits directly
+in front of the peak.
 
-### 3.1 One refinement to the brief
+### 3.1 Why the peak moved from sixth to second
 
-The brief placed its second authored silence *after* the tile snaps back and before Pro mode. This
-score moves the structural rest to **before** the peak instead, and keeps the post-snap-back hold as
-the last 0.5 of ACT 6's own span.
+The first version placed BREAK IT (then called RESILIENCE) as ACT 6 of 8, two-thirds down the page.
+The audit named that placement directly: *"Failure demo buried two-thirds down… move it much higher"*
+(P1 #11), and separately: *"the drag-to-break demo earned my curiosity"* was the one thing that kept
+the auditor reading despite everything else being broken. Two findings point at the same fix, put the
+thing that works where a visitor can reach it before they decide the page is not worth their time.
 
-Why: `feel.md` §2 requires silence *in front of* the peak, and requires the act before the peak to be
-quieter than it. ACT 5 MULTISTREAM is the page's brightest act; the peak cannot arrive from it. Placing
-the rest between them gives the peak something to be a change from, and it is thematically exact — the
-calm of a running show is the thing the visitor is about to break. The peak still resolves inside its
-own span, which is where a peak's resolution belongs.
+So this version makes BREAK IT a **cold open**: the second thing on the page, right after the hero,
+with only one declared rest between them. `feel.md`'s requirement that a peak be preceded by silence
+still holds, the 40svh rest is that silence, but the requirement that the act before the peak be the
+page's quietest act is now trivially true, because there is only the hero and the rest before it, and
+the rest has no content at all. This is a deliberate departure from the first version's placement, made
+because the audit is the newer and more specific source of truth for this page, and it is recorded here
+rather than by silently moving the act.
 
-Both silences are in `BRIEF.md`. This refinement is recorded here rather than by editing the brief's
-own words.
+The rest of the descent, SHAPES, MOMENTS, OUTPUTS, VERSUS, PRO, MAKE, keeps the original score's
+logic of explaining after demonstrating: the peak proves the thing works, and everything after it
+explains how and shows the rest of what the product does, ending on the product's own first question.
 
 ---
 
 ## 4. The peak
 
-**Act 6. The sentence a visitor says to a friend:**
+**Act 2. The sentence a visitor says to a friend:**
 
 > I dragged YouTube off the stream with my mouse and everything else stayed live, then it pulled itself
 > back.
 
 **Tell-someone sentence:** it's the site where you break your own live stream and watch it survive.
 
-The peak gets the three things `feel.md` says it must get, at the expense of other acts:
+The peak still gets the three things `feel.md` says it must get, at the expense of other acts:
 
 | It gets | Here |
 |---|---|
-| The asset budget | There are no generated assets, so the equivalent budget is **build effort**: the pointer physics, the tension path, the countdown ring, the sibling-isolation assertion and the three input equivalents are the most expensive code on the page, and they exist only for this act. |
-| The silence before it | REST B, 0.6 viewport-heights of a running show with nothing happening. |
-| The most scroll room | `data-sc-span="2.8"` against a next-largest of 1.6. The peak is 1.75× the longest other act. |
+| The asset budget | There are no generated visual assets for this act specifically, so the equivalent budget is **build effort**: the pointer physics, the tension path, the countdown ring, the sibling-isolation assertion, the one-tap "Go live, then break YouTube" button and the three input equivalents are the most expensive code on the page, and they exist only for this act. |
+| The silence before it | The page's one declared rest, 40svh, directly in front of it. |
+| The most scroll room | `data-sc-span="2.4"` against a next-largest of 1.6 (VERSUS). The peak is 1.5× the longest other act. |
 
 ---
 
 ## 5. The act table
 
-Total page length **12.8 viewport-heights** across **8 acts plus 2 declared rests**. Inside the 8-to-14
-budget, and deliberately not in the 6-to-7-acts-at-13.6-to-13.8vh band that is a fingerprint dimension.
+Total page length **12.4 viewport-heights** across **8 acts plus 1 declared rest**. Inside the 8-to-14
+budget.
 
-| # | Beat | `data-sc-act` | Primary device | Span | Also in the act | Why this device |
-|---|---|---|---|---|---|---|
-| 1 | **CHAOS** | `pin` | `pin`, with the collapse driven from `--sc-p` | **1.3** | `data-sc-drift` stop 1 | The frame has to hold still while the multiplicity resolves, or the collapse is something that scrolled past rather than something that happened. Pin is the grammar's lean, and it is correct exactly once at the open. |
-| — | **REST A** | `flow` | none, by design | 0.7 | `data-sc-verify-hold="true"` | Authored silence. A ground-only rest is the only way to make the first destination tap feel like the visitor's idea. |
-| 2 | **CONNECT** | `pan` | `pan` | **1.6** | `data-sc-in` on each tile's arrival | Lateral travel reads as breadth, and six destinations are a breadth, not a hierarchy. The shelf is also the one place on the page where the real product has a scrolling row. |
-| 3 | **PRODUCE** | `pin` | `flow` + `in` staggers inside a pinned column | **1.4** | The Moment strip as the app's own scroll-snap rail | The beat is an assembly in sequence, which is what a stagger is for; the pin is what stops the column sliding away while the third source is still arriving. |
-| 4 | **ADAPT** | `flow` | `reveal` | 0.9 | `data-sc-reveal="iris"` used once, here, on the safe-area guides | A wipe is a change of state, and this beat is the page's only literal transformation of shape. A cue would merely introduce it. |
-| 5 | **MULTISTREAM** | `pin` | `count` | **1.4** | `data-sc-drift` absent; the ground holds | Real numbers land here and nowhere else: the destination count the visitor produced by tapping, and the elapsed clock. A counter is a truth claim with motion attached, so it is only used where the number is computed. |
-| — | **REST B** | `flow` | none, by design | 0.6 | `data-sc-verify-hold="true"` | Authored silence, and the silence in front of the peak. |
-| 6 | **RESILIENCE** | `pin` | bespoke pointer physics (the signature move) | **2.8** | `data-sc-drift` stop 2 | The page must stop moving and start responding, and the drag must not have the page scrolling out from under it. This is the only act where the visitor's hand does something other than scroll or tap. |
-| 7 | **POWER** | `flow` | `parallax` | 0.9 | `data-sc-in` at 60ms stagger on the Pro rows | Depth from differential movement is the only honest way to say "this was always underneath". The Pro layer arrives *behind* the surface, so it moves slower than it. |
-| 8 | **ACTION** | `pin` | pointer `tilt="5"` on the intent cards | **1.2** | One-value hold cues; the footer inside the stage | The page ends by responding to a pointer that is choosing, not by pulling one toward a button. A card you pick is a card you pick up. |
+| # | Beat | `data-sc-act` | Span | What the act does |
+|---|---|---|---|---|
+| 1 | **HERO** | `pin` | **1.2** | The product statement, the lede, the two hero actions and the guided 4.2s demo. |
+| · | **REST** | `flow` | 0.4 | Authored silence. Nothing on screen changes; the surface simply holds. |
+| 2 | **BREAK IT** | `pin` | **2.4** | The peak. One-tap break, drag, or `Delete`. |
+| 3 | **SHAPES** | `pin` | **1.4** | The 16:9 / 9:16 / 1:1 control, mirrored in the band; labelled chat/button safe zones drawn on the picture. |
+| 4 | **MOMENTS** | `pin` | **1.4** | The six Moments, mirrored in the band. |
+| 5 | **OUTPUTS** | `pin` | **1.4** | Six live output canvases, composed from the same picture. |
+| 6 | **VERSUS** | `pin` | **1.6** | "Instead of OBS.", two playable lanes plus the four-competitor strip. |
+| 7 | **PRO** | `pin` | **1.2** | The Simple/Pro control, mirrored in the band; four panels open above the desk. |
+| 8 | **MAKE** | `pin` | **1.4** | The close: the product's first question, six intent chips, the toolbar, the footer. |
 
-### 5.1 The checks, run
+### 5.1 What the device-family score no longer measures, and why
+
+The first version scored itself against Scroll Craft's device-diversity gate: nine device families
+(`pin`, `pan`, `reveal`, `count`, `parallax`, bespoke pointer, `drift`, `flow`+`in`, pointer `tilt`),
+no family twice in a row, at most two `scrub` acts. **That gate no longer applies to this build, and
+the reason is written down rather than glossed over.**
+
+`AUDIT_CLOSURE.md` §0 found the root cause of nearly every audit complaint: the deployed page's main
+thread was jammed by its own choreography. The wheel did nothing because the browser had to hit-test a
+stack of fixed, heavily parallaxed, cue-driven layers on every frame; the intro never cleared because
+its convergence was scroll-driven and the thread that should have run it was busy; controls "refused"
+because their handlers never got a turn to run. `pan` shelves, `reveal` irises, `count` timelines,
+`parallax` layers and pointer `tilt` were all part of that stack.
+
+The rebuild's answer is not to tune the choreography, it is to remove almost all of it. Every act in
+the table above is `data-sc-act="pin"`: the engine holds the stage in the viewport for the act's span
+and nothing more. There is no `pan`, no `reveal`, no `count`, no `parallax`, no `drift` and no pointer
+`tilt` anywhere on the page any more. What each chapter's copy shows is decided by **one fixed band
+layer, cross-faded by a passive scroll listener** (§6), not by per-act Scroll Craft cues. The one place
+bespoke choreography survives is the peak's drag, because it is pointer-driven and off the scroll
+thread entirely (`LIVETAP_MOTION_SYSTEM.md` §2, §4).
+
+This is a real trade and it is made on purpose: a page that changes richly with the wheel but that the
+wheel cannot reliably move at all has failed the grammar at a more basic level than "not enough device
+variety." `audit-closure.spec.ts` asserts fewer than three long tasks in six idle seconds and 40+ fps,
+which is the check this version optimizes for instead.
+
+What still holds from the original checks:
 
 | Check | Result |
 |---|---|
-| The grammar's bans hold | Yes. No `scrub`, no `kinetic`, no `spotlight`, two `drift` stops, no magnetic close. |
-| Four or more distinct device families | Nine: `pin`, `pan`, `reveal`, `count`, `parallax`, `flow`+`in`, pointer `tilt`, `drift`, plus the bespoke pointer physics. |
-| No device family twice in a row | `pin` → (rest) → `pan` → `pin` → `reveal` → `count` → (rest) → bespoke → `parallax` → `tilt`. No adjacent repeat. |
-| At most two `scrub` acts | Zero. |
+| The grammar's bans hold | Yes. No `scrub`, no `kinetic`, no `spotlight` beyond the peak's own drag, no drift, no magnetic close. |
 | No two adjacent acts carry the same feeling | Confirmed in §3. |
-| One peak, largest span by a visible margin | 2.8 against 1.6. The act before it is a rest. |
-| Every act earns its scroll span | The two rests are declared silences; every other act carries a state change the visitor caused or watched. |
-| Total 8 to 14 viewport-heights | 12.8. |
-| Not 6 to 7 acts at 13.6 to 13.8vh | 8 acts plus 2 rests at 12.8vh. |
-| Minimum useful pinned span ≥ 1.2 | Smallest pinned span is ACT 8 at 1.2. The two rests are `flow` and are not pinned, so the floor does not apply to them. |
-| Only the last act may hold its final cue | ACT 8 alone uses one-value cues. Every other act closes its last cue with a two-value window ending at 1. |
-| Ground or greet on every pinned act | The fixed surface is the ground for all of them, and it is present from first paint. ACT 1 additionally greets. |
+| One peak, largest span by a visible margin | 2.4 against 1.6. The act before it is the page's only rest. |
+| Every act earns its scroll span | Every act carries a state a visitor caused or watched; the one rest is a declared silence. |
+| Total 8 to 14 viewport-heights | 12.4. |
+| Minimum useful pinned span ≥ 1.2 | Smallest pinned span is HERO and PRO at 1.2. |
+| Ground on every pinned act | The fixed surface is the ground for all eight, present from first paint. |
 
 ### 5.2 The structural decision that makes it one surface
 
 The brief's answer to interview question 7 is *one persistent surface that stays on screen the whole
-way*. A page of pinned acts cannot deliver that: each act pins its own stage, unsticks it, and slides
-the next one in, which is the seam the owner has already rejected in another build ("weird clear page
-lines... very cheap looking").
+way*, and that has not changed. What changed is how the surrounding chapters talk to it.
 
-So the page is built the way `verify.md` sanctions for a bespoke fixed experience:
+- **One fixed live surface**, `#surface` / `.ltp-surface`, `position: fixed`, mounted once at first
+  paint, never unmounted, never unpinned. It carries `data-sc-verify-state`, a compact signature of the
+  values that actually paint, format, the six destination states, path phases, chat length, the pro
+  flag, so the harness can check the acts that are pinned rather than trusting raw scroll progress.
+- **One fixed chrome layer**: the rail (or top row), the status bar.
+- **One fixed band layer**, `[data-lt-bands]` (§6), new in this version, holding one panel per chapter.
+- **The act stack**, `<main class="ltp-acts">`: nine transparent sections (eight acts, one rest), each
+  `pointer-events: none` except for its own controls, whose only job is to hold scroll length and tell
+  `watchActs()` which chapter is active. The engine pins each one; nothing else about them is bespoke.
 
-- **One fixed live surface**, `#lt-surface`, `position: fixed; inset: 0`, mounted once at first paint,
-  never unmounted, never unpinned. It holds layers 1 to 6 of VISUAL_DIRECTION §2. It carries
-  `data-sc-verify-state`, updated to a compact signature of the values that actually paint (stage
-  format, destination states, path phases, chat length, pro flag) so the harness can check the acts
-  that are `flow` markers.
-- **One fixed chrome layer**, layer 7.
-- **The act stack** in normal document flow: ten transparent sections, each holding only its own
-  act-local UI positioned beside the stage, each driving the surface through `--sc-p` and through
-  Anime.js scroll observers. The engine pins, pans, reveals and staggers inside those sections exactly
-  as it always does.
-
-`data-sc-verify-state` publishes **rendered** values, never raw scroll progress, and
-`data-sc-verify-hold="true"` is set only while a declared rest or the peak's resolution hold is
-actually active.
+`data-sc-verify-state` publishes **rendered** values, never raw scroll progress, and the peak and the
+close each set `data-sc-verify-hold="true"` on the surface only while their resolution or their final
+screen is actually the thing on screen.
 
 ---
 
-## 6. The chaos prologue, justified inside the grammar
+## 6. The band layer, and why the chaos prologue is gone
 
-The Live surface grammar bans marketing chrome and forbids painting a surface. A "chaos act" is the
-obvious place for both to sneak back in, so the constraints are written down.
+The first version's hero was the chaos prologue: six duplicate control panels, a stream-key field, a
+bitrate input, a clock, a GO LIVE button, a mic meter, a destination row, each one six times over,
+jittering and converging into the surface across ACT 1's `--sc-p`. It does not exist in this build.
 
-**What the chaos is.** Six panels, each one a **duplicate of a control the LIVETAP surface already
-has**, rendered in LIVETAP's own tokens and components: a stream-key `TextField`, a bitrate number
-input, an elapsed clock, a GO LIVE button, an audio `Meter` with a fader, and a destination row. There
-are six of each because there are six destinations, and that is the whole argument: multiple
-platforms, multiple windows, multiple controls, multiple workflows means *doing the same thing six
-times*.
+**Why it is gone.** The audit's own words: *"an overlapping stack of six duplicated UI cards was frozen
+across the centre of the screen, covering the headline, and it stayed there indefinitely… my honest
+first thought was 'this site didn't load properly.'"* `AUDIT_CLOSURE.md` P0 #1 requires the intro
+removed entirely rather than tuned, because a decorative element that can cover its own headline for
+eighteen seconds has no safe middle ground between "gone" and "still risky." The convergence was also
+part of the scroll-linked choreography implicated in the main-thread jam (§5.1), so removing it served
+both the visual finding and the performance one.
 
-**Why that is not a fake screenshot.** Every one of the six panels is operable: the key field accepts
-text, the bitrate input increments, the clock runs, the fader moves, the GO LIVE button can be pressed
-and reports what it cannot do. They are real controls with nothing behind them, which is exactly the
-experience being named. Nothing imitates another company's interface, carries another company's
-trademark, or claims to be a screenshot of anything.
+**What replaced it.** Every chapter's copy, the title, the lede, the mirrored controls, now lives in
+**one fixed band**, `[data-lt-bands]`, a single layer stacked above the surface that holds one panel per
+chapter. Only the active panel is visible; the rest are present in the DOM (so nothing is gated behind
+scroll for assistive technology) and cross-fade in place by opacity and visibility over 200ms, none
+under reduced motion. On desktop the band is a **reserved region above the surface**,
+`clamp(224px, 27svh, 252px)`; on phones it is a **plate over the desk's lower edge**,
+`clamp(196px, 26svh, 228px)`. The hero band is the one exception that is visible from first paint with
+no cross-fade needed, because it is already active before any scrolling happens.
 
-**Why it is not marketing chrome.** There is no headline over it, no scrim, no claim. The only text in
-the act is the panels' own labels plus one line in the surface's idiom, set at `body`, not `display`:
-"Six destinations. Six of everything."
-
-**How it collapses INTO the surface.** Driven from ACT 1's `--sc-p`, the six copies of each control
-converge on the position of the surface's single instance of that control and merge with it: the six
-stream-key fields converge on the destination row, the six bitrate numbers converge on the health
-readout, the six clocks converge on the one elapsed timer, the six GO LIVE buttons converge on the one
-GO LIVE. Opacity crosses over at `p = 0.82` so the copies are gone before the surface finishes its
-scale from 0.96 to 1.00. By `p = 1` there is one of each and the console stands clear.
-
-The collapse is a **merge**, not a fade. A fade would say the clutter went away; a merge says LIVETAP
-absorbed it, which is the product's actual claim.
-
-**Reduced motion.** No convergence. The copies are present at `p = 0` and absent by `p = 0.2`, by
-opacity only, with no positional change, and the surface never scales. The argument survives; the
-choreography does not.
+Which panel is active is decided by `watchActs()` (`main.ts`): the act whose box contains the point 45%
+down the viewport is the active one, computed by one passive `scroll`/`resize` listener plus a single
+`requestAnimationFrame`, not by Scroll Craft cues and not by a second per-frame scroll reader. This is
+the direct fix for the audit's finding #9, *"pale, clipped narration; controls floating in white"*,
+and finding #10, *"120px dead zone under the caption"*: the band is a real panel with a title in
+`text-primary`, a lede in `text-secondary` and its own controls, it is never pale, never clipped at a
+viewport edge, and it never overlaps the surface, because the surface's own layout reserves the band's
+space rather than the band floating over it.
 
 ---
 
 ## 7. The signature move: drag to disconnect
 
 One bespoke interaction that exists on this site alone. Coded in the page, off the page's own
-`data-lt-*` attributes and `--sc-p`. The Scroll Craft engine is not touched.
+`data-lt-*` attributes and pointer events, armed and disarmed by `watchActs()` on entry to and exit
+from ACT 2 BREAK IT. The Scroll Craft engine is not touched, and this is the one place on the page
+where bespoke, clock- and pointer-driven choreography still runs, deliberately, because it is off the
+scroll thread (§5.1, `LIVETAP_MOTION_SYSTEM.md` §2).
 
 Anime.js `createDraggable` supplies the pointer physics primitive, and that is not what makes this a
 signature move: `createDraggable` gives a drag with bounds and a spring release, and nothing more. The
-move is the composition around it — the tension path, the break threshold, the state machine, the
-countdown, the sibling-isolation guarantee and three equivalent input paths — none of which any kit
-provides. The rule in `uniqueness.md` §3 is about Scroll Craft's own device kit, and no Scroll Craft
-device can change a state machine.
+move is the composition around it, the tension path, the break threshold, the state machine, the
+countdown, the sibling-isolation guarantee, the one-tap alternative and the keyboard/touch equivalents,
+none of which any kit provides.
 
-### 7.1 Pointer
+### 7.1 Three ways in, all through the same state machine
+
+The audit's finding #26 asked for the demo to hand itself over in under five seconds and then invite
+the visitor in; this act adds a fourth invitation on top of the drag, keyboard and touch paths the
+first version already had, because the fastest way to feel the peak should not require finding a grip:
+
+| Path | How |
+|---|---|
+| **One tap** | The band's own button, labelled by what it will do: `Go live, then break YouTube` if nothing is live yet, `Break {name} for me` once a destination is live, `Breaking. Watch the tile` while it resolves. Pressing it connects, goes live and breaks a destination on a short timer if nothing is live yet, so a visitor who has not touched anything else on the page can still see the whole peak in one press. |
+| **Drag** | Grab the 44 × 44px grip on a `LIVE` tile's leading edge and pull. |
+| **Keyboard** | `Delete` / `Backspace` on a focused `LIVE` tile, or `ArrowLeft/Right/Up/Down` nudges that raise tension incrementally. |
+
+All three end at the same `breakDestination()` call. There is exactly one state machine, and the
+mechanics below (§7.2–§7.6) describe it regardless of which path triggered it.
+
+### 7.2 Pointer
 
 | Phase | Behaviour |
 |---|---|
-| **Invitation** | Only while ACT 6 is the active act, and only on a tile whose state is `LIVE`, the tile grows a 44 × 44px grip on its leading edge (three 12px hairlines, not a glyph) and a `metadata` line under its label reads "Drag me off the stage". The invitation appears once, on ACT 6 entry, and does not reappear after the first successful break. |
-| **Grab** | `createDraggable(tile, { trigger: grip, ... })`, so only the 44 × 44px grip starts a drag and the rest of the tile stays a normal button. Anime's own `dragThreshold` defaults apply — `{ mouse: 3, touch: 7 }` — which is what keeps a vertical flick on a phone scrolling the page instead of capturing it. `onGrab` lifts the tile: `scale(1.04)` and `--lt-shadow-2` → `--lt-shadow-3`. `touch-action: none` is on the grip and nowhere else. |
-| **Drag** | `dragSpeed: 0.92`, so the tile trails the pointer very slightly rather than tracking it 1:1. Direct tracking carries no momentum and reads as artificial; 0.92 gives the tile mass, which matters because the visitor is supposed to feel they are pulling something loose. `container` is the surface with `containerFriction: 0.35`, so the frame resists at its edges without hard-stopping. |
-| **Tension** | `onDrag` computes `d = Math.hypot(draggable.x, draggable.y)` and publishes a page-local `--lt-tension`, `0` at the port and `1` at the break threshold. It drives the path, and only the path: `stroke-width` 2px → 0.75px, stroke colour interpolating `--ltp-signal-live` → `--ltp-signal-strain`, and the bezier's control points pulling toward a straight line as tension rises. Nothing else on the page reacts to tension. |
-| **Threshold** | The break fires when `d` passes **168px**, scaled by `min(1, viewportWidth / 1440)` so a narrow window does not make the break unreachable. Under the threshold, the stream never broke. |
-| **Release under threshold** | `onRelease` leaves anime's own spring to carry the tile home: `releaseEase: spring({ stiffness: 150, damping: 18 })`, which overrides `releaseMass` / `releaseStiffness` / `releaseDamping` and takes its velocity from the real thrown velocity. `onSettle` clears `--lt-tension`. **No state change at all**: the chip stays `LIVE`, the path returns to 2px, and nothing is announced. The visitor learns the stage holds on, which is the right thing to learn first. |
-| **Release over threshold, or crossing the threshold while held** | The break. See §7.2. On break the draggable is `disable()`d for the duration of the sequence, so a second drag cannot start mid-recovery, and `enable()`d again when the tile is `LIVE`. |
+| **Invitation** | Only while ACT 2 BREAK IT is the active act, and only on a tile whose state is `LIVE`, the tile grows a 44 × 44px grip on its leading edge (three 12px hairlines, not a glyph) and a `metadata` line under its label reads "Drag me off the stage" (or "Press Delete to drop it" when the tile is keyboard-focused). |
+| **Grab** | `createDraggable(tile, { trigger: grip, ... })`, so only the grip starts a drag and the rest of the tile stays a normal button. Anime's own `dragThreshold` defaults apply, `{ mouse: 3, touch: 7 }`. `onGrab` lifts the tile. `touch-action: none` is on the grip and nowhere else. |
+| **Drag** | `dragSpeed: 0.92`, so the tile trails the pointer very slightly rather than tracking it 1:1, which gives it mass. `container` is the surface with `containerFriction: 0.35`, so the frame resists at its edges without hard-stopping. |
+| **Tension** | `onDrag` computes the Euclidean displacement and publishes `--lt-tension`, `0` at the port and `1` at the break threshold. It drives the path and only the path: stroke-width narrows from 2px toward 0.75px, stroke colour interpolates toward the strain colour, and the bezier's control points pull toward a straight line as tension rises. |
+| **Threshold** | The break fires when the displacement passes **168px**, scaled by `min(1, viewportWidth / 1440)` so a narrow window does not make the break unreachable. Under the threshold, the stream never broke. |
+| **Release under threshold** | Anime's own spring carries the tile home: `releaseEase: spring({ stiffness: 150, damping: 18 })`. **No state change at all**: the chip stays `LIVE`, the path returns to full strength, and nothing is announced. |
+| **Release over threshold, or crossing it while held** | The break fires the first time tension reaches 1, **while the tile is still held**, a stream does not wait for you to let go. The draggable is disabled for the duration of the sequence and re-enabled once the tile is `LIVE` again. |
 
-### 7.2 What snaps
+### 7.3 What snaps
 
-Four things happen, in this order, and they are the whole peak:
-
-1. **The path snaps.** The bezier is cut at the tension point. The stage-side segment recoils to the
-   port over 220ms with a two-stage collapse (overshoot 8px, settle), and the tile-side segment
-   vanishes over 90ms. The port itself flashes its own border once, 120ms. No screen shake, no flash
-   of the whole frame, no sound.
-2. **The tile falls out of the composition.** It does not fly off screen. It settles where the visitor
-   dropped it, at `scale(0.98)`, and its own frame goes from the `LIVE` solid fill to the `DEGRADED`
-   tint. It is still on the page, still readable, still the visitor's.
+1. **The path snaps.** The connection line is cut at the tension point and recoils to the port; the
+   tile-side segment vanishes. No screen shake, no flash of the whole frame, no sound.
+2. **The tile falls out of the composition.** It settles where the visitor dropped it, at a reduced
+   scale, and its frame goes from the `LIVE` solid fill to the `DEGRADED` tint. It is still on the page,
+   still readable, still the visitor's.
 3. **The chip tells the truth, in the app's own words.** `LIVE` → `DEGRADED` for 700ms with the label
-   "Live, rough", then → `RECONNECTING` with the label "Reconnecting" and the app's real status
-   sentence shape: `Attempt 1 of 10, retrying in 4 s`. The dot pulses, because `RECONNECTING` is one
-   of exactly two states in the system that pulse.
-4. **The siblings do nothing.** This is the point of the whole act, so it is a hard assertion rather
-   than an intention: across the entire break-to-heal sequence, no sibling tile's `transform`,
-   `opacity`, `scale`, chip state, path geometry or pulse phase changes by any amount. The page does
-   not re-layout, does not re-sort, does not reflow. Their clocks keep counting. `PLAN.md` §6 carries
-   this as a test.
+   "Live, rough", then → `RECONNECTING` with the label "Reconnecting" and a real countdown, "Attempt 1
+   of 10, retrying in 4 s". The dot pulses, because `RECONNECTING` is one of exactly two states in the
+   system that pulse.
+4. **The siblings do nothing.** No sibling tile's transform, opacity, scale, chip state, path geometry
+   or pulse phase changes by any amount, at any point in the sequence. Their clocks keep counting.
 
-### 7.3 What the countdown shows
+### 7.4 Keyboard and touch equivalents
 
-| Element | Detail |
-|---|---|
-| Ring | A 20px circle on the tile's leading edge, `stroke-dasharray` = circumference, `stroke-dashoffset` animated from full to zero over exactly the retry interval, `--lt-ease-linear`. Colour `--lt-state-reconnecting`. |
-| Digit | Inside the ring, the seconds remaining, `4 → 3 → 2 → 1`, in tabular figures. One digit, no unit, because the unit is in the sentence beside it. |
-| Sentence | `Attempt 1 of 10, retrying in 4 s`, at `metadata`, truncated with an ellipsis rather than wrapped, with the full string in `title`, exactly as `StatusChip`'s `detail` prop already behaves. **PRODUCT_SPEC §4.2 writes this string with an em dash** (`Attempt {n} of {max} — retrying in {s}s`); the comma here is deliberate, because a visible em dash is a Scroll Craft ship blocker and the owner's rules ban it too. The app should adopt the comma as well, which is a one-string change to `packages/core`'s reconnect describer and is flagged as a risk rather than made here. |
-| Attempt number | Increments once, to `Attempt 1 of 10`, and stays. The demo never shows attempt 2, because the demo always recovers on the first attempt and inventing a failed attempt would be inventing a statistic. |
-| Duration | 4 s, chosen because PRODUCT_REVIEW §3 recorded the app's real recovery at 1.3 s and noted that 1.3 s is **too fast for a human to read the card the demo exists to show**. 4 s is the honest fix to a measured defect, and the page says it is a demo. |
-| Heal | The path redraws from the port to the tile, `stroke-dashoffset` full → 0 over 420ms; the tile springs home; the chip goes `RECONNECTING` → `LIVE`; the solid fill returns. Total break-to-live: about 5.1 s. |
+- **Keyboard.** `Delete` / `Backspace` on a focused `LIVE` tile breaks it immediately, advertised
+  through `aria-keyshortcuts`. `ArrowLeft/Right/Up/Down` nudge tension incrementally, so the break fires
+  at the same 168px-equivalent threshold and the causal feeling survives without a pointer.
+- **Touch.** The same grip, the same 44 × 44px target, the same threshold scaled by viewport width, on
+  a 390px screen that is about 45px, reachable inside the tile row.
 
-### 7.4 Keyboard equivalent
+### 7.5 Reduced-motion equivalent
 
-The move is not a mouse toy. There are two keyboard paths and both produce the same four events.
+Under `prefers-reduced-motion: reduce`, `createDraggable` is never constructed: the reduced-motion
+branch is selected by the scope's own media-query matching, so the whole drag apparatus is never built
+rather than built and suppressed. The one-tap band button, `Delete` and the tile's own drop control
+still fire the identical state machine. `DEGRADED` is skipped (a 700ms intermediate state with no
+motion is a flicker), the path appears and disappears by opacity rather than by animated stroke, and
+every announcement is identical to the full-motion page. Nothing is removed except movement.
 
-- **Direct.** With a `LIVE` tile focused, `Delete` or `Backspace` performs the break immediately. The
-  tile is `<button>`-semantic and its `aria-keyshortcuts` advertises it; the `metadata` line under the
-  label reads "Press Delete to drop it from the stage" when the tile has focus.
-- **Incremental, so the causal feeling survives.** With the tile focused, each `ArrowLeft` /
-  `ArrowRight` / `ArrowUp` / `ArrowDown` press nudges the tile 24px and raises `--lt-tension` by the
-  same proportion a pointer drag would. The path strains visibly. The break fires when the accumulated
-  distance crosses the same 168px threshold, which is seven presses. `Escape` at any point before the
-  threshold returns the tile to its port with no state change, exactly like a release under threshold.
+### 7.6 Why this counts as a signature move
 
-`aria-grabbed` is not used; it is deprecated and it tells a screen reader nothing useful here. Instead
-the tile's accessible name changes with its state and every transition is announced (§7.6).
-
-### 7.5 Touch equivalent
-
-The same drag, on the same grip. Three touch-specific rules, and two of the three come from the
-library rather than from an invented number: anime's `dragThreshold.touch` of **7px** is the slop
-before a drag captures, so a vertical flick still scrolls the page; `touch-action: none` is on the
-44 × 44px grip only; and the threshold is the same 168px scaled by viewport width, which on a 390px
-screen is 45px and therefore reachable inside the tile row. The `Delete` path is unavailable on touch,
-so the tile's own overflow control (`⋯`, 44 × 44px) carries one item, "Drop from stage", which is the
-same action through the same state machine.
-
-### 7.6 Reduced-motion equivalent
-
-Under `prefers-reduced-motion: reduce` there is **no positional animation at all**. The tile does not
-move, `createDraggable` is never called, the path is never bent, and nothing springs. The reduced-motion
-branch is selected by the Anime.js scope's own `mediaQueries` map, so the whole drag apparatus is never
-constructed rather than constructed and suppressed.
-
-The interaction still exists, because the meaning is the state change and not the movement:
-
-| Step | Reduced-motion behaviour |
-|---|---|
-| Invitation | The `metadata` line reads "Press Delete, or use the tile's menu, to drop it from the stage". No grip is shown, because there is nothing to drag. |
-| Break | Triggered by `Delete`, by the tile's menu item, or by a pointer press-and-move past the threshold. Instant: the path's opacity goes 1 → 0 in one frame (no dashoffset animation), the chip flips straight to `RECONNECTING`, the tile's fill changes. `DEGRADED` is skipped, because a 700ms intermediate state with no motion is a flicker. |
-| Countdown | Text only. `Attempt 1 of 10, retrying in 4 s`, decrementing once per second. The ring renders as a static full ring, not an animated one. |
-| Heal | Instant: path opacity 0 → 1, chip → `LIVE`, fill returns. |
-| Siblings | Unchanged, same assertion. |
-| Announcement | Identical in both modes: `assertive` on the break and on the heal, `polite` on the countdown's first tick only. No feature is lost; only movement. |
-
-### 7.7 Why this counts as a signature move
-
-The test in `uniqueness.md` §3 is whether somebody who has seen the device kit could tell it apart
-from something the kit already does. The kit has no drag, no break, no tension, no snap-back and no
-per-item failure isolation; `magnet` pulls an element *toward* a pointer and `tilt` rotates one, and
-neither can change a state machine. The move is also the tell-someone sentence and the peak, which
-`feel.md` §3 requires: if the signature move and the tell-someone sentence pointed at different
-moments, one of them would be decoration.
+Nothing in Scroll Craft's own device kit has a drag, a break, a tension model, a snap-back or per-item
+failure isolation. The move is also the tell-someone sentence and the peak: if the signature move and
+the tell-someone sentence pointed at different moments, one of them would be decoration. They do not.
 
 ---
 
 ## 8. The fingerprint gate
 
-**The registry at `scrollcraft/FINGERPRINTS.md` is empty.** It ships empty on purpose, and this
-project's copy is unmodified: the table has headers and no rows, and the "What is taken" section says
-"Nothing is taken yet."
+**The registry at `scrollcraft/FINGERPRINTS.md` already carries one row for `livetap-public`**, from
+the version this document is revising. This is not a new build under a new name, it is the same
+build, rebuilt against the same URL to close an audit's findings, so the existing row is **updated in
+place** rather than appended a second time. `FINGERPRINTS.md`'s own append-only rule is about distinct
+builds occupying distinct rows; a build revising itself updates its own row, or the registry would
+claim two different pages share one URL.
 
-So there is **nothing to clear**. The gate asks a build to differ from every existing row on at least
-4 of 6 dimensions, and with zero rows the condition is vacuously satisfied. This is the first build in
-this workspace, and it is recorded as such rather than reported as a pass against a table that does
-not exist.
-
-### 8.1 The row to append after shipping
-
-Append this, and only this, to the registry's table. Do not edit it later to make room for a future
-build.
+### 8.1 The row, updated
 
 | Build | Grammar | Nav treatment | Hero device | Act-sequence shape | Close pattern | Signature move | World | Port |
 |---|---|---|---|---|---|---|---|---|
-| `livetap-public` | Live surface | The product's own app chrome: an 88px labelled left rail plus a bottom status bar carrying live session state, both real enough to navigate with; no marketing bar | One fixed live surface, mounted at first paint and already telling its own 17-step story on its own clock, seen through a collapsing lattice of six duplicated control panels | `pin` → rest → `pan` → `pin` → `reveal` → `count` → rest → bespoke pointer → `parallax` → `tilt`; 8 acts plus 2 declared rests; 12.8vh; peak at 2.8 against a next-largest of 1.6 | The product's real first-run question, "What are you making?", with six operable intent cards that re-compose the fixed stage, handing the chosen intent to `/app/start` | Drag a `LIVE` destination off the stage with the pointer: its connection path strains and snaps, it counts down and heals, and no sibling flickers | Drawn signal field. No photography, no footage, no generated imagery; the product is the picture | Web, `/` in `apps/web`, dark default with a first-class light theme |
+| `livetap-public` | Live surface | The product's own app chrome: an 88px labelled left rail on desktop / a top bar plus a bottom status bar carrying live session state on phones, both real enough to navigate with; no marketing bar | One fixed live surface, mounted at first paint with a real sample picture already on the stage, seen with nothing over it; a 4.2s guided demo hands over to the visitor | Eight `pin` acts and one declared rest; 12.4vh; the peak is a cold open second, span 2.4 against a next-largest of 1.6, ahead of the explanatory descent (Shapes, Moments, Outputs, Versus, Pro) | The product's real first-run question, "What are you making?", with six operable intent chips that re-compose the fixed stage, handing the chosen intent to `/app/start` | Drag a `LIVE` destination off the stage, or tap one button, or press Delete: its connection path strains and snaps, it counts down and heals, and no sibling flickers | Real sample footage. No generated imagery, no photography of anything but the product's own demo picture; the product is the picture | Web, `/` in `apps/web`, dark default with a first-class light theme |
 
-### 8.2 What this build takes, for the next build to avoid
+### 8.2 What this revision changes in "What is taken"
 
-Add these bullets to the registry's "What is taken" section:
-
-- **Live surface** as a grammar.
-- **App chrome as nav**, specifically a labelled left rail plus a live status bar.
-- **The fixed-surface-plus-flow-markers structure**: one `position: fixed` product surface for the
-  whole page with the act stack driving it, rather than one pinned stage per act.
-- **A collapsing lattice of duplicated controls** as a hero device.
-- **A real first-run question as the close**, with the answer carried into the app.
-- **Drag-to-break-a-live-destination** as a signature move, and per-item failure isolation as the peak.
-- **The act-count-and-length band**: 8 acts plus 2 rests at 12.8vh with the peak at 2.8.
+The bullets in `FINGERPRINTS.md`'s "What is taken" section are updated to match: the
+**fixed-surface-plus-flow-markers structure** bullet now describes a fixed **band** layer switched by a
+scroll-position listener rather than per-act cue choreography, and the **collapsing lattice of
+duplicated controls** bullet is removed, that hero device does not exist in this build and should not
+be treated as a reusable fingerprint by a future one. The act-count-and-length band changes from
+8-acts-plus-2-rests-at-12.8vh to **8 acts plus 1 rest at 12.4vh, peak at 2.4 and positioned second**.
+Everything else, Live surface as a grammar, app chrome as nav, a real first-run question as the close,
+drag-to-break as a signature move, still holds.
 
 ---
 
@@ -424,48 +453,43 @@ screen early, and the visitor's answer travels with them.
 
 ### 9.1 What the visitor sees
 
-The fixed stage holds. Where the chaos panels once were, and where the Pro layer just was, the surface
-puts one question at `headline` — **"What are you making?"** — and the six intent cards from
-`INTENT_PROFILES`, each one the real card: title, tagline, and the profile's own `whatYouGet` bullets.
-Each card is `<button aria-pressed>` with `data-sc-tilt="5"`.
+The fixed stage holds. Where the Pro layer just was, the surface puts one question at `headline`:
+**"What are you making?"**, and six intent chips from `INTENTS`, each carrying an icon, a title and a
+tagline. Each chip is `<button aria-pressed>`.
 
-Picking a card does three things at once, none of which is navigation:
+Picking a chip does three things at once, none of which is navigation:
 
-1. The stage re-composes into that intent's production: `buildAutomaticProduction(contentType, picked)`
-   runs in the page, and the stage adopts its `masterAspectRatio`, its first Moment, and its
-   `destinationAspects` — so a visitor who picks **Podcast** watches the stage become a split
-   two-person layout, and one who picks **Vertical Live** watches it become 9:16.
-2. The surface's state line reports what just happened, in the profile's own words: the first line of
-   `AutomaticProduction.explanation`.
-3. The toolbar's one action becomes specific.
+1. The stage re-composes into that intent's production: the page's own `chooseAspect()` /
+   `insetToSafeArea()` run, and the stage adopts the intent's master aspect ratio, its first Moment, and
+   the Moments it renames, so a visitor who picks **Gaming** watches the Screen Share Moment become the
+   default, and one who picks **Vertical Live** watches the stage become 9:16.
+2. The surface's state line reports what just happened.
+3. The toolbar's primary action gains the chosen intent as a query parameter.
 
-### 9.2 The toolbar, and the one label per intent
+### 9.2 The toolbar, and the one label per action
 
-Three items, in the surface's own toolbar, and each has exactly one label used everywhere on the page:
+Three items, in the close's own toolbar, each with exactly one label used everywhere on the page:
 
 | Item | Label | Target | Behaviour |
 |---|---|---|---|
-| Primary | **Open LIVETAP** | `/app/start?intent={contentType}` | The app's real onboarding route in this deployment (`apps/web/src/App.tsx`, `/app/start`). The query parameter preselects step 1's intent card, so the visitor arrives at step 2 having already answered step 1 on the marketing page. If no card was picked, the link is `/app/start` with no parameter and the label is unchanged. |
-| Secondary | **Download** | `/#download` | The existing anchor. OS detection and the honest per-OS states are the Landing spec's (PRODUCT_SPEC §5a), unchanged. |
-| Tertiary | **GitHub** | The repository | `external-link` glyph, `rel="noopener"`. |
+| Primary | **Open LIVETAP** | `./app/start` | The app's real onboarding route. Gains `?intent={id}` once a chip is picked, so the visitor arrives at step 2 having already answered step 1. |
+| Secondary | **Watch on GitHub for the first build** | The repository | The honest capture path while no build exists. |
+| Tertiary | **Code** | The repository | `external-link` glyph, `rel="noreferrer noopener"`. |
 
-**Exactly one of the three is solid-filled**, and it is Open LIVETAP, using `--lt-accent-focus-solid`
-rather than `--lt-accent-live-solid`, because the live red belongs to being on air and this is not
-that. This also fixes the defect PRODUCT_REVIEW §3 measured on the current landing page, where three
-`#D63A2D`-filled buttons competed.
+**Exactly one of the three is solid-filled**: Open LIVETAP. The live red belongs to being on air, and
+this is not that.
 
 ### 9.3 Why the handoff makes them one product
 
 The visitor's last action on the marketing site is the app's first question, asked by the same
 component, in the same tokens, with the same six profiles, and answered once. There is no "sign up"
 step in between, no second version of the question, and no re-asking of something they already told
-us. That is what "site and app are one product" has to mean operationally, and it is the only claim in
-this document that the app's own route table can verify.
+us.
 
 ### 9.4 What the close must not do
 
-- It must not fade out. ACT 8's cues are one-value holds, so the last screen still has content on it.
-- It must not be followed by a tall footer. The footer is **inside** ACT 8's stage, so there is no dead
-  tail after the question.
-- It must not add a fourth action, a newsletter field, a pricing teaser, or a logo wall.
+- It must not fade out. The last screen must stand still with content on it.
+- It must not be followed by a tall footer. The footer is **inside** ACT 8's stage.
+- It must not add a fourth action, a newsletter field, a pricing teaser, a logo wall, or a Download
+  link. There is nothing to download yet, and the footer says so.
 - It must not use a magnetic CTA. The grammar forbids it and the ending does not need pulling toward.

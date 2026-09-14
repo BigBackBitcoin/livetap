@@ -98,6 +98,12 @@ const server = createServer((req, res) => {
   }
 
   // 3. `/api/*` is a serverless function on the host, and there is none here.
+  if (pathname === '/api/early-access' && req.method === 'GET') {
+    // The host answers this with the real function; here it is honestly "not configured".
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ enabled: false, method: 'none' }));
+    return;
+  }
   if (pathname.startsWith('/api/')) {
     res.writeHead(501, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end('The API runs as a serverless function; this preview serves static files only.\n');

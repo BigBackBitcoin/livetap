@@ -26,14 +26,15 @@ test.describe('screens', () => {
 
       /*
        * The landing is a fixed live surface driven by scroll, so a full-page capture of an
-       * 11,500px document is mostly empty. One viewport, with the automatic story stopped the
-       * way a visitor stops it, is the frame a person actually judges the page by.
+       * 11,500px document is mostly empty. One viewport is the frame a person actually judges
+       * the page by, and the frame that is captured is the one the guided five seconds stops
+       * at: every destination it was going to connect is Ready and the hand-over line is under
+       * GO LIVE. Waiting for that attribute rather than for a duration is what makes the shot
+       * the same shot every run.
        */
       await page.goto('/');
       await page.waitForSelector('html.sc-ready');
-      await page.evaluate(() => {
-        (document.querySelector('[data-lt-format-set="16:9"]') as HTMLElement).click();
-      });
+      await page.waitForSelector('[data-lt-golive-sub][data-lt-yourturn="true"]');
       await page.waitForTimeout(400);
       await page.screenshot({ path: `e2e/__screenshots__/landing-${viewport.name}.png` });
 
@@ -85,22 +86,27 @@ test.describe('visual baselines', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   /**
-   * The landing's baseline is shot under reduced motion with the automatic story stopped and one
-   * destination connected by hand, because the page is a running surface: without those two
-   * things the baseline would be a different frame every run. Reduced motion is also the
-   * accessibility path, so the frame that is frozen here is the one that has to keep working.
+   * The landing's baseline is shot under reduced motion at the moment the guided five seconds
+   * hands over, because the page is a running surface: without a state to wait on, the baseline
+   * would be a different frame every run. Reduced motion holds the demo clip on one frame and
+   * stops the output previews looping, and it is also the accessibility path, so the frame that
+   * is frozen here is the one that has to keep working.
    */
   test('landing at desktop', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await page.waitForSelector('html.sc-ready');
-    await page.locator('[data-lt-dest="youtube"] [data-lt-pick]').click();
-    await expect(page.locator('[data-lt-dest="youtube"]')).toHaveAttribute(
-      'data-lt-state',
-      'READY',
+    await expect(page.locator('[data-lt-golive-sub]')).toHaveAttribute(
+      'data-lt-yourturn',
+      'true',
+      { timeout: 15_000 },
     );
+    await expect(page.locator('[data-lt-dest][data-lt-state="READY"]')).toHaveCount(3);
+    /* The one thing still moving is the microphone meter, so it is masked out. */
     await page.waitForTimeout(400);
-    await expect(page).toHaveScreenshot('baseline-landing-desktop.png');
+    await expect(page).toHaveScreenshot('baseline-landing-desktop.png', {
+      mask: [page.locator('[data-lt-meter]')],
+    });
   });
 
   test('studio at desktop', async ({ page }) => {

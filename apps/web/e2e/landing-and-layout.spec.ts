@@ -9,6 +9,12 @@ const VIEWPORTS = [
 
 test.describe('landing', () => {
   test('is the product running, with the six facts on its face', async ({ page }) => {
+    /*
+     * A full desk. Below 761px of height the chat panel and the Moments strip move into their
+     * own chapters' bands, so the surface's own facts are counted at the width the desk is
+     * composed for rather than at whatever the default device happens to be.
+     */
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     await page.waitForSelector('html.sc-ready');
 
@@ -18,7 +24,7 @@ test.describe('landing', () => {
      * itself (LIVETAP_VISUAL_DIRECTION.md §3.2).
      */
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-      'LIVETAP, a live production surface you can operate',
+      'LIVETAP, go live everywhere without becoming a broadcast engineer',
     );
 
     // Fact 6 is the only one carried by words, and it is six of them.
@@ -27,10 +33,12 @@ test.describe('landing', () => {
     await expect(page.getByText('Demo surface. Nothing is broadcast anywhere.')).toBeVisible();
 
     // Facts 1 to 4 are state on a surface: six destinations, six Moments, three shapes, one
-    // dominant action.
+    // dominant action. The shape control exists twice, in the toolbar and in the Shapes band,
+    // and both copies are the same three buttons.
     await expect(page.locator('[data-lt-dest]')).toHaveCount(6);
     await expect(page.locator('[data-lt-moment]')).toHaveCount(6);
-    await expect(page.locator('[data-lt-format-set]')).toHaveCount(3);
+    await expect(page.locator('[data-lt-formats]')).toHaveCount(2);
+    await expect(page.locator('.ltp-toolbar [data-lt-format-set]')).toHaveCount(3);
     await expect(page.locator('[data-lt-golive]')).toBeVisible();
 
     // The platform honesty nobody else in the category states out loud, in one line.
@@ -38,9 +46,18 @@ test.describe('landing', () => {
       page.getByText('TikTok, Instagram and X publish no live chat API, so nothing from them appears here.'),
     ).toBeVisible();
 
-    // Eight acts and two declared silences, all real sections with real headings.
-    await expect(page.locator('[data-sc-act]')).toHaveCount(10);
-    await expect(page.getByRole('heading', { name: 'Break it yourself' })).toBeAttached();
+    // Eight chapters and one declared silence, all real sections with real headings.
+    await expect(page.locator('[data-sc-act]')).toHaveCount(9);
+    /*
+     * Seven of the eight chapters carry their copy in the fixed band layer, one band per act,
+     * and only the active one is visible. A band that is not on screen is `visibility: hidden`
+     * and therefore out of the accessibility tree, so the peak's title is read off the element
+     * rather than looked up by role.
+     */
+    await expect(page.locator('[data-lt-band]')).toHaveCount(7);
+    await expect(page.locator('[data-lt-band="act-break"] .ltp-band__title')).toHaveText(
+      'Break it yourself.',
+    );
 
     await expect(page.getByRole('link', { name: 'GitHub' }).first()).toHaveAttribute(
       'href',
@@ -52,8 +69,16 @@ test.describe('landing', () => {
     page,
   }) => {
     await page.goto('/');
-    // ACT 8 is the app's own first question, and its answer travels with the visitor.
-    await expect(page.locator('[data-lt-open]')).toHaveAttribute('href', './app/start');
+    /*
+     * The close is the app's own first question, and its answer travels with the visitor. The
+     * page answers it for them at boot (Talking on a desk, Vertical Live on a phone), so the
+     * link already carries an intent before anything is tapped.
+     */
+    await page.waitForSelector('html.sc-ready');
+    await expect(page.locator('[data-lt-open]')).toHaveAttribute(
+      'href',
+      './app/start?intent=talking',
+    );
 
     const hrefs = await page
       .locator('a[href]')
@@ -66,7 +91,7 @@ test.describe('landing', () => {
           ),
         ),
       );
-    expect(hrefs).toContain('./app/start');
+    expect(hrefs).toContain('./app/start?intent=talking');
     expect(hrefs.length).toBeGreaterThan(4);
 
     for (const href of hrefs) {

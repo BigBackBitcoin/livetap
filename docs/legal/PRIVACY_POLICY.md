@@ -150,6 +150,26 @@ Material changes will be published here with a new date, and — because this po
 "we collect nothing" — any change that starts collecting something will be called out in the app,
 not just in this document.
 
+## 11. Early access notifications
+
+The public website may offer a form to be emailed when a desktop or mobile build ships. This form
+only appears when the site owner has configured a place for that signup to go; if they have not,
+the form is absent and the page's link to watch the project's GitHub Releases page is the only way
+to keep track of new builds.
+
+- **What is collected**: the email address you type in, the platform you picked (Mac, Windows,
+  iPhone, Android or Web, if you picked one), and the time you gave consent.
+- **Where it goes**: directly to an endpoint the LIVETAP site owner configures, such as a form
+  backend or a mailing-list provider. **Nothing is stored on livetap.vercel.app.** The site has no
+  database; the signup passes through the server for a single request and is not written anywhere
+  by our code.
+- **Retention**: whatever the site owner's chosen endpoint keeps, until you unsubscribe or until
+  you receive the one email announcing that a build has shipped, whichever comes first. The
+  consent text on the form says this plainly: one email, then nothing else, and one click
+  unsubscribes.
+- **When it is absent**: if the site owner has not configured an endpoint, the sign-up form does
+  not render at all, and the site collects nothing in its place.
+
 ---
 
 ### Open items before publication

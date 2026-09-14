@@ -48,7 +48,7 @@ docs/           research, architecture, release, legal, security, qa, prompt-pac
 ```
 
 ## Phase status
-See CURRENT_PHASE.md. Implementation detail in IMPLEMENTATION_STATUS.md.
+2026-09-14: first-time creator audit closed on the public page (ADR-017; docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md). See CURRENT_PHASE.md. Implementation detail in IMPLEMENTATION_STATUS.md.
 
 ## Recovery instructions
 1. Read CURRENT_PHASE.md, IMPLEMENTATION_STATUS.md, BLOCKERS.md.

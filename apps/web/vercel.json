@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "cd ../.. && npm run build:web",
-  "installCommand": "cd ../.. && npm ci",
+  "buildCommand": "node ../../node_modules/vite/bin/vite.js build",
+  "installCommand": "echo prebuilt deploy: dependencies are installed by the workspace, not by vercel build",
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.ts": {
