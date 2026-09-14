@@ -107,9 +107,19 @@
 /*
  * Each chapter's band lives inside its own act, in the region the surface leaves free. The
  * engine's cue on the band opens it as the chapter's travel begins and closes it before the
- * chapter leaves, so copy is never on screen while a stage slides through a seam. `is-here`
- * is set by the page on the active chapter and only governs pointer-events: a band that is
- * fading out must not catch a tap meant for the console.
+ * chapter leaves, so copy is never on screen while a stage slides through a seam.
+ *
+ * THE INVARIANT THIS ENCODES: a band that cannot be seen cannot be touched.
+ *
+ * It is written as `visibility` rather than as `pointer-events` alone because visibility also
+ * removes the element from hit-testing for the WHEEL, and both failures were real. A band sat at
+ * `opacity: 0` with `pointer-events: auto` across the middle of the stage: it captured clicks on
+ * "Use my camera" and on four destination Connect buttons, and because it is the one element on
+ * the page with `overflow-y: auto` it also swallowed the first wheel tick. Two independent
+ * first-time-creator audits reported that as "the page is frozen" and "controls refused my
+ * clicks", and it was misdiagnosed twice as unreproducible. `is-here` is now driven from the
+ * band's own rendered opacity (see `syncBandHits` in main.ts), so the class can never disagree
+ * with what is on screen.
  */
 .ltp-band {
   position: absolute;
@@ -123,10 +133,12 @@
   padding-block: var(--lt-space-2) var(--lt-space-1);
   overflow: hidden;
   pointer-events: none;
+  visibility: hidden;
 }
 
 .ltp-band.is-here {
   pointer-events: auto;
+  visibility: visible;
 }
 
 @media (min-width: 1025px) {
@@ -152,6 +164,14 @@
  * grows downward over the surface as a panel, scrolls inside itself if it must, and never
  * pushes anything and never covers the desk.
  */
+/*
+ * The two panel chapters. `overflow-y: auto` here made this the ONLY scroll container in the
+ * document, and a container with a few dozen pixels of overflow eats the first wheel tick before
+ * the page moves: measured at 1560px of travel for 1680px of wheel, every time, which reads as a
+ * page that ignores you. An audit also named the inner scrollbar directly. The panel now sizes to
+ * its content and clips rather than scrolling; if a panel ever needs more room than the viewport
+ * leaves, the fix is less content, not a hidden scroll area.
+ */
 .ltp-band--tall {
   /* The panel is the ground the harness measures against, so the cue sits on the inner block
      and the panel itself follows the act's progress. */
@@ -164,7 +184,7 @@
   min-block-size: var(--ltp-band);
   max-block-size: calc(100svh - var(--ltp-status) - var(--ltp-desk) - 56px);
   padding-block-end: var(--lt-space-3);
-  overflow-y: auto;
+  overflow: hidden;
   background: color-mix(in oklab, var(--lt-bg-0) 97%, transparent);
   border-block-end: 1px solid var(--lt-border);
   box-shadow: var(--lt-shadow-2);

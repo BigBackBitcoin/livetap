@@ -2048,6 +2048,24 @@ function watchActs(): void {
   const bands = $$('[data-lt-band]');
   const items = $$<HTMLAnchorElement>('.ltp-rail__nav .ltp-rail__item');
 
+  /**
+   * Keep hit-testing honest: a band is `is-here`, and therefore visible and touchable, only while
+   * it is actually rendering something.
+   *
+   * Being the active chapter is NOT the same thing. A pinned act owns the viewport for a whole
+   * screen of scroll before its own progress leaves 0, and its band is transparent for all of it.
+   * Marking that band interactive put an invisible panel over the middle of the stage, where it
+   * ate clicks meant for "Use my camera" and for the destination Connect buttons, and swallowed
+   * the first wheel tick. Reading the rendered opacity rather than inferring it means the class
+   * cannot drift from what the visitor can see, whatever a future cue window does.
+   */
+  const syncBandHits = (): void => {
+    for (const band of bands) {
+      const visible = Number.parseFloat(getComputedStyle(band).opacity) > 0.05;
+      band.classList.toggle('is-here', visible && band.dataset.ltBand === activeAct);
+    }
+  };
+
   const apply = (): void => {
     actRaf = 0;
     const probe = scrollY + innerHeight * 0.45;
@@ -2056,11 +2074,12 @@ function watchActs(): void {
       const top = act.offsetTop;
       if (probe >= top) here = act;
     }
+    syncBandHits();
     if (here.id === activeAct) return;
     const prev = activeAct;
     activeAct = here.id;
     document.body.dataset.ltAct = activeAct;
-    bands.forEach((b) => b.classList.toggle('is-here', b.dataset.ltBand === activeAct));
+    syncBandHits();
     items.forEach((it) => it.classList.toggle('is-here', it.getAttribute('href') === `#${activeAct}`));
 
     if (activeAct === 'act-break') {
