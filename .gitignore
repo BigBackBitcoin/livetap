@@ -35,3 +35,6 @@ first time review 2.txt
 
 # The phone bundle is the web build, staged by apps/mobile/scripts/stage-web.mjs.
 apps/mobile/www/
+
+# Working notes extracted from workflow results, not part of the product.
+.scratch/
