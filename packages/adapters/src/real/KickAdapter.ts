@@ -23,6 +23,13 @@ export interface KickAdapterOptions extends RealAdapterOptions {
   trustChannelStreamKey?: boolean;
 }
 
+/** The scope Kick gates `stream.key`/`stream.url` behind, and which its consent screen lets the creator untick. */
+export const KICK_STREAM_KEY_SCOPE = 'streamkey:read';
+
+interface KickUsersResponse {
+  data?: Array<{ user_id?: number; name?: string; profile_picture?: string }>;
+}
+
 interface KickChannelsResponse {
   data?: Array<{
     broadcaster_user_id?: number;
@@ -91,10 +98,18 @@ export class KickAdapter implements DestinationAdapter {
       return { ok: false, code: 'PLATFORM_ERROR', technical: 'Kick returned no channel.' };
     }
 
-    // Kick's stream.key/stream.url mapping is UNVERIFIED. Only trust it when the caller opts
-    // in AND both fields actually arrive; otherwise require the user's pasted ingest.
+    /*
+     * Kick's stream.key/stream.url mapping is UNVERIFIED, and there is a second, independent
+     * reason to distrust it: Kick's consent screen lets the creator untick `streamkey:read`, so
+     * a token that authorized perfectly can still be unable to read a key. When the credential
+     * records the granted scopes and that one is missing, the paste path is the only honest
+     * answer, whatever `trustChannelStreamKey` says. A credential with no recorded scope list
+     * at all (a test double, a resumed session) is not treated as a denial.
+     */
+    const scopes = credential?.scopes;
+    const keyScopeGranted = scopes === undefined || scopes.includes(KICK_STREAM_KEY_SCOPE);
     const fromApi =
-      this.trustChannelStreamKey && channel.stream?.url && channel.stream?.key
+      this.trustChannelStreamKey && keyScopeGranted && channel.stream?.url && channel.stream?.key
         ? ({
             protocol: channel.stream.url.startsWith('rtmps://') ? 'rtmps' : 'rtmp',
             url: channel.stream.url,
@@ -112,19 +127,37 @@ export class KickAdapter implements DestinationAdapter {
       };
     }
 
-    const credentialPatch: CredentialRef | undefined = credential
-      ? {
-          ...credential,
-          accountId: String(channel.broadcaster_user_id),
-          ...(channel.slug ? { accountLabel: channel.slug } : {}),
-        }
-      : undefined;
+    const base: CredentialRef = credential ?? { id: 'oauth:kick', platform: 'kick' };
+    const avatar = await this.avatarUrl(token);
+    const credentialPatch: CredentialRef = {
+      ...base,
+      accountId: String(channel.broadcaster_user_id),
+      ...(channel.slug ? { accountLabel: channel.slug } : {}),
+      ...(avatar ? { avatarUrl: avatar } : {}),
+    };
     return {
       ok: true,
-      ...(credentialPatch ? { credential: credentialPatch } : {}),
+      credential: credentialPatch,
       ingest: ingest as IngestTarget,
       ...(channel.slug ? { watchUrl: `https://kick.com/${channel.slug}` } : {}),
     };
+  }
+
+  /**
+   * The account's picture, best effort. Gated behind `user:read`, which the creator can untick
+   * exactly like `streamkey:read`, so a failure here degrades the card to a name with no picture
+   * rather than failing the whole connect: an avatar is never worth refusing a working account.
+   */
+  private async avatarUrl(token: string): Promise<string | undefined> {
+    try {
+      const body = await request<KickUsersResponse>(this.fetch, {
+        url: `${this.apiBase}/public/v1/users`,
+        token,
+      });
+      return body?.data?.[0]?.profile_picture ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async createBroadcast(

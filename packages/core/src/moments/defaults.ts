@@ -54,6 +54,15 @@ function color(id: string, value: string): Layer {
 
 /**
  * Six built-in Moments. Placement is normalized so every Moment works in 16:9, 9:16 and 1:1.
+ *
+ * Every layer whose landscape rectangle does not compose in a square carries an explicit '1:1'
+ * override. Without them `resolvePlacement` falls back to `default`, and a square broadcast
+ * rendered the 16:9 arrangement squashed: a 0.18-wide camera inset became a thin strip, and a
+ * side-by-side guest layout put two 0.47-wide columns into a frame half as wide as it was
+ * designed for. Layers that are already correct square (a full-frame camera, a centred title)
+ * deliberately have no override rather than a copy of `default`.
+ *
+ * The 1:1 rectangles keep clear of SAFE_AREAS['1:1'] (top 6 %, bottom 12 %, sides 6 %).
  */
 export function defaultMoments(): Moment[] {
   return [
@@ -66,8 +75,16 @@ export function defaultMoments(): Moment[] {
       audio: { ...DEFAULT_AUDIO, micMuted: true },
       layers: [
         color('bg', '#0B0F19'),
-        text('title', 'Starting soon', { default: { x: 0.1, y: 0.38, w: 0.8, h: 0.24 } }, 120),
-        camera('cam', { default: { x: 0.78, y: 0.72, w: 0.18, h: 0.24 }, '9:16': { x: 0.6, y: 0.78, w: 0.34, h: 0.18 } }, { radius: 24, visible: false }),
+        text('title', 'Starting soon', { default: { x: 0.1, y: 0.38, w: 0.8, h: 0.24 }, '1:1': { x: 0.06, y: 0.34, w: 0.88, h: 0.28 } }, 120),
+        camera(
+          'cam',
+          {
+            default: { x: 0.78, y: 0.72, w: 0.18, h: 0.24 },
+            '9:16': { x: 0.6, y: 0.78, w: 0.34, h: 0.18 },
+            '1:1': { x: 0.72, y: 0.62, w: 0.22, h: 0.22 },
+          },
+          { radius: 24, visible: false },
+        ),
       ],
     },
     {
@@ -93,14 +110,22 @@ export function defaultMoments(): Moment[] {
           kind: 'screen',
           name: 'Screen',
           visible: true,
-          placement: { default: FULL, '9:16': { x: 0, y: 0.2, w: 1, h: 0.4 } },
+          placement: { default: FULL, '9:16': { x: 0, y: 0.2, w: 1, h: 0.4 }, '1:1': { x: 0, y: 0.12, w: 1, h: 0.45 } },
           opacity: 1,
           z: 5,
           fit: 'contain',
           sourceId: 'prompt',
           captureSystemAudio: true,
         },
-        camera('cam', { default: { x: 0.74, y: 0.7, w: 0.22, h: 0.26 }, '9:16': { x: 0.1, y: 0.62, w: 0.8, h: 0.3 } }, { radius: 20 }),
+        camera(
+          'cam',
+          {
+            default: { x: 0.74, y: 0.7, w: 0.22, h: 0.26 },
+            '9:16': { x: 0.1, y: 0.62, w: 0.8, h: 0.3 },
+            '1:1': { x: 0.2, y: 0.6, w: 0.6, h: 0.28 },
+          },
+          { radius: 20 },
+        ),
       ],
     },
     {
@@ -112,13 +137,25 @@ export function defaultMoments(): Moment[] {
       audio: { ...DEFAULT_AUDIO },
       layers: [
         color('bg', '#0B0F19'),
-        camera('cam', { default: { x: 0.02, y: 0.15, w: 0.47, h: 0.7 }, '9:16': { x: 0.05, y: 0.06, w: 0.9, h: 0.42 } }, { radius: 20 }),
+        camera(
+          'cam',
+          {
+            default: { x: 0.02, y: 0.15, w: 0.47, h: 0.7 },
+            '9:16': { x: 0.05, y: 0.06, w: 0.9, h: 0.42 },
+            '1:1': { x: 0.06, y: 0.08, w: 0.88, h: 0.4 },
+          },
+          { radius: 20 },
+        ),
         {
           id: 'guest',
           kind: 'browser',
           name: 'Guest',
           visible: true,
-          placement: { default: { x: 0.51, y: 0.15, w: 0.47, h: 0.7 }, '9:16': { x: 0.05, y: 0.52, w: 0.9, h: 0.42 } },
+          placement: {
+            default: { x: 0.51, y: 0.15, w: 0.47, h: 0.7 },
+            '9:16': { x: 0.05, y: 0.52, w: 0.9, h: 0.42 },
+            '1:1': { x: 0.06, y: 0.5, w: 0.88, h: 0.38 },
+          },
           opacity: 1,
           z: 10,
           radius: 20,
@@ -135,7 +172,10 @@ export function defaultMoments(): Moment[] {
       builtIn: true,
       transition: { kind: 'fade', durationMs: 500 },
       audio: { ...DEFAULT_AUDIO, micMuted: true },
-      layers: [color('bg', '#101828'), text('title', 'Back in a moment', { default: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 } }, 96)],
+      layers: [
+        color('bg', '#101828'),
+        text('title', 'Back in a moment', { default: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 }, '1:1': { x: 0.06, y: 0.36, w: 0.88, h: 0.26 } }, 96),
+      ],
     },
     {
       id: 'ending',
@@ -144,7 +184,10 @@ export function defaultMoments(): Moment[] {
       builtIn: true,
       transition: { kind: 'fade', durationMs: 600 },
       audio: { ...DEFAULT_AUDIO, micMuted: false },
-      layers: [color('bg', '#0B0F19'), text('title', 'Thanks for watching', { default: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 } }, 96)],
+      layers: [
+        color('bg', '#0B0F19'),
+        text('title', 'Thanks for watching', { default: { x: 0.1, y: 0.4, w: 0.8, h: 0.2 }, '1:1': { x: 0.06, y: 0.36, w: 0.88, h: 0.26 } }, 96),
+      ],
     },
   ];
 }

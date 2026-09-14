@@ -3,12 +3,13 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router';
 import { Badge, Button, StatusChip } from '@livetap/ui';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
-import { describeReconnect } from '@livetap/core';
+import { describeReconnect, isActiveState } from '@livetap/core';
 import type { DestinationSnapshot, DestinationState } from '@livetap/core';
 import { COPY } from '../lib/copy.js';
 import { megabits, viewers } from '../lib/format.js';
 import { useAppStore } from '../state/store.js';
-import { DestinationErrorCard } from './NoticeCards.js';
+import { DestinationErrorCard, useSteadyWhilePressed } from './NoticeCards.js';
+import { broadcastReality } from './preflight.js';
 
 /**
  * The one destination list in Studio (PRODUCT_SPEC §4.2, §5c).
@@ -28,9 +29,19 @@ import { DestinationErrorCard } from './NoticeCards.js';
 export function DestinationList(): ReactElement {
   const destinations = useAppStore((s) => s.destinations);
   const live = useAppStore((s) => s.production.state === 'LIVE' || s.production.state === 'STOPPING');
-  const stopOne = useAppStore((s) => s.stopOne);
-  const retry = useAppStore((s) => s.retry);
-  const enabled = destinations.filter((d) => d.config.enabled);
+  const adapterKind = useAppStore((s) => s.adapterKind);
+  const engineHost = useAppStore((s) => s.engineHost);
+  const simulated = broadcastReality(destinations, adapterKind, engineHost).simulatedIds;
+
+  /*
+   * A destination that is broadcasting is in this list whether or not it is switched on.
+   *
+   * Filtering on `enabled` alone was P0-4: toggling a LIVE destination off in the Destinations
+   * screen removed its row, and with it its "Stop this destination" button, from Studio — while
+   * it carried on sending. The switch answers "is this in my NEXT stream"; it has never had
+   * anything to say about the one that is already running, and it must never be able to hide it.
+   */
+  const enabled = destinations.filter((d) => d.config.enabled || isActiveState(d.state));
 
   /*
    * A reconnect status line counts down ("Trying again in 4 s"), so the row has to tick while
@@ -51,33 +62,74 @@ export function DestinationList(): ReactElement {
   return (
     <ul className="lt-chiprow" aria-label="Where this stream is going">
       {enabled.map((snap) => (
-        <li key={snap.config.id}>
-          <span className="lt-chipwrap">
-            <StatusChip
-              state={snap.state}
-              label={`${PLATFORM_PROFILES[snap.config.platform].displayName} · ${chipLabel(snap.state)}`}
-              status={statusText(snap, now)}
-            />
-            {snap.config.mock ? <Badge tone="info">{COPY.demo}</Badge> : null}
-          </span>
-
-          <DestinationErrorCard snapshot={snap} />
-
-          <div className="lt-dock__destactions">
-            {snap.state === 'FAILED' ? (
-              <Button variant="secondary" size="sm" onClick={() => void retry(snap.config.id)}>
-                {COPY.retry}
-              </Button>
-            ) : null}
-            {live && (snap.state === 'LIVE' || snap.state === 'DEGRADED') ? (
-              <Button variant="ghost" size="sm" onClick={() => void stopOne(snap.config.id)}>
-                Stop this destination
-              </Button>
-            ) : null}
-          </div>
-        </li>
+        <DestinationRow
+          key={snap.config.id}
+          snapshot={snap}
+          now={now}
+          live={live}
+          demo={simulated.has(snap.config.id)}
+        />
       ))}
     </ul>
+  );
+}
+
+/**
+ * One destination's row: its chip, its card when it has one, and its own controls.
+ *
+ * The row is a component rather than a loop body so it can hold its snapshot steady while a
+ * pointer is down on it. Every control in here is destructive or corrective, the card above them
+ * appears and disappears on its own as the machine recovers, and a card that vanishes between
+ * pointerdown and pointerup hands the click to whatever reflows into its place.
+ */
+function DestinationRow({
+  snapshot,
+  now,
+  live,
+  demo,
+}: {
+  snapshot: DestinationSnapshot;
+  now: number;
+  live: boolean;
+  demo: boolean;
+}): ReactElement {
+  const stopOne = useAppStore((s) => s.stopOne);
+  const retry = useAppStore((s) => s.retry);
+  /*
+   * The whole row is frozen, not just the snapshot. `live` decides whether this row shows its
+   * own stop button, so a production that ends mid-press would take that button out from under
+   * the finger exactly the way a recovering card does.
+   */
+  const { steady, onPointerDown } = useSteadyWhilePressed({ snapshot, live });
+  const snap = steady.snapshot;
+  const showStop = steady.live && (snap.state === 'LIVE' || snap.state === 'DEGRADED');
+
+  return (
+    <li onPointerDown={onPointerDown}>
+      <span className="lt-chipwrap">
+        <StatusChip
+          state={snap.state}
+          label={`${PLATFORM_PROFILES[snap.config.platform].displayName} · ${chipLabel(snap.state)}`}
+          status={statusText(snap, now)}
+        />
+        {demo ? <Badge tone="info">{COPY.demo}</Badge> : null}
+      </span>
+
+      <DestinationErrorCard snapshot={snap} />
+
+      <div className="lt-dock__destactions">
+        {snap.state === 'FAILED' ? (
+          <Button variant="secondary" size="sm" onClick={() => void retry(snap.config.id)}>
+            {COPY.retry}
+          </Button>
+        ) : null}
+        {showStop ? (
+          <Button variant="ghost" size="sm" onClick={() => void stopOne(snap.config.id)}>
+            Stop this destination
+          </Button>
+        ) : null}
+      </div>
+    </li>
   );
 }
 

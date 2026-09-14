@@ -34,6 +34,18 @@ and the real code runs:
 - **The real adapters drive it unmodified.** `real-adapters.test.mjs` constructs
   `YouTubeAdapter` and `TwitchAdapter` from `packages/adapters` exactly as production does and
   runs validate / createBroadcast / start / getStatus against this server over HTTP.
+- **The whole accounts flow runs against it, with nothing faked but the platform.** The same file
+  drives production `generatePkce` and `buildAuthorizeUrl`, the production token broker's
+  `exchangeCode` / `refreshToken` / `revoke` from `apps/web/api/_lib/broker.ts`, the real
+  adapter, and a real `BroadcastOrchestrator`, and asserts that the destination snapshot ends up
+  carrying the channel name and avatar and carrying neither token. It also asserts the two things
+  that are silent when they break: a rotated refresh token replaces the old one (Twitch
+  device-code and Kick refresh tokens are single use, so keeping the old one works exactly once),
+  and a revoke really stops the platform accepting the token.
+
+  Point the broker at this server with `LIVETAP_OAUTH_BASE=http://127.0.0.1:8789`. That variable
+  is refused outright when `NODE_ENV=production` and refused for anything but an http loopback
+  origin, because a deployment that honoured it would post a real client secret here.
 
 ## What it is NOT
 

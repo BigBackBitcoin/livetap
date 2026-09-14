@@ -388,10 +388,20 @@ export class MockDestinationAdapter implements DestinationAdapter {
     this.listener = undefined;
   }
 
+  /**
+   * A target that is unreachable BY CONSTRUCTION.
+   *
+   * `.invalid` is reserved by RFC 2606 and guaranteed never to resolve, which is the whole point:
+   * a demo destination must not be able to reach anything, even by accident, even on a machine
+   * whose resolver is doing something creative. This used to be `.local`, which is real mDNS
+   * namespace, and MockEngine's simulation check refused it on exactly those grounds: it cannot
+   * tell a made-up `.local` host from one that genuinely answers on the local network, so it
+   * reported the destination lost rather than risk claiming LIVE with nothing on the wire.
+   */
   private fakeIngest(): IngestTarget {
     return {
       protocol: 'rtmp',
-      url: `rtmp://mock.${this.profile.id}.livetap.local/live`,
+      url: `rtmp://mock.${this.profile.id}.livetap.invalid/live`,
       streamKey: `mock-${this.profile.id}-${this.hex(12)}`,
     };
   }

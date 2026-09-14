@@ -15,6 +15,16 @@ export interface MomentCardProps {
   onSelect: () => void;
   /** Optional meta line — "Live now" for the active Moment, or a hotkey hint. */
   meta?: string;
+  /**
+   * A picture of what this Moment actually looks like, drawn by the caller.
+   *
+   * The card carries an icon by default because an icon is cheap and always available. A real
+   * thumbnail is better and the landing page already renders one, so this is the slot that lets
+   * the product and the marketing page show the same card instead of building it twice. It
+   * REPLACES the glyph rather than sitting beside it: two representations of the same Moment on
+   * one 140px card is two things to read.
+   */
+  thumbnail?: ReactNode;
   disabled?: boolean;
   className?: string;
 }
@@ -33,6 +43,7 @@ export function MomentCard({
   active = false,
   onSelect,
   meta,
+  thumbnail,
   disabled = false,
   className,
 }: MomentCardProps): ReactElement {
@@ -48,14 +59,20 @@ export function MomentCard({
       disabled={disabled}
       onClick={onSelect}
     >
-      <span
-        className={['lt-moment__icon', isGlyph ? 'lt-moment__icon--glyph' : null]
-          .filter(Boolean)
-          .join(' ')}
-        aria-hidden="true"
-      >
-        {glyph}
-      </span>
+      {thumbnail ? (
+        <span className="lt-moment__thumb" aria-hidden="true">
+          {thumbnail}
+        </span>
+      ) : (
+        <span
+          className={['lt-moment__icon', isGlyph ? 'lt-moment__icon--glyph' : null]
+            .filter(Boolean)
+            .join(' ')}
+          aria-hidden="true"
+        >
+          {glyph}
+        </span>
+      )}
       <span className="lt-moment__name">{name}</span>
       {meta ? <span className="lt-moment__meta">{meta}</span> : null}
     </button>

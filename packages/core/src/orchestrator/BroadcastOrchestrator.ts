@@ -7,6 +7,7 @@ import type { MediaEngine, EngineOutput, EngineOutputEvent } from '../media/engi
 import { resolveFormats } from '../production/formats.js';
 import { defaultMoments } from '../moments/defaults.js';
 import type {
+  AccountSummary,
   AspectRatio,
   DestinationConfig,
   DestinationSnapshot,
@@ -187,6 +188,7 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
       return this.fail(rec, 'CONFIG_INVALID', `No adapter for platform ${rec.snapshot.config.platform}`, 'AUTH_FAIL');
     }
     if (credential) rec.credential = credential;
+    if (credential) rec.snapshot = withAccount(rec.snapshot, credential);
     if (!this.apply(rec, 'CONNECT')) return rec.snapshot;
 
     if (rec.snapshot.config.platform === 'custom' || adapter.profile.capabilities.streamKey === 'USER_ASSISTED') {
@@ -197,7 +199,12 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
     try {
       const result = await adapter.validate(rec.snapshot.config, rec.credential);
       if (!result.ok) return this.fail(rec, result.code, result.technical, 'AUTH_FAIL');
-      if (result.credential) rec.credential = result.credential;
+      if (result.credential) {
+        rec.credential = result.credential;
+        // validate() is the ONE call that knows who the token belongs to. Every adapter already
+        // asks the platform, and until now every adapter's answer was dropped here.
+        rec.snapshot = withAccount(rec.snapshot, result.credential);
+      }
       if (result.ingest) rec.snapshot = { ...rec.snapshot, config: { ...rec.snapshot.config, ingest: result.ingest } };
       if (result.watchUrl) rec.snapshot = { ...rec.snapshot, watchUrl: result.watchUrl };
       rec.snapshot = { ...rec.snapshot, error: undefined };
@@ -219,6 +226,10 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
     }
     rec.credential = undefined;
     rec.handle = undefined;
+    // The card must stop naming an account the moment the credential is gone. Leaving the name and
+    // avatar behind after a revoke would be the UI claiming a connection that no longer exists.
+    const { account: _dropped, ...withoutAccount } = rec.snapshot;
+    rec.snapshot = withoutAccount;
     this.clearReconnect(rec);
     this.apply(rec, 'DISCONNECT');
   }
@@ -649,6 +660,30 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
     if (!rec) throw new Error(`Unknown destination ${id}`);
     return rec;
   }
+}
+
+/**
+ * The non-secret half of a credential, and nothing else.
+ *
+ * Built field by field rather than by spreading the CredentialRef, so that adding a field to
+ * CredentialRef can never widen what reaches a snapshot. `id` is the secure-store handle and is
+ * deliberately absent: it is not a secret, but it is not the UI's business either, and a snapshot
+ * is persisted.
+ */
+export function accountSummary(credential: CredentialRef): AccountSummary | undefined {
+  const summary: AccountSummary = {};
+  if (credential.accountId) summary.accountId = credential.accountId;
+  if (credential.accountLabel) summary.accountLabel = credential.accountLabel;
+  if (credential.avatarUrl) summary.avatarUrl = credential.avatarUrl;
+  if (credential.scopes && credential.scopes.length > 0) summary.scopes = [...credential.scopes];
+  if (typeof credential.expiresAt === 'number') summary.expiresAt = credential.expiresAt;
+  return Object.keys(summary).length > 0 ? summary : undefined;
+}
+
+function withAccount(snapshot: DestinationSnapshot, credential: CredentialRef): DestinationSnapshot {
+  const summary = accountSummary(credential);
+  if (!summary) return snapshot;
+  return { ...snapshot, account: summary };
 }
 
 function defaultSettings(): ProductionSettings {

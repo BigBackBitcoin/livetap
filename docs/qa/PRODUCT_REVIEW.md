@@ -448,3 +448,58 @@ destination dropping and recovering in 1.3s while the other never leaves LIVE.
 - The stream-key form, the secrets handling, and the privacy page.
 - Pro mode as an additive layer that moves nothing, with in-product diagnostics instead of a log
   upload.
+
+---
+
+## 9. The stop control, closed and kept closed
+
+Date: 2026-09-14. Every number here is a Playwright measurement against the production build,
+reproducible with `npx playwright test live-safety.spec.ts -w @livetap/web`.
+
+The rule being held: there is always exactly one obvious way to stop a live broadcast, and it is
+never covered, clipped, unreachable in Pro, unreachable in a vertical format, or unreachable on a
+phone. Five findings were open against it.
+
+| Finding | What was measured before | What holds now |
+|---|---|---|
+| P0-1 END cancelled by navigating away | the 5 s grace was a `setTimeout` in a Studio effect; unmounting the screen ran its cleanup and `goLive` stayed `'live'` | the timer is `Runtime.graceTimer` in the store. `store.test.ts` proves the stop with no React mounted at all; the e2e presses END, taps Destinations, waits 9 s and finds no live bar |
+| P0-2 nothing could stop a STARTING broadcast | the button reported `aria-busy` and swallowed the click while broadcast objects were being created on the platforms | `GoLiveButton` takes `onCancelStart` and reads "Cancel start"; the live bar carries the same control on every other screen. `store.cancelStart()` also stops again once the in-flight `goLive()` settles, because `BroadcastOrchestrator.goLive` ends by setting LIVE without re-checking for a stop |
+| P0-3 the control was off-screen from 640px to 1024.98px | at 834x1112 in 9:16 the GO LIVE bar's box was `{x:24, y:1741.33, w:786, h:56}` in a 1112px window, 629px below the fold | the pinned bar and the preview cap both cover the whole range below 1025px. Reverting only that one media query reproduces `y:1741.33` exactly, and the matrix fails on it |
+| P0-4 a LIVE destination could be switched out of Studio, taking its stop button with it | filtering on `config.enabled` alone | two guards: the toggle is disabled for any destination in an active state, and `DestinationList` lists `enabled || isActiveState(state)` |
+| P0-5 Studio was the only screen with any stop control | four screens had none | `LiveBar` is rendered by `AppShell` outside `<Outlet/>`, so it is on every route and survives a route change |
+
+**The matrix.** 8 viewports x 3 formats x Simple and Pro = 48 cells, each walking idle, the
+countdown, STARTING, LIVE and mid-grace. Every cell asserts with `document.elementFromPoint` at
+the control's own centre that a tap there reaches the stop control and not something else, and
+that the whole control is inside the window rather than merely on the page. The STARTING window
+is about a second against the mock adapters, far too short to poll from outside, so it is sampled
+inside the page on every animation frame from GO LIVE until LIVE: a single frame with no reachable
+control fails the cell. 48/48 pass; 0 frames out of roughly 150 per cell were unreachable.
+
+**The interaction defect the owner called out.** An auditor pressed "Stop trying" inside a recovery
+card and the control underneath fired instead. Reproduced here: hold the pointer down on that
+button for six seconds, so the scripted four-second outage recovers mid-press, and the element at
+the pointer becomes `Stop this destination` - a different destructive control. A card that renders
+from a live condition disappears the instant the machine fixes it, and if it disappears between
+pointerdown and pointerup the click lands on whatever reflows into that spot. `DestinationRow`
+now holds its snapshot steady for the length of a press (`useSteadyWhilePressed`), released one
+macrotask after `pointerup` because `click` is dispatched after it. With the hold removed the test
+fails with the auditor's exact symptom; with it, the destination the creator pressed is the one
+that stops.
+
+**The rest of the pointer story.** `.lt-tooltip__bubble` is `pointer-events: none` - it was
+absolutely positioned over the control it describes with pointer events on. The z-index scale is
+nine tokens in `tokens.css` rather than seven literals across two packages, and the ordering is the
+rule: the live bar at 900 outranks the navigation, the honesty banner, a Sheet and its scrim, and a
+tooltip, with only the skip link above it. A test opens a Sheet over a live broadcast and asserts
+the bar is still hit-testable. `html` gains `scroll-padding-block-end`, because without it
+`scrollIntoView` parks a control flush with the bottom edge, underneath the fixed bar - measured
+against a destination's own "Stop trying" button while live.
+
+**Honesty.** `broadcastReality(destinations, adapterKind, engineHost)` is the one selector the
+banner, the GO LIVE label, the countdown length, the subtitle and the live bar all read. It answers
+from the adapters and the engine the process actually constructed, so a simulated build cannot be
+talked into claiming a real broadcast by a destination whose config says `mock: false`. A real
+broadcast runs a five-second countdown naming its destinations rather than three, and the first one
+on a given browser profile states "You are about to broadcast to your connected accounts" and waits
+for an answer. Still no modal: the reasoning in section 4.3 has not changed.

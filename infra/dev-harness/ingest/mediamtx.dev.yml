@@ -92,7 +92,29 @@ rtmpTrustedProxies: []
 # nothing here uses.
 rtsp: no
 hls: no
+# WHIP, off by default, opt in with LIVETAP_DEV_INGEST_WHIP=1.
+#
+# The browser surface cannot open an RTMP socket, so it publishes WHIP to a
+# relay instead. Proving that leg used to need the relay VPS or Docker, and
+# Docker has no WSL distro on this host (B-008). MediaMTX speaks WHIP natively,
+# so turning this on makes the browser path provable here with the same
+# receiver, the same control API and the same ffprobe evidence as the desktop
+# path.
+#
+# Still loopback only and still no egress. `webrtcLocalUDPAddress` is pinned to
+# 127.0.0.1 as well, because MediaMTX's default binds every interface for media
+# even when the signalling address is loopback, and a dev receiver that opens a
+# UDP port to the network is exactly what this config exists not to do. ICE
+# servers are empty on purpose: a STUN lookup is an egress this harness must
+# never make.
 webrtc: no
+webrtcAddress: 127.0.0.1:8889
+webrtcEncryption: no
+webrtcLocalUDPAddress: 127.0.0.1:8189
+webrtcLocalTCPAddress: ""
+webrtcIPsFromInterfaces: no
+webrtcAdditionalHosts: [127.0.0.1]
+webrtcICEServers2: []
 srt: no
 moq: no
 metrics: no

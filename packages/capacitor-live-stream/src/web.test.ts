@@ -2,9 +2,10 @@
  * Unit tests for the web fallback.
  *
  * There is nothing native to test on this host, but there IS a contract worth protecting: the web
- * build must fail loudly rather than silently pretending to stream. Every method except
- * `capabilities()` throws, `capabilities()` answers honestly with `UNAVAILABLE`, and `addListener`
- * resolves so that UI which subscribes defensively before checking capabilities does not blow up.
+ * build must fail loudly rather than silently pretending to stream. Every method that DOES
+ * something throws; the two that only ANSWER something, `capabilities()` and `checkPermissions()`,
+ * return honest negatives, because a UI is supposed to ask those before it commits to anything; and
+ * `addListener` resolves so that UI which subscribes defensively does not blow up.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -72,6 +73,24 @@ describe('LiveStreamWeb', () => {
 
     expect(message).toContain('startStream');
     expect(message).not.toContain('super-secret-key');
+  });
+
+  it('answers the permission questions with an honest denial instead of throwing', async () => {
+    const web = new LiveStreamWeb();
+
+    // A UI that asks before previewing has to get a usable answer in a browser too. `denied` sends
+    // it down the "this needs the app" path; throwing would send it down an error path that is not
+    // what happened.
+    await expect(web.checkPermissions()).resolves.toEqual({
+      camera: 'denied',
+      microphone: 'denied',
+      notifications: 'denied',
+    });
+    await expect(web.requestPermissions({ permissions: ['camera'] })).resolves.toEqual({
+      camera: 'denied',
+      microphone: 'denied',
+      notifications: 'denied',
+    });
   });
 
   it('resolves addListener with a removable handle instead of throwing', async () => {

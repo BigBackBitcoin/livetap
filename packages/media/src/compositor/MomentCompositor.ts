@@ -45,6 +45,17 @@ export interface MomentCompositorOptions {
   loadImage?: (src: string) => Promise<DrawableSource>;
   /** Canvas background painted under every layer. */
   background?: string;
+  /**
+   * Draw operator diagnostics (the notice banner, and the labelled placeholder plates that name
+   * what a layer is waiting for) into the frame.
+   *
+   * DEFAULT FALSE, and only ever true for a canvas that is NOT captured. The program output must
+   * contain the production and nothing else: an audit found "Camera disconnected" and "Requires
+   * the desktop app" burned into the pixels that went out to viewers, and in 9:16 the plate
+   * covered the subject. Controls and diagnostics belong in the application UI, which is why the
+   * notice is still recorded here (`getNotice()`) for the UI to render beside the preview.
+   */
+  operatorOverlay?: boolean;
 }
 
 export interface TransitionState {
@@ -77,6 +88,7 @@ export class MomentCompositor {
   private readonly clearTimeoutFn: (handle: unknown) => void;
   private readonly loadImage: ((src: string) => Promise<DrawableSource>) | undefined;
   private readonly background: string;
+  private readonly operatorOverlay: boolean;
 
   private current: Moment | null = null;
   private previous: Moment | null = null;
@@ -108,6 +120,7 @@ export class MomentCompositor {
     this.clearTimeoutFn = options.clearTimeoutFn ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
     this.loadImage = options.loadImage ?? defaultImageLoader();
     this.background = options.background ?? '#000000';
+    this.operatorOverlay = options.operatorOverlay === true;
     this.canvas.width = this.widthPx;
     this.canvas.height = this.heightPx;
     this.ctx = acquireContext(this.canvas);
@@ -172,7 +185,13 @@ export class MomentCompositor {
     this.ctx = acquireContext(this.canvas) ?? this.ctx;
   }
 
-  /** Banner drawn over the program, e.g. "Camera disconnected". Pass null to clear. */
+  /**
+   * Record an operator notice, e.g. "Camera disconnected". Pass null to clear.
+   *
+   * This is state, not paint. It reaches the frame only on a compositor built with
+   * `operatorOverlay: true`, which is never one whose canvas is captured. Everywhere else the UI
+   * reads `getNotice()` and renders it in the app, beside the preview.
+   */
   setNotice(text: string | null): void {
     this.notice = text && text.trim() !== '' ? text : null;
   }
@@ -294,7 +313,7 @@ export class MomentCompositor {
       ctx.fillRect(0, 0, this.widthPx, this.heightPx);
       if (this.previous && frame.from) this.drawMoment(ctx, this.previous, frame.from);
       if (this.current) this.drawMoment(ctx, this.current, frame.to);
-      if (this.notice) this.drawNotice(ctx, this.notice);
+      if (this.notice && this.operatorOverlay) this.drawNotice(ctx, this.notice);
       ctx.restore();
     });
   }
@@ -362,10 +381,10 @@ export class MomentCompositor {
         break;
       case 'browser':
         // Browser sources need an Electron BrowserView / webview. UNVERIFIED on the web.
-        drawPanel(ctx, rect, radius, layer.name || 'Browser source', 'Requires the desktop app');
+        this.drawPlaceholder(ctx, rect, radius, layer.name || 'Browser source', 'Requires the desktop app');
         break;
       case 'overlay':
-        drawPanel(ctx, rect, radius, layer.name || 'Overlay', `Preset: ${layer.preset}`);
+        this.drawPlaceholder(ctx, rect, radius, layer.name || 'Overlay', `Preset: ${layer.preset}`);
         break;
     }
     ctx.restore();
@@ -374,7 +393,7 @@ export class MomentCompositor {
   private drawMediaLayer(ctx: Ctx2D, layer: Layer, rect: PixelRect): void {
     const source = this.resolver(layer.id);
     if (!isDrawable(source)) {
-      drawPanel(ctx, rect, 0, layer.name || labelFor(layer.kind), 'Waiting for source');
+      this.drawPlaceholder(ctx, rect, 0, layer.name || labelFor(layer.kind), 'Waiting for source');
       return;
     }
     const dims = sourceDimensions(source);
@@ -405,7 +424,7 @@ export class MomentCompositor {
       return;
     }
     this.requestImage(layer.src);
-    drawPanel(ctx, rect, 0, layer.name || 'Image', 'Loading...');
+    this.drawPlaceholder(ctx, rect, 0, layer.name || 'Image', 'Loading...');
   }
 
   private drawTextLayer(ctx: Ctx2D, layer: Extract<Layer, { kind: 'text' }>, rect: PixelRect): void {
@@ -435,6 +454,20 @@ export class MomentCompositor {
     lines.forEach((line, index) => {
       safely(() => ctx.fillText(line, x, top + index * lineHeight + lineHeight / 2, maxWidth));
     });
+  }
+
+  /**
+   * A layer with nothing to draw yet. On the program canvas this is a plain plate the size of the
+   * layer: the composition keeps its geometry and the viewer is told nothing, because "Waiting for
+   * source" is a sentence for the operator, not for an audience. The labelled version only ever
+   * appears on an operator-overlay compositor.
+   */
+  private drawPlaceholder(ctx: Ctx2D, rect: PixelRect, radius: number, title: string, subtitle?: string): void {
+    if (!this.operatorOverlay) {
+      drawPlate(ctx, rect, radius);
+      return;
+    }
+    drawPanel(ctx, rect, radius, title, subtitle);
   }
 
   private drawNotice(ctx: Ctx2D, text: string): void {
@@ -509,6 +542,15 @@ export function roundedRectPath(ctx: Ctx2D, rect: PixelRect, radius: number): vo
   ctx.lineTo(x, y + r);
   ctx.arcTo(x, y, x + r, y, r);
   ctx.closePath();
+}
+
+/** The program-safe placeholder: the layer's shape, filled, with no words on it. */
+function drawPlate(ctx: Ctx2D, rect: PixelRect, radius: number): void {
+  ctx.save();
+  roundedRectPath(ctx, rect, radius > 0 ? radius : Math.min(16, Math.min(rect.w, rect.h) / 8));
+  ctx.fillStyle = PANEL_BG;
+  safely(() => ctx.fill());
+  ctx.restore();
 }
 
 function drawPanel(ctx: Ctx2D, rect: PixelRect, radius: number, title: string, subtitle?: string): void {

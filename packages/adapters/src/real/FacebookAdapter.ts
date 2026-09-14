@@ -42,6 +42,12 @@ interface FbLiveVideo {
   reactions?: { summary?: { total_count?: number } };
 }
 
+interface FbTarget {
+  id?: string;
+  name?: string;
+  picture?: { data?: { url?: string } };
+}
+
 interface FbComments {
   data?: Array<{
     id?: string;
@@ -98,18 +104,27 @@ export class FacebookAdapter implements DestinationAdapter {
   > {
     const token = await this.tokenProvider(credential);
     const target = this.target(config, credential);
-    const body = await request<{ id?: string; name?: string }>(this.fetch, {
-      url: withQuery(`${this.apiBase}/${target}`, { fields: 'id,name' }),
+    const body = await request<FbTarget>(this.fetch, {
+      // `picture` is an edge, so it is read with field expansion in the same request rather than
+      // costing a second round trip. `redirect=false` makes Graph answer with JSON, not a 302.
+      url: withQuery(`${this.apiBase}/${target}`, { fields: 'id,name,picture.redirect(false){url}' }),
       token,
     });
     if (!body?.id) {
       return { ok: false, code: 'AUTH_FAILED', technical: 'Facebook returned no target id.' };
     }
+    // Returned even when the caller passed no credential: the first connect is the one that most
+    // needs to say which Page it just connected, and a Page name is not a secret.
+    const base: CredentialRef = credential ?? { id: 'oauth:facebook', platform: 'facebook' };
+    const avatar = body.picture?.data?.url;
     return {
       ok: true,
-      credential: credential
-        ? { ...credential, accountId: body.id, ...(body.name ? { accountLabel: body.name } : {}) }
-        : undefined,
+      credential: {
+        ...base,
+        accountId: body.id,
+        ...(body.name ? { accountLabel: body.name } : {}),
+        ...(avatar ? { avatarUrl: avatar } : {}),
+      },
     };
   }
 

@@ -63,6 +63,38 @@ describe('YouTubeAdapter validate', () => {
     expect(call?.headers['Authorization']).toBe('Bearer yt-access-token');
   });
 
+  /*
+   * The first connect passes NO credential, because nothing can have made one yet. That branch
+   * used to return `credential: undefined`, so the account the creator had just signed in as was
+   * discarded and the destination card could only ever read "YouTube".
+   */
+  it('names the channel and finds its picture even when no credential existed yet', async () => {
+    const { adapter } = adapterWith([
+      {
+        match: '/channels',
+        body: {
+          items: [
+            {
+              id: 'UC999',
+              snippet: {
+                title: 'Ada TV',
+                thumbnails: { default: { url: 'https://yt3.test/ada=s88' } },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const result = await adapter.validate(config());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.credential?.accountId).toBe('UC999');
+      expect(result.credential?.accountLabel).toBe('Ada TV');
+      expect(result.credential?.avatarUrl).toBe('https://yt3.test/ada=s88');
+      expect(result.watchUrl).toBe('https://www.youtube.com/channel/UC999/live');
+    }
+  });
+
   it('reports NOT_ELIGIBLE when the account has no channel', async () => {
     const { adapter } = adapterWith([{ match: '/channels', body: { items: [] } }]);
     const result = await adapter.validate(config(), credential);

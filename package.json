@@ -17,7 +17,11 @@
     "dev:web": "npm run dev -w @livetap/web",
     "test": "vitest run",
     "test:relay": "node --test infra/relay/session-api/",
-
+    "ingest": "node infra/dev-harness/ingest/start-ingest.mjs",
+    "verify:ingest": "node infra/dev-harness/ingest/verify-ingest.mjs",
+    "verify:ingest:selftest": "node infra/dev-harness/ingest/selftest.mjs",
+    "verify:broadcast": "node infra/dev-harness/broadcast/verify-desktop-broadcast.mjs",
+    "idp": "node infra/dev-harness/fake-idp/fake-idp.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -b tsconfig.json",

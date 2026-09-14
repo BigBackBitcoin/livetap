@@ -20,11 +20,20 @@ import { DeviceControls } from '../components/DeviceControls.js';
 import { NoticeCards } from '../components/NoticeCards.js';
 import { PreviewCanvas } from '../components/PreviewCanvas.js';
 import { OutputStrip } from '../components/OutputStrip.js';
-import { evaluatePreflight, goLiveSubtitle } from '../components/preflight.js';
+import {
+  broadcastReality,
+  evaluatePreflight,
+  goLiveSubtitle,
+  nameDestinations,
+} from '../components/preflight.js';
 import { COPY } from '../lib/copy.js';
 import { elapsed } from '../lib/format.js';
 import { useDevices } from '../lib/devices.js';
-import { useAppStore } from '../state/store.js';
+import {
+  DEMO_COUNTDOWN_SECONDS,
+  REAL_COUNTDOWN_SECONDS,
+  useAppStore,
+} from '../state/store.js';
 
 const ASPECTS: readonly AspectRatio[] = ['16:9', '9:16', '1:1'];
 const ASPECT_NAME: Record<AspectRatio, string> = {
@@ -33,39 +42,56 @@ const ASPECT_NAME: Record<AspectRatio, string> = {
   '1:1': 'Square 1 by 1',
 };
 
-/** The grace period between tapping END and the stream actually ending (PRODUCT_SPEC §4.3). */
-const END_GRACE_MS = 5000;
-
 export function Studio(): ReactElement {
   const production = useAppStore((s) => s.production);
   const destinations = useAppStore((s) => s.destinations);
   const moments = useAppStore((s) => s.moments);
   const metrics = useAppStore((s) => s.metrics);
   const goLive = useAppStore((s) => s.goLive);
-  const endingAt = useAppStore((s) => s.endingAt);
   const micMuted = useAppStore((s) => s.micMuted);
   const aspect = useAppStore((s) => s.aspect);
   const mode = useAppStore((s) => s.mode);
+  const adapterKind = useAppStore((s) => s.adapterKind);
+  const engineHost = useAppStore((s) => s.engineHost);
+  const pendingConfirm = useAppStore((s) => s.pendingConfirm);
 
   const startCountdown = useAppStore((s) => s.startCountdown);
   const cancelCountdown = useAppStore((s) => s.cancelCountdown);
+  const confirmRealBroadcast = useAppStore((s) => s.confirmRealBroadcast);
   const commitGoLive = useAppStore((s) => s.commitGoLive);
-  const requestEnd = useAppStore((s) => s.requestEnd);
-  const undoEnd = useAppStore((s) => s.undoEnd);
-  const confirmEnd = useAppStore((s) => s.confirmEnd);
+  const cancelStart = useAppStore((s) => s.cancelStart);
   const setAspect = useAppStore((s) => s.setAspect);
   const setMoment = useAppStore((s) => s.setMoment);
 
   const { cameras, microphones, unsupported } = useDevices();
   const [search] = useSearchParams();
-  const mockMode = useAppStore((s) => s.mockMode);
-  // Demo mode exists to be used: when this deployment is simulated, the failure demos are the
-  // point of it. `?demo=1` and Pro reach them on a real deployment too.
-  const showDemoPanel = mockMode || search.get('demo') === '1' || mode === 'pro';
 
-  const live = production.state === 'LIVE' || production.state === 'STOPPING';
+  /*
+   * What this build will actually do, read from the adapters and the engine it constructed rather
+   * than from `config.mock` or a build-time flag. Everything on this screen that makes a claim
+   * about reality - the button's label, the countdown's length, the subtitle, the demo panel -
+   * reads this one value, so they cannot disagree with each other or with the machine.
+   */
+  const reality = useMemo(
+    () => broadcastReality(destinations, adapterKind, engineHost),
+    [destinations, adapterKind, engineHost],
+  );
+
+  /*
+   * The failure demos raise real engine events, so on a real deployment they would drop a real
+   * destination. `mode === 'pro'` used to open them, which meant a Pro creator's real broadcast
+   * carried a row of buttons that break it. Pro is a density and a disclosure setting, not a
+   * permission to sabotage a live stream; `?demo=1` remains for anyone who deliberately asks.
+   */
+  const showDemoPanel = reality.allSimulated || search.get('demo') === '1';
+
+  /*
+   * "Live" here means "committed", not "LIVE": STARTING has already created broadcast objects on
+   * the platforms and STOPPING is still sending frames, so both are windows in which the format
+   * cannot change and the preview is already on air.
+   */
+  const live = production.state !== 'IDLE' && production.state !== 'PREVIEW';
   const elapsedMs = useElapsed(production.startedAt, live);
-  const graceLeft = useGrace(endingAt);
   const goLiveRef = useRef<HTMLDivElement | null>(null);
   const [preflightOpen, setPreflightOpen] = useState(false);
 
@@ -80,8 +106,17 @@ export function Studio(): ReactElement {
         hasMic: microphones.length > 0 || unsupported,
         micMuted,
         recording: production.recording,
+        simulatedIds: reality.simulatedIds,
       }),
-    [destinations, cameras.length, microphones.length, unsupported, micMuted, production.recording],
+    [
+      destinations,
+      cameras.length,
+      microphones.length,
+      unsupported,
+      micMuted,
+      production.recording,
+      reality.simulatedIds,
+    ],
   );
 
   const destinationHealth = useMemo(
@@ -96,7 +131,7 @@ export function Studio(): ReactElement {
     () => humaneHealth(evaluateHealth(metrics, Date.now(), destinationHealth)),
     [metrics, destinationHealth],
   );
-  const allMock = destinations.length > 0 && destinations.every((d) => d.config.mock);
+  const allMock = reality.allSimulated;
 
   /*
    * Pre-flight answers "can this stream start?", so it only means anything before one has.
@@ -114,22 +149,13 @@ export function Studio(): ReactElement {
    */
   const collapsible = !live && rowLevel === 'amber' && preflight.items.length > 0;
 
-  // The END grace elapsing is what actually stops the broadcast.
-  useEffect(() => {
-    if (endingAt === null) return undefined;
-    const timer = setTimeout(() => void confirmEnd(), END_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [endingAt, confirmEnd]);
-
-  // Escape cancels the END grace. It never ends a live stream.
-  useEffect(() => {
-    if (endingAt === null) return undefined;
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') undoEnd();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [endingAt, undoEnd]);
+  /*
+   * The END grace and the Escape that cancels it both used to live here, in effects owned by this
+   * screen. Unmounting Studio cancelled the scheduled stop while `goLive` stayed `'live'`, so
+   * pressing END and then tapping Destinations left the broadcast running with no way to stop it
+   * from where the user now was. The timer is the store's (`requestEnd`) and the key handler is
+   * the shell's (`LiveBar`), because a stop must outlive the screen that asked for it.
+   */
 
   /*
    * GO LIVE holds initial focus on Studio (PRODUCT_SPEC §4.3). Without this it is the 27th tab
@@ -145,13 +171,7 @@ export function Studio(): ReactElement {
     // Deliberately empty: this is a first-mount-only effect, not a reaction to `goLive`.
   }, []);
 
-  // The tab title is the one place a backgrounded live stream can still announce itself.
-  useEffect(() => {
-    document.title = live ? `● LIVE ${elapsed(elapsedMs)} — LIVETAP` : 'LIVETAP';
-    return () => {
-      document.title = 'LIVETAP';
-    };
-  }, [live, elapsedMs]);
+  // The tab title moved to `LiveBar` with everything else that has to survive a route change.
 
   return (
     <div className="lt-studio">
@@ -181,15 +201,24 @@ export function Studio(): ReactElement {
                   {option}
                 </button>
               );
-              return live ? (
+              /*
+                The wrapper is rendered in both states on purpose. Swapping between `control` and
+                `<Tooltip>{control}</Tooltip>` at the live transition remounts the button, and a
+                remounted button loses focus to `<body>` - so a keyboard user who happened to be
+                on the shape control at the moment the stream started was returned to the top of
+                the document. The bubble's text is what changes, not the tree.
+              */
+              return (
                 <Tooltip
                   key={option}
-                  label="Locked while you are live — platforms cannot change format mid-stream."
+                  label={
+                    live
+                      ? 'Locked while you are live — platforms cannot change format mid-stream.'
+                      : ASPECT_NAME[option]
+                  }
                 >
                   {control}
                 </Tooltip>
-              ) : (
-                control
               );
             })}
           </div>
@@ -207,99 +236,130 @@ export function Studio(): ReactElement {
         </div>
       </section>
 
-      <section className="lt-studio__go" aria-label="Going live">
-        <NoDestinationsPrompt />
+      {/*
+        Going live is this screen's job; STAYING live is the shell's. Once a start begins, the
+        control lives in `LiveBar`, which is fixed to the window on every route and at every
+        width. Two stop buttons on one screen is not "one obvious way to stop", and the one that
+        survives a route change is the one that has to be the obvious one.
+      */}
+      {live ? null : (
+        <section className="lt-studio__go" aria-label="Going live">
+          <NoDestinationsPrompt />
 
-        {/*
-          Amber is "expandable" in PRODUCT_SPEC §4.5, and it was always expanded — which put
-          three sentences of consequence between the chips and the button and, on a phone, pushed
-          GO LIVE off the screen. Collapsed by default, with the count in the headline so nothing
-          is hidden; `aria-expanded` plus a caret carry the state without relying on colour.
-        */}
-        {/*
-          The pre-flight row, the button and its subtitle travel together: on a phone they are
-          pinned above the tab bar (PRODUCT_SPEC §5c, mobile: "64px, full width minus space-4,
-          pinned above nav"), which is the only way the product's one dominant action is on the
-          screen when Studio opens.
-        */}
-        <div className="lt-golivebar">
-          <div
-            className={['lt-preflight', `lt-preflight--${rowLevel}`].join(' ')}
-            aria-live="polite"
-          >
-          <span className="lt-preflight__dot" aria-hidden="true" />
-          {collapsible ? (
-            <button
-              type="button"
-              className="lt-preflight__toggle lt-touch"
-              aria-expanded={preflightOpen}
-              onClick={() => setPreflightOpen((open) => !open)}
+          {/*
+            Amber is "expandable" in PRODUCT_SPEC §4.5, and it was always expanded — which put
+            three sentences of consequence between the chips and the button and, on a phone, pushed
+            GO LIVE off the screen. Collapsed by default, with the count in the headline so nothing
+            is hidden; `aria-expanded` plus a caret carry the state without relying on colour.
+          */}
+          {/*
+            The pre-flight row, the button and its subtitle travel together: on a phone they are
+            pinned above the tab bar (PRODUCT_SPEC §5c, mobile: "64px, full width minus space-4,
+            pinned above nav"), which is the only way the product's one dominant action is on the
+            screen when Studio opens.
+          */}
+          <div className="lt-golivebar">
+            <div
+              className={['lt-preflight', `lt-preflight--${rowLevel}`].join(' ')}
+              aria-live="polite"
             >
+            <span className="lt-preflight__dot" aria-hidden="true" />
+            {collapsible ? (
+              <button
+                type="button"
+                className="lt-preflight__toggle lt-touch"
+                aria-expanded={preflightOpen}
+                onClick={() => setPreflightOpen((open) => !open)}
+              >
+                <span className="lt-preflight__headline">{rowHeadline}</span>
+                <span className="lt-preflight__caret" aria-hidden="true">
+                  {preflightOpen ? '⌃' : '⌄'}
+                </span>
+              </button>
+            ) : (
               <span className="lt-preflight__headline">{rowHeadline}</span>
-              <span className="lt-preflight__caret" aria-hidden="true">
-                {preflightOpen ? '⌃' : '⌄'}
-              </span>
-            </button>
-          ) : (
-            <span className="lt-preflight__headline">{rowHeadline}</span>
-          )}
-          {!live && preflight.items.length > 0 && (!collapsible || preflightOpen) ? (
-            <ul className="lt-preflight__items">
-              {preflight.items.map((item) => (
-                <li key={item.id}>
-                  {item.text}
-                  {item.fix ? (
-                    <>
-                      {' '}
-                      <Link className="lt-textlink" to={item.fix.to}>
-                        {item.fix.label}
-                      </Link>
-                    </>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+            )}
+            {!live && preflight.items.length > 0 && (!collapsible || preflightOpen) ? (
+              <ul className="lt-preflight__items">
+                {preflight.items.map((item) => (
+                  <li key={item.id}>
+                    {item.text}
+                    {item.fix ? (
+                      <>
+                        {' '}
+                        <Link className="lt-textlink" to={item.fix.to}>
+                          {item.fix.label}
+                        </Link>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
 
-        {endingAt !== null ? (
-          <div className="lt-endgrace">
-            <Button variant="secondary" size="lg" block onClick={undoEnd}>
-              {`${COPY.undo} · Ending in ${graceLeft}`}
-            </Button>
-            <p className="lt-endgrace__hint">Say your goodbyes.</p>
+          {/*
+            §37: the one moment this product is allowed to interrupt a creator is the first time
+            their own accounts are about to carry a broadcast. It is stated in words, it names the
+            destinations, and it takes an answer - once, then never again. Deliberately not a modal
+            and not over the preview: this is a step in the column the user is already reading, and
+            "Not yet" leaves everything exactly as it was.
+          */}
+          {pendingConfirm ? (
+            <div className="lt-realconfirm" role="group" aria-label="Confirm a real broadcast">
+              <p className="lt-realconfirm__what">You are about to broadcast to your connected accounts.</p>
+              <p className="lt-realconfirm__who">
+                {`${nameDestinations(reality.real)} will show you live to real viewers. This is not a demo.`}
+              </p>
+              <Button variant="primary" size="lg" block onClick={confirmRealBroadcast}>
+                {`Yes, go live on ${reality.real.length}`}
+              </Button>
+              <button type="button" className="lt-textlink lt-touch" onClick={cancelCountdown}>
+                Not yet
+              </button>
+            </div>
+          ) : (
+            <div ref={goLiveRef}>
+              <GoLiveButton
+                state={goLive}
+                elapsedMs={elapsedMs}
+                /*
+                  Five seconds when real accounts are on the line, three when nothing leaves the
+                  machine. The countdown is the confirmation for every broadcast after the first:
+                  it is cancellable by activating the same control, and it is in the place the
+                  creator is already looking - unlike a dialog, which arrives at the exact moment
+                  a person is least able to read one.
+                */
+                countdownSeconds={
+                  reality.real.length > 0 ? REAL_COUNTDOWN_SECONDS : DEMO_COUNTDOWN_SECONDS
+                }
+                // Never disabled while live: a stream you cannot stop is worse than no stream.
+                disabled={!live && preflight.level === 'red'}
+                disabledReason={
+                  live
+                    ? undefined
+                    : (preflight.items[0]?.text ??
+                      'Connect a destination first — that is the one thing LIVETAP cannot do for you.')
+                }
+                onGoLive={startCountdown}
+                onCancel={cancelCountdown}
+                onCountdownComplete={() => void commitGoLive()}
+                onCancelStart={() => void cancelStart()}
+                demo={allMock}
+                className={allMock ? 'lt-golive--demo' : undefined}
+              />
+              <p className="lt-golive__subtitle">
+                {goLive === 'countdown' && reality.real.length > 0
+                  ? `Going live on ${nameDestinations(reality.real)}`
+                  : allMock && preflight.readyCount > 0
+                    ? `Demo — going live on ${preflight.readyCount}, and nothing is broadcast anywhere`
+                    : goLiveSubtitle(preflight)}
+              </p>
+            </div>
+          )}
           </div>
-        ) : (
-          <div ref={goLiveRef}>
-            <GoLiveButton
-              state={goLive}
-              elapsedMs={elapsedMs}
-              // Never disabled while live: a stream you cannot stop is worse than no stream.
-              disabled={!live && preflight.level === 'red'}
-              disabledReason={
-                live
-                  ? undefined
-                  : (preflight.items[0]?.text ??
-                    'Connect a destination first — that is the one thing LIVETAP cannot do for you.')
-              }
-              onGoLive={startCountdown}
-              onCancel={cancelCountdown}
-              onCountdownComplete={() => void commitGoLive()}
-              onEnd={requestEnd}
-              demo={allMock}
-              className={allMock ? 'lt-golive--demo' : undefined}
-            />
-            <p className="lt-golive__subtitle">
-              {live
-                ? liveSubtitle(production.liveCount, production.enabledCount, allMock)
-                : allMock && preflight.readyCount > 0
-                  ? `Demo — going live on ${preflight.readyCount}, and nothing is broadcast anywhere`
-                  : goLiveSubtitle(preflight)}
-            </p>
-          </div>
-        )}
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="lt-studio__moments" aria-label="Moments">
         <h2 className="lt-sr-only">Moments</h2>
@@ -535,19 +595,3 @@ function useElapsed(startedAt: number | undefined, live: boolean): number {
   return ms;
 }
 
-/** 5 → 1, counting down the END grace. */
-function useGrace(endingAt: number | null): number {
-  const [left, setLeft] = useState(5);
-  useEffect(() => {
-    if (endingAt === null) {
-      setLeft(5);
-      return undefined;
-    }
-    const tick = (): void =>
-      setLeft(Math.max(1, Math.ceil((END_GRACE_MS - (Date.now() - endingAt)) / 1000)));
-    tick();
-    const timer = setInterval(tick, 250);
-    return () => clearInterval(timer);
-  }, [endingAt]);
-  return left;
-}

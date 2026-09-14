@@ -420,7 +420,7 @@
 .lt-sheet__scrim {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--lt-z-scrim);
   background: var(--lt-overlay);
   animation: lt-fade-in var(--lt-dur-3) var(--lt-ease-standard);
 }
@@ -433,7 +433,7 @@
 
 .lt-sheet {
   position: fixed;
-  z-index: 51;
+  z-index: var(--lt-z-sheet);
   display: flex;
   flex-direction: column;
   background: var(--lt-bg-1);
@@ -982,6 +982,28 @@
     color var(--lt-dur-2) var(--lt-ease-standard);
 }
 
+/*
+ * The thumbnail slot: a real picture of the Moment instead of its glyph.
+ *
+ * Sized by the card, not by the picture, so a caller that hands over a canvas, an image or an
+ * SVG all land on the same 140px card without any of them setting the card's height.
+ */
+.lt-moment__thumb {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--lt-radius-sm);
+  overflow: hidden;
+  background: var(--lt-bg-0);
+}
+
+.lt-moment__thumb > * {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .lt-moment:hover:not(:disabled) {
   background: var(--lt-bg-3);
   color: var(--lt-text-primary);
@@ -1252,8 +1274,14 @@
   position: absolute;
   inset-block-end: calc(100% + var(--lt-space-2));
   inset-inline-start: 50%;
-  z-index: 40;
+  z-index: var(--lt-z-tooltip);
   translate: -50% 0;
+  /*
+   * A bubble is an explanation, never a target. It is absolutely positioned above the control
+   * it describes, so with pointer events on it it becomes the thing a click at that point
+   * reaches - including when the control underneath is the one that ends a broadcast.
+   */
+  pointer-events: none;
   padding: var(--lt-space-1) var(--lt-space-2);
   background: var(--lt-bg-3);
   color: var(--lt-text-primary);

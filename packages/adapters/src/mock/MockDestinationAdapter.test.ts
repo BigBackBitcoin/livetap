@@ -91,7 +91,7 @@ describe('MockDestinationAdapter lifecycle', () => {
     const handle = await adapter.createBroadcast(config());
     expect(handle.broadcastId).toBeTruthy();
     expect(handle.streamId).toBeTruthy();
-    expect(handle.ingest.url).toBe('rtmp://mock.youtube.livetap.local/live');
+    expect(handle.ingest.url).toBe('rtmp://mock.youtube.livetap.invalid/live');
     expect(handle.ingest.streamKey).toMatch(/^mock-youtube-[0-9a-f]{12}$/);
     expect(handle.watchUrl).toBe(`https://mock.livetap.app/youtube/${handle.broadcastId}`);
     expect((handle as { mock?: boolean }).mock).toBe(true);

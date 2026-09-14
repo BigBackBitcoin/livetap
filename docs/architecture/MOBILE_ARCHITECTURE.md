@@ -1,13 +1,21 @@
 # LIVETAP Mobile Architecture
 
 Scope: `apps/mobile` — the iOS and Android apps — plus `packages/capacitor-live-stream`, the
-Capacitor plugin package that carries the native streaming code (§3). Written 2026-09-11 on a
-Windows Server 2022 host
-with Node 20.11, **no Java/Android SDK and no Xcode**. Every claim about native behaviour in this
-document is therefore either read from a primary source (linked) or marked `UNVERIFIED`. Nothing
-native has been compiled or run here.
+Capacitor plugin package that carries the native streaming code (§3). Written 2026-09-11 and
+updated 2026-09-14 on a Windows Server 2022 host with Node 20.11.
+
+**The two platforms are no longer in the same position, and the difference runs through this whole
+document.** A portable JDK 21 (`tools/jdk21`) and Android SDK 36 (`tools/android-sdk`) now exist on
+this host, so the Android half COMPILES and produces a sideloadable debug APK, and what that APK
+contains is asserted rather than described (`node apps/mobile/scripts/verify-apk.mjs`). It has still
+never been RUN: there is no emulator image and this VM has no nested virtualisation, so every
+runtime question (a picture from a lens, a permission dialog, the live notification, real RTMP from
+a handset) is owner hardware and lives in `docs/release/ANDROID_MANUAL_TEST.md`. The iOS half is
+unchanged and unchanged in status: no Xcode here, nothing compiled, `UNVERIFIED` throughout.
 
 Status vocabulary: `PASS` | `FAIL` | `SIMULATED` | `UNVERIFIED` | `BLOCKED_EXTERNAL_DEPENDENCY`.
+`COMPILES` is used below for the narrow, real thing the Android toolchain now buys: the code builds
+and ships in the artifact, and nothing about its behaviour follows from that.
 
 ---
 
@@ -20,7 +28,7 @@ Status vocabulary: `PASS` | `FAIL` | `SIMULATED` | `UNVERIFIED` | `BLOCKED_EXTER
 | `npx cap add ios` | **PASS (with two expected skips)** | Full Xcode project generated in `apps/mobile/ios` — `App.xcodeproj/project.pbxproj`, `App.xcworkspace`, `AppDelegate.swift`, `Info.plist`, `Podfile`, asset catalogues, storyboards. Capacitor printed `Skipping pod install because CocoaPods is not installed` and `Unable to find "xcodebuild". Skipping xcodebuild clean step...`. |
 | `npx cap sync` (after all manual edits) | **PASS** | Re-verified by md5: `variables.gradle`, `app/build.gradle`, `AndroidManifest.xml`, `Info.plist`, `Podfile` and root `build.gradle` are **all preserved**. Only `capacitor.config.json`, `capacitor.plugins.json`, `capacitor.build.gradle`, `capacitor.settings.gradle`, the Podfile's `def capacitor_pods … end` block, and the copied web assets are regenerated. |
 | `npx cap sync` (after extracting `packages/capacitor-live-stream`) | **PASS** | `Found 8 Capacitor plugins` for both platforms, including `@livetap/capacitor-live-stream@0.1.0`; `packageClassList` gained `LiveStreamPlugin`; the Podfile gained `pod 'LivetapCapacitorLiveStream'`. `pod install` and the `xcodebuild` clean step were skipped — expected on Windows. See §3. |
-| `./gradlew assembleDebug` | **BLOCKED_EXTERNAL_DEPENDENCY** | `java: command not found`. No JDK and no Android SDK on the host. Runs in CI (`.github/workflows/mobile.yml`, `android` job). |
+| `./gradlew assembleDebug` | **PASS** | Was `BLOCKED_EXTERNAL_DEPENDENCY` for want of a JDK. `bash apps/mobile/scripts/build-android.sh` now drives the whole chain (web build with `VITE_LIVETAP_MOCK_MODE=false` → `stage-web.mjs` → `cap sync android` → `assembleDebug` → `verify-apk.mjs`) using the portable `tools/jdk21` and `tools/android-sdk`, and emits a debug-signed `app-debug.apk` of about 10.2 MB. |
 | `pod install` + `xcodebuild` | **BLOCKED_EXTERNAL_DEPENDENCY** | Requires macOS. Runs in CI (`ios` job) on `macos-latest`. |
 
 The brief anticipated that `cap add ios` might refuse on Windows and asked for a hand-written
@@ -154,9 +162,43 @@ that thermally cannot work.
 Both licenses are permissive and fine for an MIT product and for both stores. Obligations recorded
 in `docs/legal/THIRD_PARTY_LICENSES.md`.
 
-Every place a decision needs hardware carries a `TODO(device)` comment rather than a guess. The
-three biggest are: the preview surface wiring (an `MTHKView` / `OpenGlView` behind a transparent
-WebView), HaishinKit's recorder API, and the real value of `maxSimultaneousStreams`.
+On iOS, every place a decision needs hardware still carries a `TODO(device)` comment rather than a
+guess: HaishinKit's recorder API and the `MTHKView` preview wiring are both unwritten, because
+nothing there can even be compiled here.
+
+On Android those are written, and the reason is that the encoder's API could be read out of the
+artifact instead of guessed. `javap` against the resolved
+`com.github.pedroSG94.RootEncoder:library:2.8.1` in the Gradle cache gives the exact signatures the
+plugin compiles against, which is what made a real `startPreview` possible without a device. Two
+facts from that reading shaped the design:
+
+- `StreamBase.startPreview(SurfaceView)` registers its own `SurfaceHolder.Callback`, so preview can
+  be started before the surface exists and the library attaches when it appears. No polling, no
+  race to handle.
+- `prepareVideo` throws *"Stream, record and preview must be stopped before prepareVideo"*. The
+  encoder graph cannot be reconfigured while anything is using it, which is why there is exactly one
+  `GenericStream` and why `startStream` bounces the preview around its re-prepare instead of
+  building a second one.
+
+### Preview compositing on Android
+
+The preview is an `OpenGlView` (a `SurfaceView` subclass, so `startPreview(SurfaceView)` takes it)
+inserted as **child 0 of the Capacitor WebView's own parent**, with
+`bridge.webView.setBackgroundColor(Color.TRANSPARENT)` while the preview is showing and the app
+background restored when it is not. A `SurfaceView` renders below the window surface, so a
+transparent WebView above it composites correctly without `setZOrderOnTop`, which would put the
+camera *over* the UI.
+
+It is built in code rather than declared in `apps/mobile/android/app/src/main/res/layout/activity_main.xml`
+because a library module cannot reference the host app's `R`, and looking the view up by
+`getIdentifier("livetap_preview", ...)` would make the plugin silently picture-less in any app that
+forgot the layout. The view is created once and hidden, never detached, so start/stop preview cannot
+race the view hierarchy.
+
+**The one thing this needs from the web layer:** on the phone the studio stage must not paint an
+opaque background over the native preview. A transparent WebView with an opaque `body` or an opaque
+stage is the same blank screen as no preview at all. That is a `apps/web` concern and is recorded as
+a cross-stream handoff, not fixed here.
 
 ### Plugin packaging — why LiveStream is a package, not app-local code
 
@@ -246,9 +288,21 @@ start.
 ### `MobileEngine`
 
 `apps/mobile/src/MobileEngine.ts` implements core's `MediaEngine` with `kind: 'native'` on top of
-the plugin, importing the contract from `@livetap/capacitor-live-stream`. It carries 22 unit tests
-against a fake plugin; the package's web fallback carries 4 more. Those 26 are the whole of the
-mobile test surface, and the native side underneath them is still `UNVERIFIED`.
+the plugin, importing the contract from `@livetap/capacitor-live-stream`. It carries 26 unit tests
+against a fake plugin; the package's web fallback and vault bridge carry 10 more. Those 36 are the
+whole of the mobile test surface, and the native side underneath them has never been run.
+
+It is reached from `apps/web/src/state/engine.ts`, which lazily `await import('@livetap/mobile')`
+behind a Capacitor check and constructs `new MobileEngine({ platform })`. That lazy import is why
+the native bridge never lands in the plain web bundle.
+
+**Permissions.** `startPreview` and `start` both call `checkPermissions()` first and
+`requestPermissions({ permissions: ['camera', 'microphone'] })` when either is missing. Before that
+existed, every native call rejected on a fresh install with a raw string and the creator never saw
+an OS dialog at all. Camera and microphone are hard requirements and their refusal is thrown with a
+sentence naming which one; `notifications` is requested afterwards, separately, and its refusal is
+ignored, because losing the Android 13+ live notification costs the creator their handle on a
+running broadcast, not the broadcast.
 
 What it deliberately refuses rather than fakes:
 
@@ -375,7 +429,7 @@ are registered:
 | Callback | Where | Strength |
 |---|---|---|
 | `livetap://oauth` | iOS `CFBundleURLTypes`; Android `<intent-filter>` | Weaker — any installed app can claim a custom scheme. Only ever used **with PKCE**. |
-| `https://livetap.example/oauth/callback` | iOS Universal Link; Android App Link (`autoVerify="true"`) | Stronger — cannot be hijacked. **`BLOCKED_EXTERNAL_DEPENDENCY`**: needs a real domain, an `apple-app-site-association` file with the Team ID, and an `assetlinks.json` carrying the **Play app signing key** SHA-256 (not the upload key — that mismatch is the classic cause of App Links silently falling back to the browser). The hostname in the manifest is a placeholder and must be replaced. |
+| `https://<real host>/oauth/callback` | iOS Universal Link; Android App Link (`autoVerify="true"`) | Stronger, cannot be hijacked. **`BLOCKED_EXTERNAL_DEPENDENCY`**: needs a real domain, an `apple-app-site-association` file with the Team ID, and an `assetlinks.json` carrying the **Play app signing key** SHA-256 (not the upload key; that mismatch is the classic cause of App Links silently falling back to the browser). **Not declared on Android today.** The filter used to name the placeholder host `livetap.example`; it was removed on 2026-09-14 because a verification that can only fail still costs an install-time fetch and shows the creator a broken domain in the app's link settings. Restore it with the real hostname at Play App Signing time. |
 
 ### The honest limitation: this is not `ASWebAuthenticationSession`
 
@@ -403,15 +457,34 @@ above is the MVP path, and hardening to `ASWebAuthenticationSession` is a tracke
 | **Kick / Facebook** | Require a confidential-client secret exchange, which must never be on a device. **Blocked on the `TokenBroker`** (ADR-009) — a server-side endpoint LIVETAP CORE does not have yet. Surfaced as honest "unavailable"/"paste stream key" cards, per ADR-010. |
 | **Custom RTMP/RTMPS** | No auth. Works today. |
 
-### Secure storage — recommended, deliberately **not installed**
+### Secure storage: built on Android, still recommended for iOS
 
 Tokens and stream keys must never sit in `@capacitor/preferences`, which is `UserDefaults` /
 `SharedPreferences` — readable on a rooted device and (on iOS) carried into backups.
 
-**Recommendation: `@aparajita/capacitor-secure-storage`** — iOS Keychain, Android Keystore-generated
-AES-GCM key with ciphertext in SharedPreferences.
+**Android: built, in this repo, with no new dependency.**
+`packages/capacitor-live-stream/android/.../SecureStorePlugin.kt` registers a second Capacitor
+plugin, `LivetapSecureStore`, which encrypts with AES-256/GCM under a key generated inside the
+AndroidKeyStore and stores `base64(iv):base64(ciphertext)` in a private `SharedPreferences` file.
+`installVaultBridge()` in `packages/capacitor-live-stream/src/secureStore.ts` exposes it as
+`window.livetap.vault`, which is the exact shape `apps/web/src/state/secrets.ts` already
+feature-detects for the Electron `safeStorage` vault; `MobileEngine`'s constructor installs it, and
+it refuses to shadow a bridge another shell got to first. Until this existed, the manifest carried a
+comment promising "OAuth tokens live in the Android Keystore-backed secure store" and the tokens
+were in fact in an in-memory `Map` that died with the process.
 
-Verified with `npm view` on 2026-09-11:
+What the Keystore buys: the AES key is not extractable even from a rooted process on a device with a
+secure element, and it is destroyed on uninstall or factory reset. What it does not buy: protection
+from code running as this app. `android:allowBackup="false"` matters just as much, because ciphertext
+in a cloud backup is ciphertext whose key cannot follow it.
+
+`setUserAuthenticationRequired` is deliberately NOT set: a broadcast has to be able to reconnect
+with the phone locked in a pocket, and a key that needs a fingerprint would drop the stream instead.
+
+**iOS: still a recommendation, deliberately not installed.**
+`@aparajita/capacitor-secure-storage` remains the candidate for the Keychain half. Nothing on iOS
+can be compiled here, so installing a pod on the word of an `npm view` would be the same unverifiable
+bet it always was. Verified with `npm view` on 2026-09-11:
 
 | Candidate | License | Capacitor 7 support | Verdict |
 |---|---|---|---|
@@ -420,14 +493,15 @@ Verified with `npm view` on 2026-09-11:
 | Capawesome Secure Preferences | `UNVERIFIED` (partly commercial) | `UNVERIFIED` | Evaluate only if (1) fails. |
 | Ionic Secure Storage | Commercial, **sunsets 2027-12-31** | — | Do not adopt. |
 
-**It is not added to `package.json`.** Adding a native dependency that cannot be compiled or run
-here would put an unverifiable pod and Gradle module into the build on the word of an `npm view`
-alone. The decision is recorded; installing it is the first task of whoever has a device.
+**It is not added to `package.json`.** On Android it is not needed: the platform already ships
+everything `SecureStorePlugin.kt` uses, and adding a Gradle module and a pod to a `node_modules`
+shared across the repo, to do what `javax.crypto` does, would be the wrong trade. On iOS it is the
+right answer and remains unadopted only because nothing there can be compiled here.
 
-Policy when it lands: OAuth refresh tokens and stream keys in the secure store only; iOS Keychain
-accessibility no looser than `WhenUnlockedThisDeviceOnly` for anything stream-key-shaped (exact
-option name `UNVERIFIED`); `android:allowBackup="false"` (already set) so nothing leaks through a
-device transfer.
+Policy: OAuth refresh tokens and stream keys in the secure store only; iOS Keychain accessibility no
+looser than `WhenUnlockedThisDeviceOnly` for anything stream-key-shaped (exact option name
+`UNVERIFIED`); `android:allowBackup="false"` (already set) so nothing leaks through a device
+transfer.
 
 ---
 
@@ -457,14 +531,25 @@ exactly one `createVirtualDisplay()`, a `MediaProjection.Callback` **must** be r
 
 ## 9. Honest verification table
 
-Everything native is `UNVERIFIED` on this host. That is the whole point of this section.
+Android compiles here and iOS does not, and the table says which is which. Nothing native has been
+RUN on either platform: there is no emulator image, no nested virtualisation and no handset, so
+"COMPILES and ships in the artifact" is the strongest Android claim in this document.
+
+Reproduce the Android rows with:
+
+```
+bash apps/mobile/scripts/build-android.sh          # builds, then runs verify-apk.mjs
+node apps/mobile/scripts/verify-apk.mjs            # 42 assertions on the APK alone
+npx vitest run --project mobile --project capacitor-live-stream
+```
 
 | Item | Status | Evidence / what would change it |
 |---|---|---|
 | `apps/mobile` TypeScript typechecks | **PASS** | `npx tsc -p apps/mobile/tsconfig.json --noEmit` — clean. |
 | `packages/capacitor-live-stream` TypeScript typechecks | **PASS** | `npx tsc -p packages/capacitor-live-stream/tsconfig.json --noEmit` — clean. |
-| `MobileEngine` event mapping | **PASS** | 22 vitest tests against a fake plugin (`npx vitest run --project mobile`). |
-| LiveStream web fallback refuses honestly | **PASS** | 4 vitest tests (`npx vitest run --project capacitor-live-stream`): every method throws `LiveStreamNativeOnlyError` naming itself, `capabilities()` reports `UNAVAILABLE` with every boolean false, no stream key in the error text, `addListener` still resolves. |
+| `MobileEngine` event mapping and permission gate | **PASS** | 26 vitest tests against a fake plugin (`npx vitest run --project mobile`), including: capture is requested before the camera is touched, a granted device is not re-prompted, a denied camera rejects with a sentence naming it and never calls `startPreview`, and a denied notification permission previews anyway. |
+| LiveStream web fallback refuses honestly | **PASS** | 5 vitest tests (`npx vitest run --project capacitor-live-stream`): every method that DOES something throws `LiveStreamNativeOnlyError` naming itself, `capabilities()` reports `UNAVAILABLE` with every boolean false, `checkPermissions()` answers `denied` rather than throwing, no stream key in the error text, `addListener` still resolves. |
+| Vault bridge wiring | **PASS** | 5 vitest tests: a secret round-trips to the native store, a missing secret answers `undefined` rather than throwing, an Electron vault is never shadowed, no window means no install, and other `window.livetap` properties survive. |
 | ESLint | **PASS** | `npx eslint apps/mobile packages/capacitor-live-stream` — clean. `apps/mobile/ios/` and `apps/mobile/android/` are ignored in `eslint.config.mjs`; the plugin package's own `ios/`+`android/` hold no JS/TS. |
 | Android Gradle project generated | **PASS** | `cap add android` output; files on disk. |
 | Xcode project generated | **PASS** | `cap add ios` output; `App.xcodeproj/project.pbxproj` present and structurally valid (**42** object ids after the plugin files moved out, all defined exactly once, no dangling references, balanced delimiters). |
@@ -472,18 +557,25 @@ Everything native is `UNVERIFIED` on this host. That is the whole point of this 
 | Manifest / Info.plist / privacy manifest are well-formed XML | **PASS** | Parsed with an XML parser. |
 | `pod install` | **BLOCKED_EXTERNAL_DEPENDENCY** | Needs macOS. CI `ios` job. |
 | `xcodebuild` (simulator, unsigned) | **UNVERIFIED** | Never run. CI `ios` job is the first test. |
-| `./gradlew assembleDebug` | **UNVERIFIED** | `java: command not found`. CI `android` job is the first test. |
-| AGP 8.13 / Gradle 8.14.3 / Kotlin 2.2.20 on a Capacitor 7 template | **UNVERIFIED** | Highest-risk change in this deliverable. |
+| `./gradlew assembleDebug` | **PASS** | Runs on this host against `tools/jdk21` + `tools/android-sdk`; `BUILD SUCCESSFUL`, 10,160,720-byte debug-signed APK. |
+| AGP 8.13 / Gradle 8.14.3 / Kotlin 2.2.20 on a Capacitor 7 template | **PASS** | Was the highest-risk change in this deliverable. It builds. |
+| Android plugin Kotlin compiles against RootEncoder 2.8.1 | **COMPILES** | `./gradlew :livetap-capacitor-live-stream:compileDebugKotlin` is clean; every RootEncoder signature used was read from the resolved artifact with `javap`, not from documentation. |
+| The APK contains what this document claims | **PASS** | `node apps/mobile/scripts/verify-apk.mjs`, 42/42, reading the APK as a zip with Node's own zlib. Covers: the three LIVETAP native classes and `GenericStream`/`Camera2Source`/`MicrophoneSource`/`OpenGlView` in the dex; all nine `@PluginMethod` names; both plugins in `capacitor.plugins.json`; `webContentsDebuggingEnabled` on and no `server.url`; the app shell (not the marketing page) as the entry point; demo mode compiled out; the seven permissions and the merged foreground-service type set. |
 | HaishinKit 2.0.9 compiles under Xcode 26 | **UNVERIFIED** | 2.2.5's changelog implies ≤ 2.2.4 had Xcode 26.4 problems. Watch the CI `ios` job. |
 | Plugin registration, **both** platforms | **PASS (by structure)** | `npx cap sync` reports `Found 8 Capacitor plugins` for android *and* ios, including `@livetap/capacitor-live-stream@0.1.0`. `ios/App/App/capacitor.config.json` `packageClassList` now contains `LiveStreamPlugin`; the Podfile contains `pod 'LivetapCapacitorLiveStream'`; `capacitor.plugins.json` contains `app.livetap.capacitor.livestream.LiveStreamPlugin`. Idempotent — re-running sync reproduces all of it. This says the plugin is **wired**, not that it **works**: the row below is still the gate. |
 | Plugin compiles and answers a JS call | **BLOCKED_EXTERNAL_DEPENDENCY** | Needs `pod install` + `xcodebuild` on macOS and `./gradlew assembleDebug` with a JDK/Android SDK. Both are CI jobs that have never run. |
 | Camera capture, RTMP push, reconnect | **UNVERIFIED** | Needs a physical device and an ingest server. A simulator cannot test camera or cellular. |
 | Background audio continuation | **UNVERIFIED** | Declaration is written; behaviour needs a device. |
 | Thermal step-down thresholds | **UNVERIFIED** | Needs a device that gets hot. |
-| Preview surface behind the WebView | **UNVERIFIED** | `TODO(device)` in both native files. |
+| Preview surface behind the WebView, Android | **COMPILES** | Written: `OpenGlView` at index 0 of the WebView's parent, WebView background transparent while previewing. Whether the composite is right on a notched or folding screen needs a screen. |
+| Preview surface behind the WebView, iOS | **UNVERIFIED** | Still `TODO(device)`; `MTHKView` is unwritten. |
+| Permission dialogs actually appear | **UNVERIFIED** | The calls are made and unit-tested; the OS drawing the dialog is a handset check. |
+| Foreground-service notification and its End action | **COMPILES** | `LiveForegroundService.onStopRequested` now ends every push before `stopSelf()`, so the action ends the broadcast rather than orphaning the encoder. The notification appearing at all needs a device. |
 | HaishinKit recorder API | **UNVERIFIED** | `TODO(device)`; guessed instead of verified would be worse. |
-| `maxSimultaneousStreams` = 1 | **UNVERIFIED** | Conservative placeholder pending measurement. |
-| Secure storage plugin | **UNVERIFIED** (described, not installed) | See §7. |
+| `maxSimultaneousStreams` = 1 | **PASS (structural)** | No longer a thermal guess: `GenericStream` owns one encoder and one client, so a second push would be a second full encode. Two destinations from a phone go behind a relay (ADR-009). |
+| Secure storage, Android | **COMPILES** | `SecureStorePlugin.kt` (AndroidKeyStore AES-256/GCM) ships in the dex; the JS bridge is unit-tested. Key generation and GCM round trips on real hardware are owner checks. |
+| Secure storage, iOS | **UNVERIFIED** (described, not installed) | See §7. |
+| Launcher icon, round icon, adaptive foreground, splash | **PASS** | Generated from the section 1.2 mark geometry by `node apps/mobile/scripts/generate-launcher-icons.mjs`; 26 rasters, no Capacitor placeholder left. |
 | Screen broadcast, both platforms | **BLOCKED_EXTERNAL_DEPENDENCY** | See §8. |
 | Signing, both platforms | **BLOCKED_EXTERNAL_DEPENDENCY** | Apple Developer Program; Play upload keystore. |
 
@@ -494,8 +586,17 @@ Everything native is `UNVERIFIED` on this host. That is the whole point of this 
 2. ~~Extract `packages/capacitor-live-stream`~~ — **done** (2026-09-11). iOS registration is now
    `PASS (by structure)`; see §3. What it cannot do is prove the native code compiles, which is
    item 3.
-3. Run CI once and treat the AGP/Gradle/Kotlin bump as the prime suspect for the first red build.
-4. Switch `webDir` to `../web/dist` when the web build exists.
-5. Install and verify `@aparajita/capacitor-secure-storage@^7.1.6`; move tokens off Preferences.
-6. Get one iPhone and one Android phone. Everything in §9 marked `UNVERIFIED` needs them, and the
-   iPad matters specifically for the ReplayKit memory limit later.
+3. ~~Run CI once and treat the AGP/Gradle/Kotlin bump as the prime suspect~~ **done**
+   (2026-09-14), locally rather than in CI: `assembleDebug` is green on AGP 8.13 / Gradle 8.14.3 /
+   Kotlin 2.2.20 against the Capacitor 7 template.
+4. ~~Switch `webDir` to `../web/dist`~~ **rejected, permanently.** The web build emits the
+   marketing page at `index.html` and the application at `app.html`, so pointing Capacitor at `dist`
+   would boot the phone app into the page that sells the phone app. `stage-web.mjs` is the correct
+   mechanism and `webDir` stays `www`.
+5. ~~Install and verify a secure-storage plugin for Android~~ **done**: `LivetapSecureStore`, no
+   dependency added. iOS still needs `@aparajita/capacitor-secure-storage@^7.1.6` or equivalent.
+6. **Sideload the APK and walk `docs/release/ANDROID_MANUAL_TEST.md`.** This is now the single
+   highest-value action for the Android half: everything left in §9 that is not `PASS` is a question
+   only a handset answers, and the journey is nine steps.
+7. Get an iPhone and an Xcode host. The iOS half has not been compiled once, and the iPad matters
+   specifically for the ReplayKit memory limit later.

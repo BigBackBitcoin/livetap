@@ -21,7 +21,18 @@ export interface CredentialRef {
   /** Non-secret display data. */
   accountId?: string;
   accountLabel?: string;
+  /**
+   * The account's picture, as the platform serves it. Non-secret and the whole point of the
+   * destination card: a creator recognises "Jam's Kitchen" and that avatar instantly, and
+   * recognises a channel id never. Every adapter already fetches it on validate().
+   */
+  avatarUrl?: string;
   expiresAt?: number;
+  /**
+   * The scopes the platform actually GRANTED, not the ones LIVETAP asked for. Kick's consent
+   * screen lets the creator untick streamkey:read, so the two lists routinely differ and only
+   * this one may be used to decide whether LIVETAP can fetch a key or must ask for a pasted one.
+   */
   scopes?: string[];
 }
 

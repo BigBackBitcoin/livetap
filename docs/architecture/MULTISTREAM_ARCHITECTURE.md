@@ -18,8 +18,9 @@ BroadcastOrchestrator                         packages/core/src/orchestrator
   │                 validate / createBroadcast / startBroadcast / chat / stop
   ▼
 MediaEngine (one of)                          packages/media, apps/desktop, apps/mobile
-  ├─ BrowserEngine   capture → compositor → captureStream → WHIP → relay → RTMP fan-out
-  ├─ FfmpegEngine    MediaRecorder H.264 → IPC → FFmpeg encoder per format → TS fan-out → N senders
+  ├─ BrowserEngine   capture → FormatRenderer → captureStream per aspect → WHIP → relay → RTMP fan-out
+  ├─ DesktopEngine   capture → FormatRenderer → MediaRecorder H.264 per aspect → pushChunk IPC
+  │                  → FfmpegEngine in Electron main → encoder per format → TS fan-out → N senders
   ├─ MobileEngine    native camera/mic → HaishinKit / RootEncoder → RTMP (1–2 outputs)
   └─ MockEngine      deterministic simulation for demos and tests
   ▼
@@ -33,7 +34,7 @@ three: 16:9, 9:16, 1:1). The engine encodes **once per format**, never per desti
 
 | Engine | 16:9 only | 16:9 + 9:16 |
 |---|---|---|
-| Desktop (FfmpegEngine) | 1 encoder process → N `-c copy` senders | 2 encoder processes (renderer supplies a second composited stream for the vertical canvas) → senders grouped per format |
+| Desktop (DesktopEngine + FfmpegEngine) | 1 canvas, 1 MediaRecorder, 1 encoder process → N `-c copy` senders | 2 canvases composed from the same camera, 2 MediaRecorders, 2 encoder processes → senders grouped per format. Measured end to end on the build host: 1920x1080 and 1080x1920 arrived as separate H.264 streams at the receiver |
 | Web (BrowserEngine + relay) | 1 WHIP session → relay hook `-c:v copy -c:a aac` → tee to N | 1 WHIP session → relay adds one scaling hook (`crop=ih*9/16:ih,scale=1080:1920`) for the vertical group — the only relay-side video re-encode |
 | Mobile | 1 native encode → 1–2 RTMP pushes (phone thermal budget); more destinations go via the relay (LIVETAP CLOUD later) |
 

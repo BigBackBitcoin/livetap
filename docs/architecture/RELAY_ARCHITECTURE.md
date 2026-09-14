@@ -319,6 +319,17 @@ managed endpoint is a deployment detail, not a code path.
   B1). The single most important open question for the web architecture: if a
   browser offers only VP8, pass-through is impossible. Test Chrome, Edge,
   Firefox and Safari before committing to the web go-live path publicly.
+  **This is now answerable on a developer workstation without the VPS and
+  without Docker.** `infra/dev-harness/ingest/mediamtx.dev.yml` carries an
+  opt-in WHIP profile: set `LIVETAP_DEV_INGEST_WHIP=1` and the dev receiver
+  also accepts WHIP on `127.0.0.1:8889`, with the same control API and the same
+  ffprobe evidence the RTMP path already produces, so what a browser actually
+  negotiated becomes a probe result rather than an argument. It stays loopback
+  only: the WebRTC media port is pinned to `127.0.0.1:8189` and the ICE server
+  list is empty, because a STUN lookup is an egress a dev harness must never
+  make. **That receiver is not this relay** and must never be deployed; it is
+  unauthenticated by design and records everything, which is the opposite of
+  what `infra/relay/` does on purpose.
 * **`docker compose up` is unverified** — the build host has no nested
   virtualisation. Every relay behaviour was verified with the identical binary
   and config; container packaging was not.

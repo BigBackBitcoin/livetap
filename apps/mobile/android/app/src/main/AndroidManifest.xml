@@ -42,21 +42,21 @@
             </intent-filter>
 
             <!--
-              OAuth callback, Android App Link (PLACEHOLDER HOST).
-              android:autoVerify requires https://livetap.example/.well-known/assetlinks.json to
-              carry the SHA-256 fingerprint of the *Play app signing key* (not the upload key) —
-              see docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md section 2.7. That fingerprint does not
-              exist until Play App Signing is configured, so this filter is BLOCKED_EXTERNAL_DEPENDENCY
-              and the real hostname must replace `livetap.example` before release.
-              Until verification succeeds, Android silently falls back to the browser — which is
-              why the custom scheme above still exists.
+              NO https App Link filter here, deliberately.
+
+              There used to be an android:autoVerify="true" filter on the placeholder host
+              `livetap.example`. autoVerify makes the OS fetch
+              https://<host>/.well-known/assetlinks.json at install time and match it against the
+              app's signing certificate; on a host nobody owns that check simply fails, and a failed
+              verification is not free — it costs an install-time network round trip and it leaves a
+              permanently "unverified" domain in the app's link settings that the creator can see.
+              The custom scheme above is what actually carries the OAuth callback today, and it is
+              paired with PKCE precisely because a custom scheme is claimable by any installed app.
+
+              Restore this filter, with the real hostname, at the same time as Play App Signing:
+              the fingerprint in assetlinks.json must be the Play app signing key, not the upload
+              key — docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md section 2.7.
             -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="livetap.example" android:pathPrefix="/oauth/callback" />
-            </intent-filter>
 
         </activity>
 

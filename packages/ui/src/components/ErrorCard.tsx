@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { HumaneError } from '@livetap/core';
 import { AlertIcon } from './Icons.js';
@@ -47,6 +48,12 @@ export function ErrorCard({
   children,
   className,
 }: ErrorCardProps): ReactElement {
+  /*
+   * The heading id is per instance, not per error code. Two destinations failing the same way
+   * produced two elements with the same `id`, so both cards' `aria-labelledby` resolved to the
+   * first one and a screen reader read the wrong destination's headline on the second card.
+   */
+  const headingId = useId();
   const classes = [
     'lt-errorcard',
     tone === 'warning' ? 'lt-errorcard--warning' : null,
@@ -56,10 +63,10 @@ export function ErrorCard({
     .join(' ');
 
   return (
-    <section className={classes} role="alert" aria-labelledby={`lt-err-${error.code}`}>
+    <section className={classes} role="alert" aria-labelledby={headingId}>
       <div className="lt-errorcard__head">
         <AlertIcon size={24} className="lt-errorcard__icon" />
-        <h3 className="lt-errorcard__what" id={`lt-err-${error.code}`}>
+        <h3 className="lt-errorcard__what" id={headingId}>
           {error.what}
         </h3>
       </div>

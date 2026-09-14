@@ -141,8 +141,21 @@ describe('TwitchAdapter go-live sequence', () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it('validates by reading the channel and the key', async () => {
+  it('validates by reading who the token is, then the channel and the key', async () => {
     const { adapter, fake } = adapterWith([
+      {
+        match: '/users',
+        body: {
+          data: [
+            {
+              id: '1234567',
+              login: 'adalovelace',
+              display_name: 'Ada Lovelace',
+              profile_image_url: 'https://static.test/ada.png',
+            },
+          ],
+        },
+      },
       { match: '/channels', body: { data: [{ broadcaster_id: '1234567', broadcaster_login: 'adalovelace' }] } },
       { match: '/streams/key', body: { data: [{ stream_key: 'k' }] } },
     ]);
@@ -151,12 +164,32 @@ describe('TwitchAdapter go-live sequence', () => {
     if (result.ok) {
       expect(result.watchUrl).toBe('https://www.twitch.tv/adalovelace');
       expect(result.ingest?.streamKey).toBe('k');
+      // The card's whole job: a name and a face, never a broadcaster id.
+      expect(result.credential?.accountLabel).toBe('Ada Lovelace');
+      expect(result.credential?.avatarUrl).toBe('https://static.test/ada.png');
+      expect(result.credential?.accountId).toBe('1234567');
     }
-    expect(fake.calls[0]?.url).toBe(`${API}/channels?broadcaster_id=1234567`);
+    expect(fake.calls[0]?.url).toBe(`${API}/users`);
   });
 
-  it('fails validate cleanly when the credential has no broadcaster id', async () => {
-    const { adapter } = adapterWith([]);
+  /*
+   * The first connect is the case that used to be impossible: nothing can put a broadcaster id on
+   * a credential before a successful sign-in, and validate() refused without one. It now asks
+   * Twitch who the token belongs to.
+   */
+  it('validates a credential that has never been connected, by asking who the token is', async () => {
+    const { adapter } = adapterWith([
+      { match: '/users', body: { data: [{ id: '99', login: 'newcomer', display_name: 'Newcomer' }] } },
+      { match: '/channels', body: { data: [{ broadcaster_id: '99', broadcaster_login: 'newcomer' }] } },
+      { match: '/streams/key', body: { data: [{ stream_key: 'k' }] } },
+    ]);
+    const result = await adapter.validate(config({ accountId: undefined }), { id: 'c', platform: 'twitch' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.credential?.accountId).toBe('99');
+  });
+
+  it('fails validate cleanly when Twitch will not say who the token is', async () => {
+    const { adapter } = adapterWith([{ match: '/users', body: { data: [] } }]);
     const result = await adapter.validate(config({ accountId: undefined }), {
       id: 'c',
       platform: 'twitch',

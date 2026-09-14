@@ -225,7 +225,7 @@ hr {
   position: absolute;
   top: var(--lt-space-2);
   left: var(--lt-space-2);
-  z-index: 100;
+  z-index: var(--lt-z-skip);
   padding: var(--lt-space-2) var(--lt-space-4);
   background: var(--lt-bg-2);
   color: var(--lt-text-primary);

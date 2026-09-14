@@ -1,9 +1,9 @@
 /**
- * Renderer-side media diagnostics.
+ * Renderer-side media diagnostics for the desktop engine.
  *
- * This runs in the renderer (the studio UI imports it) and answers the one question the desktop
- * architecture depends on: can Chromium hand us H.264 directly, so the main process never has to
- * re-encode video?
+ * This runs in the renderer. `DesktopEngine.start()` calls `probeRecorderSupport()` before it
+ * builds a single MediaRecorder, and the answer decides the whole pipeline: can Chromium hand us
+ * H.264 directly, so the main process never has to re-encode video?
  *
  * Measured on this build host (Electron 38.8.6 / Chrome 140.0.7339.249, Windows Server 2022, no GPU):
  *   MediaRecorder.isTypeSupported('video/webm;codecs=h264')        → true

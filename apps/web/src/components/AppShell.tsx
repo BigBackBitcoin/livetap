@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { Icons, Logo, Toggle, VisuallyHidden } from '@livetap/ui';
 import { useAppStore } from '../state/store.js';
+import { LiveBar } from './LiveBar.js';
 import { MockBanner } from './MockBanner.js';
 import { NoticeRegion } from './NoticeRegion.js';
 
@@ -28,7 +29,15 @@ const NAV: readonly NavItem[] = [
 export function AppShell(): ReactElement {
   const mode = useAppStore((s) => s.mode);
   const setMode = useAppStore((s) => s.setMode);
+  const productionState = useAppStore((s) => s.production.state);
   const { pathname } = useLocation();
+
+  /*
+   * The stop control is chrome, not content. `LiveBar` is fixed to the bottom of the window on
+   * every route, so the scrolling column has to end above it or the last thing on every screen
+   * sits underneath the one control that must never be covered.
+   */
+  const onAir = productionState !== 'IDLE' && productionState !== 'PREVIEW';
 
   /*
    * A router does not reset the scroll position on its own, so arriving at Studio from a
@@ -41,7 +50,7 @@ export function AppShell(): ReactElement {
   }, [pathname]);
 
   return (
-    <div className="lt-shell">
+    <div className={['lt-shell', onAir ? 'is-onair' : null].filter(Boolean).join(' ')}>
       <a className="lt-skip-link" href="#lt-main">
         Skip to the main screen
       </a>
@@ -98,6 +107,12 @@ export function AppShell(): ReactElement {
         <MockBanner />
         <Outlet />
       </main>
+
+      {/*
+        Last in the DOM, above everything in paint order, and outside `<main>` so a route change
+        cannot unmount it. This is the whole answer to "END is cancelled by navigating away".
+      */}
+      <LiveBar />
 
       <NoticeRegion />
     </div>

@@ -15,8 +15,13 @@
  * - Android → RootEncoder 2.8.1 (Apache-2.0): `GenericStream` + `Camera2Source` + `MicrophoneSource`
  * - Web     → throws (see web.ts). There is no browser fallback; the web app uses BrowserEngine.
  *
- * Everything native in this contract is UNVERIFIED on the build host: no Xcode, no Android SDK,
- * no device. See docs/architecture/MOBILE_ARCHITECTURE.md for the verification table.
+ * Verification status of the two native halves differs and the difference matters:
+ * - Android COMPILES here (SDK 36 + JDK 21 are on the build host) and ships in the debug APK's
+ *   dex, but has never been RUN — no emulator image, no nested virtualisation, no handset.
+ * - iOS is UNVERIFIED outright: there is no Xcode on this host, so the Swift half has not been
+ *   compiled at all.
+ * See docs/architecture/MOBILE_ARCHITECTURE.md for the verification table and
+ * docs/release/ANDROID_MANUAL_TEST.md for the journey that settles the Android runtime questions.
  */
 import type { ErrorCode } from '@livetap/core';
 import type { PluginListenerHandle } from '@capacitor/core';
@@ -154,9 +159,55 @@ export interface ThermalEvent {
   level: 'nominal' | 'fair' | 'serious' | 'critical';
 }
 
+/**
+ * The three runtime permissions the native layer needs, by Capacitor alias.
+ *
+ * `camera` and `microphone` are the broadcast itself: without them every native call rejects and
+ * there is no picture and no sound. `notifications` is the Android 13+ gate on the live foreground
+ * notification, which is the creator's only handle on a broadcast once they leave the app — losing
+ * it costs the handle, not the broadcast, so it is asked for separately and never blocks GO LIVE.
+ *
+ * On iOS there is no notification permission in this flow and on Android below 13 POST_NOTIFICATIONS
+ * is not a runtime permission at all, so `notifications` may report `denied` on a device where the
+ * notification will in fact appear. Treat it as advisory, never as a precondition.
+ */
+export type LiveStreamPermissionAlias = 'camera' | 'microphone' | 'notifications';
+
+/** Capacitor's permission vocabulary, unchanged so the UI can reuse any existing handling. */
+export type LiveStreamPermissionState =
+  | 'prompt'
+  | 'prompt-with-rationale'
+  | 'granted'
+  | 'denied';
+
+export type LiveStreamPermissionStatus = Record<
+  LiveStreamPermissionAlias,
+  LiveStreamPermissionState
+>;
+
+export interface RequestLiveStreamPermissionsOptions {
+  /** Omit to request every alias at once. Named aliases let the UI ask for one thing at a time. */
+  permissions?: LiveStreamPermissionAlias[];
+}
+
 export interface LiveStreamPlugin {
   /** What this device can actually do. Call before showing any streaming UI. */
   capabilities(): Promise<LiveStreamCapabilities>;
+
+  /**
+   * What the OS has already granted. Never prompts, so it is safe on every render.
+   *
+   * Implemented by Capacitor's own `Plugin` base class from the `@CapacitorPlugin(permissions=[...])`
+   * block on the native class; it is declared here because a TypeScript caller cannot see an
+   * inherited native method, and before this declaration existed every native call rejected on a
+   * fresh install with a raw string and no way for the UI to ask first.
+   */
+  checkPermissions(): Promise<LiveStreamPermissionStatus>;
+
+  /** Show the OS permission dialogs. Resolves with the state after the creator answered. */
+  requestPermissions(
+    options?: RequestLiveStreamPermissionsOptions,
+  ): Promise<LiveStreamPermissionStatus>;
 
   /**
    * Start camera + mic capture and render the preview behind the WebView.

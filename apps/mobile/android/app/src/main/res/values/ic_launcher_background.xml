@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The adaptive-icon background plate.
+
+  #121417 is the `lt-bg-1` token from docs/design/DESIGN_SYSTEM.md, which section 1.2 names as the
+  app icon's plate. It replaces the Capacitor template's #FFFFFF: the mark's frame and ripples are
+  the `lt-text-primary` token (#F2F4F7), so on white they were very nearly invisible.
+-->
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#121417</color>
 </resources>

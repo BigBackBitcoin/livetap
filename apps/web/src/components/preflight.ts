@@ -33,13 +33,92 @@ export interface PreflightInput {
   hasMic: boolean;
   micMuted: boolean;
   recording: boolean;
+  /**
+   * The ids of the destinations that are simulated, from `broadcastReality`.
+   *
+   * Passed in rather than read from `config.mock`, because `config.mock` is what the destination
+   * was CONFIGURED as and the question here is what it will actually DO. Omitted, this falls back
+   * to the config, which is right for a caller that has no runtime to ask.
+   */
+  simulatedIds?: ReadonlySet<string>;
+}
+
+/**
+ * Which adapters and which engine this build actually constructed.
+ *
+ * Deliberately spelled out rather than imported from `../state/`: these are the exact unions
+ * `RegistryKind` and `EngineHost`, so a caller passing the store's values type-checks, and a
+ * drift in either becomes a compile error at the call site rather than a silent widening here.
+ */
+export interface RealityOfBuild {
+  adapters: 'mock' | 'real' | 'injected';
+  engine: 'browser' | 'desktop' | 'mobile' | 'mock';
+}
+
+export interface BroadcastReality {
+  /** Destinations that will genuinely receive bytes. */
+  real: DestinationSnapshot[];
+  /** Destinations that are switched on and will receive nothing. */
+  simulated: DestinationSnapshot[];
+  simulatedIds: ReadonlySet<string>;
+  /** True when nothing at all leaves this machine. */
+  allSimulated: boolean;
+  /** What makes it simulated, when something is. Null when every enabled destination is real. */
+  reason: 'adapters' | 'engine' | 'destinations' | null;
+}
+
+/**
+ * Is this broadcast real, and if not, why not - observed, never configured.
+ *
+ * This is the one selector the honesty banner, the GO LIVE label, the countdown length, the
+ * subtitle and the live bar all read, so they cannot disagree. It exists because the build-time
+ * answer was wrong in a way a creator could be hurt by: with demo mode on and one Custom RTMP
+ * destination added, `addCustomDestination` writes `mock: false`, so the banner hid itself, the
+ * demo badges disappeared, the button read GO LIVE and then "Live on 1" - while the mock adapter
+ * and the mock engine sent nothing anywhere.
+ *
+ * Two facts about the running process outrank anything a destination claims about itself:
+ * simulated adapters mean no platform is ever contacted, and a simulated engine means no frames
+ * are ever encoded. Either one makes every destination simulated, whatever its config says.
+ */
+export function broadcastReality(
+  destinations: DestinationSnapshot[],
+  adapters: RealityOfBuild['adapters'],
+  engine: RealityOfBuild['engine'],
+): BroadcastReality {
+  const enabled = destinations.filter((d) => d.config.enabled);
+  const everything: 'adapters' | 'engine' | null =
+    adapters === 'mock' ? 'adapters' : engine === 'mock' ? 'engine' : null;
+
+  const simulated = everything !== null ? enabled : enabled.filter((d) => d.config.mock);
+  const real = everything !== null ? [] : enabled.filter((d) => !d.config.mock);
+  const simulatedIds = new Set(simulated.map((d) => d.config.id));
+
+  return {
+    real,
+    simulated,
+    simulatedIds,
+    allSimulated: enabled.length > 0 && real.length === 0,
+    reason: simulated.length === 0 ? null : (everything ?? 'destinations'),
+  };
+}
+
+/** One sentence naming the destinations a broadcast will actually reach. Never a count alone. */
+export function nameDestinations(list: DestinationSnapshot[]): string {
+  const labels = list.map((d) => d.config.label);
+  if (labels.length === 0) return '';
+  if (labels.length === 1) return labels[0] as string;
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
 }
 
 export function evaluatePreflight(input: PreflightInput): Preflight {
   const enabled = input.destinations.filter((d) => d.config.enabled);
   const ready = enabled.filter((d) => d.state === 'READY');
   const failed = enabled.filter((d) => d.state === 'FAILED');
-  const demos = enabled.filter((d) => d.config.mock);
+  const demos = enabled.filter((d) =>
+    input.simulatedIds ? input.simulatedIds.has(d.config.id) : d.config.mock,
+  );
   const items: PreflightItem[] = [];
 
   if (!input.online) {

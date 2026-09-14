@@ -8,7 +8,7 @@
   "main": "dist/main/index.cjs",
   "scripts": {
     "build:main": "tsup",
-    "build:renderer": "cd ../web && vite build --base ./ --outDir ../desktop/dist/renderer --emptyOutDir",
+    "build:renderer": "node scripts/build-renderer.mjs",
     "build": "npm run build:main && npm run build:renderer",
     "start": "electron .",
     "dev": "npm run build:main && electron . --dev",
@@ -19,6 +19,8 @@
     "package:mac": "npm run build:main && npm run prepackage && electron-builder --config electron-builder.yml --mac --publish never",
     "build:verify": "tsup --config tsup.verify.config.ts",
     "verify:engine": "npm run build:verify && node dist/verify/verify-engine.cjs",
+    "e2e:smoke": "node e2e/smoke.mjs",
+    "e2e:broadcast": "node e2e/broadcast.mjs",
     "lint": "eslint .",
     "prepackage": "node scripts/ensure-renderer.mjs"
   },

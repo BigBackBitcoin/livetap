@@ -73,6 +73,9 @@ export function loadConfig(env = process.env) {
     recordingsDir: path.join(INGEST_DIR, 'recordings'),
     defaultPath: env.LIVETAP_DEV_INGEST_PATH ?? 'live/dev',
     binaryOverride: env.LIVETAP_DEV_INGEST_MEDIAMTX ?? '',
+    /** WHIP ingest, for the browser surface. Off unless asked for; see startMediaMtx. */
+    whip: env.LIVETAP_DEV_INGEST_WHIP === '1',
+    whipPort: 8889,
   };
 }
 
@@ -409,6 +412,11 @@ export function startMediaMtx(cfg, { onLog = null } = {}) {
   // disagree about which ports are in use.
   env.MTX_RTMPADDRESS = `${cfg.host}:${cfg.rtmpPort}`;
   env.MTX_APIADDRESS = `${cfg.host}:${cfg.apiPort}`;
+  // WHIP is off in the YAML and opted into here, through the same env-override
+  // mechanism, so the two cannot disagree. It exists for the browser surface,
+  // which has no way to open an RTMP socket; see the comment beside `webrtc:`
+  // in mediamtx.dev.yml for why every WebRTC address is pinned to loopback.
+  if (cfg.whip) env.MTX_WEBRTC = 'yes';
 
   fs.mkdirSync(cfg.recordingsDir, { recursive: true });
 

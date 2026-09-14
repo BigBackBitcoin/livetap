@@ -32,7 +32,12 @@ export interface FfmpegPathOptions {
 export interface ResolvedFfmpeg {
   /** Absolute path, or the bare name `ffmpeg`/`ffmpeg.exe` when falling back to PATH. */
   path: string;
-  source: 'override' | 'bundled' | 'path';
+  /**
+   * Where it came from. `unavailable` means this is a PACKAGED build whose `resources/ffmpeg/`
+   * directory is empty: `path` is then the absolute place the binary was expected, which does not
+   * exist, so every probe fails and the engine reports UNAVAILABLE.
+   */
+  source: 'override' | 'bundled' | 'path' | 'unavailable';
   /** Honest label for diagnostics: a PATH fallback is not a shippable configuration. */
   bundled: boolean;
 }
@@ -66,13 +71,24 @@ export function resolveFfmpegPath(options: FfmpegPathOptions = {}): ResolvedFfmp
     return { path: override, source: 'override', bundled: false };
   }
 
-  if (options.resourcesPath) {
-    const bundled = path.join(options.resourcesPath, 'ffmpeg', platformDir(platform), binaryName(platform));
-    if (exists(bundled)) return { path: bundled, source: 'bundled', bundled: true };
+  const bundled = options.resourcesPath
+    ? path.join(options.resourcesPath, 'ffmpeg', platformDir(platform), binaryName(platform))
+    : null;
+  if (bundled && exists(bundled)) return { path: bundled, source: 'bundled', bundled: true };
+
+  if (options.isPackaged === true) {
+    /*
+     * NO PATH FALLBACK IN A PACKAGED BUILD. Two reasons, and the second is the honesty one.
+     * A PATH lookup would execute whatever is first on the user's PATH as the media engine. And
+     * on a machine that happens to have ffmpeg installed, a build whose extraResources step was
+     * missed would appear to work here and fail on every other user's machine. Returning the
+     * absolute place the binary was expected makes the probe fail with a real ENOENT, which is
+     * what turns `capabilities().verification` into UNAVAILABLE instead of a hopeful PASS.
+     */
+    return { path: bundled ?? path.join('resources', 'ffmpeg', platformDir(platform), binaryName(platform)), source: 'unavailable', bundled: false };
   }
 
-  // Dev fallback. In a packaged build this means the extraResources step was missed; callers should
-  // surface that as UNVERIFIED rather than pretending the engine is production-ready.
+  // Dev / CI / the headless verification script.
   return { path: binaryName(platform), source: 'path', bundled: false };
 }
 
@@ -83,9 +99,10 @@ export function resolveFfprobePath(options: FfmpegPathOptions = {}): ResolvedFfm
   const override = process.env.LIVETAP_FFPROBE_PATH;
   if (override && override.length > 0) return { path: override, source: 'override', bundled: false };
   const name = platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
-  if (options.resourcesPath) {
-    const bundled = path.join(options.resourcesPath, 'ffmpeg', platformDir(platform), name);
-    if (exists(bundled)) return { path: bundled, source: 'bundled', bundled: true };
+  const bundled = options.resourcesPath ? path.join(options.resourcesPath, 'ffmpeg', platformDir(platform), name) : null;
+  if (bundled && exists(bundled)) return { path: bundled, source: 'bundled', bundled: true };
+  if (options.isPackaged === true) {
+    return { path: bundled ?? path.join('resources', 'ffmpeg', platformDir(platform), name), source: 'unavailable', bundled: false };
   }
   return { path: name, source: 'path', bundled: false };
 }

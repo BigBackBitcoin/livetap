@@ -115,9 +115,10 @@ async function main(): Promise<void> {
     resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
     isPackaged: app.isPackaged,
   });
-  if (app.isPackaged && !ffmpeg.bundled) {
-    // Honest, loud, and non-fatal: the app still opens, but capabilities() will report UNAVAILABLE
-    // rather than pretending streaming works.
+  if (ffmpeg.source === 'unavailable') {
+    // Honest, loud, and non-fatal: the app still opens, and every encoder probe fails against a
+    // path that does not exist, so capabilities() reports UNAVAILABLE. A packaged build never
+    // falls back to PATH, so this cannot be masked by an ffmpeg the developer happens to have.
     logger.error('packaged build has no bundled FFmpeg; streaming will report UNAVAILABLE', {
       expected: ffmpeg.path,
     });
@@ -218,6 +219,18 @@ function createWindow(): void {
       experimentalFeatures: false,
       webviewTag: false,
       spellcheck: false,
+      /*
+       * Chromium throttles requestAnimationFrame in a window it considers background or occluded,
+       * and the renderer IS the encoder here: the compositor's rAF loop draws every frame that goes
+       * on the wire. Alt-tabbing away from LIVETAP mid broadcast must not cost viewers frames.
+       *
+       * Honest note on what this did and did not fix. The end-to-end proof on this host reaches
+       * roughly 9 to 13 fps against a 30 fps target when composing two formats, and turning this
+       * off did not move that number: the cost there is software rasterising two 1080-class canvases
+       * on a VM with no GPU, not throttling. This stays because the throttling case is real on a
+       * user's machine and it is not one anyone should have to discover while live.
+       */
+      backgroundThrottling: false,
     },
   });
   mainWindow = window;

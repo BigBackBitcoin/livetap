@@ -104,6 +104,25 @@
   --lt-focus-width: 2px;
   --lt-focus-offset: 2px;
 
+  /*
+   * Stacking order, as one scale rather than seven literals scattered across two packages.
+   *
+   * The rule this scale exists to encode: the control that stops a live broadcast outranks
+   * every other layer in the product, and nothing but the skip link outranks it. Before this,
+   * the pinned GO LIVE bar was the LOWEST positioned chrome in the app (9, tied with the
+   * honesty banner, below the navigation at 10/11), and it was saved only by the two boxes
+   * happening not to overlap. A Sheet at 50/51 or a tooltip at 40 covered it outright.
+   */
+  --lt-z-base: 1;
+  --lt-z-banner: 20;
+  --lt-z-nav: 30;
+  --lt-z-golive: 40;
+  --lt-z-tooltip: 50;
+  --lt-z-scrim: 60;
+  --lt-z-sheet: 61;
+  --lt-z-livebar: 900;
+  --lt-z-skip: 1000;
+
   /* Breakpoints (for JS via getComputedStyle; media queries use the literals) */
   --lt-bp-mobile: 640px;
   --lt-bp-tablet: 1024px;

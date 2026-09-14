@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineMetrics } from '@livetap/core';
 import type { EngineOutput, EngineOutputEvent, EngineStartRequest } from '@livetap/core';
 import { defaultMoments, formatForPreset } from '@livetap/core';
-import { MockEngine, mulberry32, type MockEngineOptions } from './MockEngine.js';
+import { MockEngine, mulberry32, simulationRefusal, type MockEngineOptions } from './MockEngine.js';
 import { createFakeCanvas } from '../testing/fakes.js';
 
 function output(destinationId: string, protocol: 'rtmps' | 'whip' = 'rtmps'): EngineOutput {
@@ -301,5 +301,42 @@ describe('mulberry32', () => {
 
   it('differs between seeds', () => {
     expect(mulberry32(1)()).not.toBe(mulberry32(2)());
+  });
+});
+
+describe('MockEngine honesty about real destinations', () => {
+  function realOutput(destinationId: string, url: string): EngineOutput {
+    return { destinationId, aspectRatio: '16:9', ingest: { protocol: 'rtmp', url, streamKey: 'k' } };
+  }
+
+  it('refuses to report a real ingest target as live, because it sends no bytes at all', async () => {
+    const engine = new MockEngine({ createCanvas: () => createFakeCanvas(1280, 720).canvas, connectDelayMs: 1 });
+    const seen: EngineOutputEvent[] = [];
+    engine.on('output', (event) => seen.push(event));
+    await engine.start(request([realOutput('local', 'rtmp://127.0.0.1:1935/live/a')]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    engine.dispose();
+
+    expect(seen).toEqual([
+      {
+        type: 'outputLost',
+        destinationId: 'local',
+        code: 'CONFIG_INVALID',
+        technical: 'Demo mode cannot broadcast to 127.0.0.1. Turn demo mode off to stream to a real server.',
+      },
+    ]);
+  });
+
+  it('accepts the reserved names that can never be somebody real server', () => {
+    expect(simulationRefusal('rtmps://demo.livetap.invalid/youtube')).toBeNull();
+    expect(simulationRefusal('rtmps://live.test/app')).toBeNull();
+    expect(simulationRefusal('rtmp://live.example.com/app')).toBeNull();
+    expect(simulationRefusal('https://i.test/whip')).toBeNull();
+  });
+
+  it('refuses a real platform ingest, a loopback server and a LAN address alike', () => {
+    expect(simulationRefusal('rtmps://a.rtmp.youtube.com/live2')).toContain('Demo mode cannot broadcast');
+    expect(simulationRefusal('rtmp://localhost:1935/live')).toContain('Demo mode cannot broadcast');
+    expect(simulationRefusal('rtmp://192.168.1.20:1935/live')).toContain('Demo mode cannot broadcast');
   });
 });

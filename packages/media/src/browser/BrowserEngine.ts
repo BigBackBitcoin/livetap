@@ -1,14 +1,17 @@
 /**
  * BrowserEngine - the MediaEngine implementation for the web app and mobile WebViews.
  *
- * Pipeline: getUserMedia / getDisplayMedia -> <video> elements -> MomentCompositor (2D canvas)
- *           -> canvas.captureStream() + WebAudio mix -> WHIP (WebRTC) and/or MediaRecorder.
+ * Pipeline: getUserMedia / getDisplayMedia -> <video> elements -> FormatRenderer (one 2D canvas
+ *           per distinct aspect ratio) -> canvas.captureStream() + WebAudio mix -> WHIP (WebRTC)
+ *           and/or MediaRecorder.
  *
  * Honest limits (see docs/architecture/MEDIA_ENGINE.md):
  * - A browser cannot speak RTMP/RTMPS/SRT. Those outputs either need the desktop app or the
  *   WHIP relay (MediaMTX) configured through `relay`.
- * - One encode per format: the canvas is captured once and fanned out to every WHIP session.
- * - Browser layers need Electron/webview; the compositor draws a labelled placeholder instead.
+ * - One encode per FORMAT, not one encode per broadcast: a 9:16 destination is published from the
+ *   9:16 canvas, composed with the Moment's own 9:16 placements. An output whose aspect ratio was
+ *   never composed is refused with CONFIG_INVALID rather than being handed the master picture.
+ * - Browser layers need Electron/webview; the compositor leaves that layer's rectangle empty.
  */
 import { TypedEmitter, formatForPreset } from '@livetap/core';
 import type {
@@ -24,40 +27,25 @@ import type {
   OutputFormat,
   RecordingSettings,
 } from '@livetap/core';
-import { MomentCompositor } from '../compositor/MomentCompositor.js';
-import type { CompositorCanvas, DrawableSource } from '../compositor/types.js';
+import { FormatRenderer } from '../compositor/FormatRenderer.js';
+import type { MomentCompositor } from '../compositor/MomentCompositor.js';
+import { LocalSources } from '../sources/LocalSources.js';
 import { WhipClient, WhipError } from '../whip/WhipClient.js';
 import {
   pickRecordingMime,
   probablySupportsDisplayAudio,
   resolveDeps,
-  type AudioContextLike,
   type BrowserEngineOptions,
-  type GainNodeLike,
   type MediaRecorderLike,
-  type MediaStreamAudioDestinationLike,
   type RelayOptions,
   type ResolvedDeps,
 } from './deps.js';
 
 const RTMP_HINT = 'Browser cannot publish RTMP; use the desktop app or a WHIP relay';
-const DEFAULT_WARM_MS = 5000;
 const DEFAULT_STATS_MS = 2000;
 const DEFAULT_METRICS_MS = 1000;
 const LOSS_DEGRADE_PCT = 3;
 const BITRATE_DEGRADE_RATIO = 0.5;
-
-type SourceKind = 'camera' | 'screen' | 'window' | 'video';
-
-interface SourceEntry {
-  layerId: string;
-  kind: SourceKind;
-  /** deviceId for cameras, sourceId for screens, src for video layers. */
-  key: string;
-  stream: MediaStream | null;
-  element: HTMLVideoElement | null;
-  releaseTimer?: unknown;
-}
 
 interface StatsSample {
   at: number;
@@ -98,28 +86,17 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
 
   private readonly deps: ResolvedDeps;
   private readonly relay: RelayOptions | undefined;
-  private readonly warmMs: number;
   private readonly statsIntervalMs: number;
   private readonly metricsIntervalMs: number;
   private readonly onChunk: ((chunk: Blob, index: number) => void) | undefined;
 
-  private compositor: MomentCompositor | null = null;
-  private canvas: CompositorCanvas | null = null;
+  private readonly sources: LocalSources;
+  private readonly renderer: FormatRenderer;
+
   private masterAspect: AspectRatio = '16:9';
   private formats: Partial<Record<AspectRatio, OutputFormat>> = {};
   private activeMoment: Moment | null = null;
   private previewing = false;
-
-  private readonly sources = new Map<string, SourceEntry>();
-  private micStream: MediaStream | null = null;
-  private micKey: string | null = null;
-  private systemAudioStream: MediaStream | null = null;
-
-  private audioContext: AudioContextLike | null = null;
-  private audioDestination: MediaStreamAudioDestinationLike | null = null;
-  private micGain: GainNodeLike | null = null;
-  private systemGain: GainNodeLike | null = null;
-  private previewStreamValue: MediaStream | null = null;
 
   private readonly sessions = new Map<string, OutputSession>();
   private readonly relays = new Map<AspectRatio, RelaySession>();
@@ -135,28 +112,36 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
   private recorderMime = '';
   private recordingStopResolvers: Array<() => void> = [];
 
-  private liveCaptureSucceeded = false;
-  /**
-   * Set only once a getDisplayMedia stream has actually handed us an audio track.
-   *
-   * `capabilities().systemAudio` used to be a user-agent guess, which is exactly the kind of
-   * claim this project refuses to make: MDN says browsers MAY ignore the audio hint and "the
-   * returned stream might contain no audio track even when `audio` is true", and on macOS
-   * screen capture historically returns none at all. So the capability starts `false` and is
-   * only ever raised by evidence. The guess still exists, honestly labelled, as
-   * `describeEnvironment().systemAudioLikely`.
-   */
-  private systemAudioObserved = false;
   private running = false;
 
   constructor(options: BrowserEngineOptions = {}) {
     super();
     this.deps = resolveDeps(options);
     this.relay = options.relay;
-    this.warmMs = options.keepSourceWarmMs ?? DEFAULT_WARM_MS;
     this.statsIntervalMs = options.statsIntervalMs ?? DEFAULT_STATS_MS;
     this.metricsIntervalMs = options.metricsIntervalMs ?? DEFAULT_METRICS_MS;
     this.onChunk = options.onChunk;
+
+    this.sources = new LocalSources({
+      deps: this.deps,
+      ...(options.keepSourceWarmMs !== undefined ? { keepSourceWarmMs: options.keepSourceWarmMs } : {}),
+      callbacks: {
+        deviceLost: (kind, deviceId) => this.emit('deviceLost', deviceId === undefined ? { kind } : { kind, deviceId }),
+        engineError: (code, technical) => this.emit('engineError', { code, technical }),
+        layerUnavailable: (layerId, reason) => this.markLayerUnavailable(layerId, reason),
+      },
+    });
+
+    this.renderer = new FormatRenderer({
+      createCanvas: this.deps.createCanvas,
+      resolver: this.sources.resolve,
+      audioTracks: () => this.audioTracks(),
+      now: this.deps.now,
+      ...(this.deps.raf ? { raf: this.deps.raf } : {}),
+      ...(this.deps.caf ? { caf: this.deps.caf } : {}),
+      setTimeoutFn: this.deps.setTimeoutFn,
+      clearTimeoutFn: this.deps.clearTimeoutFn,
+    });
   }
 
   // ---------------------------------------------------------------- capabilities
@@ -175,16 +160,18 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       window: hasDisplay,
       // Evidence, not a user-agent guess: false until a display capture actually produced an
       // audio track. `describeEnvironment().systemAudioLikely` carries the prediction.
-      systemAudio: this.systemAudioObserved,
+      systemAudio: this.sources.systemAudioObserved,
       // Browsers have no RTMP/SRT socket. Only the desktop engine (or the relay) provides these.
       rtmp: false,
       srt: false,
       whip: this.deps.RTCPeerConnectionCtor !== null,
       recording: this.deps.MediaRecorderCtor !== null && recordingMime !== null,
       hardwareEncoders,
-      // One canvas capture = one encode. Multi-format needs the relay or the desktop engine.
-      maxFormats: 1,
-      verification: !hasDevices ? 'UNAVAILABLE' : this.liveCaptureSucceeded ? 'PASS' : 'UNVERIFIED',
+      // One canvas and one WebRTC encode PER ASPECT RATIO, which is every aspect ratio there is.
+      // This used to be 1 because the engine captured a single canvas; FormatRenderer composes
+      // each aspect at its own dimensions, so the limit is now the number of formats, not one.
+      maxFormats: 3,
+      verification: !hasDevices ? 'UNAVAILABLE' : this.sources.liveCaptureSucceeded ? 'PASS' : 'UNVERIFIED',
     };
   }
 
@@ -200,7 +187,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       recordingMimeType: pickRecordingMime(this.deps.MediaRecorderCtor),
       relayConfigured: this.relay !== undefined,
       hasAudioMixing: this.deps.AudioContextCtor !== null,
-      hasCanvasCapture: typeof this.canvas?.captureStream === 'function',
+      hasCanvasCapture: typeof this.renderer.canvasFor(this.masterAspect)?.captureStream === 'function',
       // A prediction, not a capability: Chromium-only in practice, and even there the audio
       // constraint is a hint. Use it to word the UI ("we will try"), never to promise.
       systemAudioLikely: this.deps.getDisplayMedia !== null && probablySupportsDisplayAudio(),
@@ -228,43 +215,41 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
   // ---------------------------------------------------------------- preview
 
   get previewStream(): MediaStream | null {
-    return this.previewStreamValue;
+    return this.renderer.streamFor(this.masterAspect);
   }
 
   get isPreviewing(): boolean {
     return this.previewing;
   }
 
-  /** The compositor, exposed so the UI can mirror the canvas or read renderFps. */
+  /** The master-aspect compositor, exposed so the UI can mirror the canvas or read renderFps. */
   get composer(): MomentCompositor | null {
-    return this.compositor;
+    return this.renderer.masterCompositor;
+  }
+
+  /** Every composed format, for the UI's per-destination output strip. */
+  get formatRenderer(): FormatRenderer {
+    return this.renderer;
   }
 
   async startPreview(moment: Moment, masterAspect: AspectRatio): Promise<void> {
     this.masterAspect = masterAspect;
-    const format = this.formatFor(masterAspect);
-    this.ensureCompositor(format);
     this.activeMoment = cloneMoment(moment);
-    await this.syncSources(this.activeMoment);
-    this.compositor?.setMoment(this.activeMoment, this.deps.now(), { kind: 'cut', durationMs: 0 });
-    this.compositor?.start(format.fps);
-    this.buildPreviewStream(format.fps);
+    this.renderer.setFormats(this.formats, masterAspect, this.formatFor(masterAspect));
+    await this.sources.sync(this.activeMoment);
+    this.renderer.setMoment(this.activeMoment, this.deps.now(), { kind: 'cut', durationMs: 0 });
+    this.renderer.start();
+    // Materialise the master capture now: the preview <video> needs it, and a capture that is
+    // going to fail should fail here rather than at GO LIVE.
+    this.renderer.streamFor(masterAspect);
     this.previewing = true;
   }
 
   async stopPreview(): Promise<void> {
     this.previewing = false;
-    this.compositor?.stop();
-    for (const entry of Array.from(this.sources.values())) this.releaseSource(entry, true);
-    this.sources.clear();
-    stopStream(this.micStream);
-    this.micStream = null;
-    this.micKey = null;
-    stopStream(this.systemAudioStream);
-    this.systemAudioStream = null;
-    this.teardownAudio();
-    stopStream(this.previewStreamValue);
-    this.previewStreamValue = null;
+    this.renderer.stop();
+    this.renderer.releaseStreams();
+    this.sources.stopAll();
   }
 
   /** Point a <video> element at the composited preview. */
@@ -274,7 +259,8 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       videoEl.muted = true;
       videoEl.autoplay = true;
       videoEl.playsInline = true;
-      if (this.previewStreamValue) videoEl.srcObject = this.previewStreamValue;
+      const stream = this.renderer.streamFor(this.masterAspect);
+      if (stream) videoEl.srcObject = stream;
       const played = videoEl.play?.();
       if (played && typeof played.catch === 'function') played.catch(() => undefined);
     } catch {
@@ -285,9 +271,9 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
   async setMoment(moment: Moment): Promise<void> {
     const next = cloneMoment(moment);
     this.activeMoment = next;
-    await this.syncSources(next);
-    this.compositor?.setMoment(next, this.deps.now());
-    this.refreshAudioGains(next);
+    await this.sources.sync(next);
+    this.renderer.setMoment(next, this.deps.now());
+    this.sources.refreshGains(next);
   }
 
   // ---------------------------------------------------------------- live
@@ -295,16 +281,15 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
   async start(req: EngineStartRequest): Promise<void> {
     this.formats = compactFormats(req.formats);
     const master = this.formatFor(this.masterAspect);
-    if (this.compositor) {
-      this.compositor.resize(master.width, master.height);
-      this.compositor.start(master.fps);
-    }
+    this.renderer.setFormats(this.formats, this.masterAspect, master);
     if (!this.previewing && this.activeMoment) {
       await this.startPreview(this.activeMoment, this.masterAspect);
+    } else {
+      this.renderer.start();
     }
     this.running = true;
 
-    if (!this.previewStreamValue) {
+    if (!this.renderer.streamFor(this.masterAspect)) {
       // Nothing to publish: report it once, then fail every output individually (never throw).
       this.emit('engineError', {
         code: 'ENCODER_FAILED',
@@ -404,16 +389,19 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       this.failOutput(session, 'CONFIG_INVALID', 'WebRTC is not available in this browser');
       return;
     }
-    if (!this.previewStreamValue) {
-      this.failOutput(session, 'ENCODER_FAILED', 'No composited stream to publish - start the preview first');
+    // The picture this destination actually asked for. Never the master canvas at a different
+    // shape: that is a landscape broadcast wearing a vertical bitrate cap.
+    const stream = this.renderer.streamFor(output.aspectRatio);
+    if (!stream) {
+      this.failOutput(session, 'ENCODER_FAILED', `No ${output.aspectRatio} picture is being composed - start the preview first`);
       return;
     }
     const format = this.formatFor(output.aspectRatio);
     const client = new WhipClient({
       endpoint: output.ingest.url,
       token: output.ingest.streamKey,
-      stream: this.previewStreamValue,
-      tracks: this.previewStreamValue?.getTracks() ?? [],
+      stream,
+      tracks: stream.getTracks?.() ?? [],
       format,
       RTCPeerConnectionCtor: this.deps.RTCPeerConnectionCtor,
       fetch: this.deps.fetch,
@@ -461,10 +449,6 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       this.failOutput(session, 'CONFIG_INVALID', 'WebRTC is not available in this browser');
       return;
     }
-    if (!this.previewStreamValue) {
-      this.failOutput(session, 'ENCODER_FAILED', 'No composited stream to publish - start the preview first');
-      return;
-    }
 
     const existing = this.relays.get(relayKey);
     if (existing) {
@@ -476,12 +460,20 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       return;
     }
 
+    // Per-aspect relay: publish the aspect's own picture. Session-mode relay: publish the master,
+    // because the relay is the thing deriving the other formats and it was told which one it gets.
+    const stream = this.renderer.streamFor(relayKey) ?? (relayOptions.whipUrl ? this.renderer.streamFor(this.masterAspect) : null);
+    if (!stream) {
+      this.failOutput(session, 'ENCODER_FAILED', `No ${relayKey} picture is being composed - start the preview first`);
+      return;
+    }
+
     const format = this.formatFor(relayKey);
     const client = new WhipClient({
       endpoint: relayOptions.whipUrl ?? relayEndpoint(relayOptions.whipBaseUrl, relayKey),
       token: relayOptions.token,
-      stream: this.previewStreamValue,
-      tracks: this.previewStreamValue?.getTracks() ?? [],
+      stream,
+      tracks: stream.getTracks?.() ?? [],
       format,
       RTCPeerConnectionCtor: this.deps.RTCPeerConnectionCtor,
       fetch: this.deps.fetch,
@@ -523,7 +515,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       await client.publish();
     } catch (err) {
       const code = err instanceof WhipError ? err.code : 'INGEST_REFUSED';
-      this.relays.delete(output.aspectRatio);
+      this.relays.delete(relayKey);
       for (const id of Array.from(relay.destinationIds)) {
         const s = this.sessions.get(id);
         if (s) this.failOutput(s, code, `relay: ${describe(err)}`);
@@ -636,7 +628,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       targetKbps,
       encoderDroppedPct: round1(live.reduce((max, s) => Math.max(max, s.encoderDroppedPct), 0)),
       networkDroppedPct: round1(live.reduce((max, s) => Math.max(max, s.lossPct), 0)),
-      renderFps: this.compositor?.renderFps ?? 0,
+      renderFps: this.renderer.renderFps,
       targetFps: format.fps,
       updatedAt: now,
     });
@@ -661,7 +653,8 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
 
   async startRecording(settings: RecordingSettings): Promise<void> {
     const Ctor = this.deps.MediaRecorderCtor;
-    if (!Ctor || !this.previewStreamValue) {
+    const stream = this.renderer.streamFor(this.masterAspect);
+    if (!Ctor || !stream) {
       this.emit('recording', { state: 'failed', code: 'RECORDING_FAILED' });
       return;
     }
@@ -673,7 +666,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
     }
     const format = this.formatFor(this.masterAspect);
     try {
-      const recorder = new Ctor(this.previewStreamValue, {
+      const recorder = new Ctor(stream, {
         mimeType: mime === '' ? undefined : mime,
         videoBitsPerSecond: format.videoKbps * 1000,
         audioBitsPerSecond: format.audioKbps * 1000,
@@ -733,356 +726,30 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
     return blob ? { blob } : {};
   }
 
-  // ---------------------------------------------------------------- capture
+  // ---------------------------------------------------------------- misc
 
-  private ensureCompositor(format: OutputFormat): void {
-    if (!this.canvas) {
-      this.canvas = this.deps.createCanvas(format.width, format.height);
-    }
-    if (!this.compositor) {
-      this.compositor = new MomentCompositor({
-        canvas: this.canvas,
-        aspect: this.masterAspect,
-        width: format.width,
-        height: format.height,
-        resolver: (layerId) => this.resolveSource(layerId),
-        now: this.deps.now,
-        raf: this.deps.raf,
-        caf: this.deps.caf,
-        setTimeoutFn: this.deps.setTimeoutFn,
-        clearTimeoutFn: this.deps.clearTimeoutFn,
-      });
-      return;
-    }
-    this.compositor.setAspect(this.masterAspect);
-    this.compositor.resize(format.width, format.height);
-  }
-
-  private resolveSource(layerId: string): DrawableSource | null {
-    return this.sources.get(layerId)?.element ?? null;
-  }
-
-  /** Acquire what the Moment needs, keep what it still uses, retire the rest (warm for 5s). */
-  private async syncSources(moment: Moment): Promise<void> {
-    const needed = new Set<string>();
-    for (const layer of moment.layers) {
-      if (!layer.visible) continue;
-      if (layer.kind === 'camera') {
-        needed.add(layer.id);
-        await this.acquireCamera(layer.id, layer.deviceId);
-      } else if (layer.kind === 'screen' || layer.kind === 'window') {
-        needed.add(layer.id);
-        await this.acquireDisplay(layer.id, layer.kind, layer.sourceId, layer.captureSystemAudio);
-      } else if (layer.kind === 'video') {
-        needed.add(layer.id);
-        this.acquireVideoFile(layer.id, layer.src, layer.loop, layer.muted);
-      }
-    }
-    for (const entry of Array.from(this.sources.values())) {
-      if (needed.has(entry.layerId)) {
-        if (entry.releaseTimer !== undefined) {
-          this.deps.clearTimeoutFn(entry.releaseTimer);
-          entry.releaseTimer = undefined;
-        }
-        continue;
-      }
-      this.scheduleRelease(entry);
-    }
-    await this.acquireMic(moment);
-    this.refreshAudioGains(moment);
-  }
-
-  private scheduleRelease(entry: SourceEntry): void {
-    if (entry.releaseTimer !== undefined) return;
-    // Keep the capture warm briefly: tapping between Moments must not flash the camera light.
-    entry.releaseTimer = this.deps.setTimeoutFn(() => {
-      entry.releaseTimer = undefined;
-      if (this.sources.get(entry.layerId) !== entry) return;
-      this.releaseSource(entry, true);
-      this.sources.delete(entry.layerId);
-    }, this.warmMs);
-  }
-
-  private releaseSource(entry: SourceEntry, stopTracks: boolean): void {
-    if (entry.releaseTimer !== undefined) {
-      this.deps.clearTimeoutFn(entry.releaseTimer);
-      entry.releaseTimer = undefined;
-    }
-    if (stopTracks) stopStream(entry.stream);
-    try {
-      if (entry.element) entry.element.srcObject = null;
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private async acquireCamera(layerId: string, deviceId: string): Promise<void> {
-    const existing = this.sources.get(layerId);
-    if (existing && existing.kind === 'camera' && existing.key === deviceId && hasLiveTrack(existing.stream)) return;
-    const devices = this.deps.mediaDevices;
-    if (!devices) return;
-    if (existing) {
-      this.releaseSource(existing, true);
-      this.sources.delete(layerId);
-    }
-    try {
-      const stream = await devices.getUserMedia({
-        video: {
-          deviceId: deviceId && deviceId !== 'default' ? { exact: deviceId } : undefined,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 },
-        },
-        audio: false,
-      });
-      this.registerSource(layerId, 'camera', deviceId, stream);
-      this.watchTracks(stream, 'camera', layerId, deviceId);
-      this.liveCaptureSucceeded = true;
-    } catch (err) {
-      this.emit('deviceLost', { kind: 'camera', deviceId });
-      this.emit('engineError', { code: 'CAMERA_LOST', technical: describe(err) });
-      this.markLayerUnavailable(layerId, 'Camera unavailable');
-    }
-  }
-
-  private async acquireDisplay(
-    layerId: string,
-    kind: 'screen' | 'window',
-    sourceId: string,
-    captureSystemAudio: boolean,
-  ): Promise<void> {
-    const existing = this.sources.get(layerId);
-    if (existing && existing.key === sourceId && hasLiveTrack(existing.stream)) return;
-    const getDisplayMedia = this.deps.getDisplayMedia;
-    if (!getDisplayMedia) {
-      this.emit('deviceLost', { kind: 'screen' });
-      this.markLayerUnavailable(layerId, 'Screen sharing not supported');
-      return;
-    }
-    if (existing) {
-      this.releaseSource(existing, true);
-      this.sources.delete(layerId);
-    }
-    try {
-      // Lazily prompted: only when a Moment actually shows a screen layer.
-      const stream = await getDisplayMedia({ video: true, audio: captureSystemAudio });
-      this.registerSource(layerId, kind, sourceId, stream);
-      this.watchTracks(stream, 'screen', layerId, sourceId);
-      const audio = stream.getAudioTracks?.() ?? [];
-      // The only honest proof that this environment can capture system audio.
-      if (audio.length > 0) this.systemAudioObserved = true;
-      if (captureSystemAudio && audio.length > 0) this.systemAudioStream = stream;
-      this.liveCaptureSucceeded = true;
-    } catch (err) {
-      this.emit('deviceLost', { kind: 'screen' });
-      this.emit('engineError', { code: 'SCREEN_DENIED', technical: describe(err) });
-      this.markLayerUnavailable(layerId, 'Screen sharing stopped');
-    }
-  }
-
-  private acquireVideoFile(layerId: string, src: string, loop: boolean, muted: boolean): void {
-    const existing = this.sources.get(layerId);
-    if (existing && existing.key === src) return;
-    const element = this.deps.createVideoElement();
-    if (!element) return;
-    try {
-      element.src = src;
-      element.loop = loop;
-      element.muted = muted;
-      element.autoplay = true;
-      element.playsInline = true;
-      const played = element.play?.();
-      if (played && typeof played.catch === 'function') played.catch(() => undefined);
-    } catch {
-      /* a video file that will not play shows the placeholder panel */
-    }
-    this.sources.set(layerId, { layerId, kind: 'video', key: src, stream: null, element });
-  }
-
-  private registerSource(layerId: string, kind: SourceKind, key: string, stream: MediaStream): void {
-    const element = this.deps.createVideoElement();
-    if (element) {
-      try {
-        element.srcObject = stream;
-        element.muted = true;
-        element.autoplay = true;
-        element.playsInline = true;
-        const played = element.play?.();
-        if (played && typeof played.catch === 'function') played.catch(() => undefined);
-      } catch {
-        /* happy-dom and old WebViews may not implement play(); drawing still works */
-      }
-    }
-    this.sources.set(layerId, { layerId, kind, key, stream, element });
-  }
-
-  private watchTracks(stream: MediaStream, kind: 'camera' | 'mic' | 'screen', layerId: string, deviceId?: string): void {
-    const tracks = stream.getTracks?.() ?? [];
-    for (const track of tracks) {
-      try {
-        track.onended = () => this.handleTrackEnded(kind, layerId, deviceId);
-      } catch {
-        /* fakes may not allow assigning onended */
-      }
-    }
-  }
-
-  /** A device vanished (unplugged, or the user hit "Stop sharing"). Preview must survive. */
-  private handleTrackEnded(kind: 'camera' | 'mic' | 'screen', layerId: string, deviceId?: string): void {
-    this.emit('deviceLost', { kind, deviceId });
-    if (kind === 'mic') {
-      stopStream(this.micStream);
-      this.micStream = null;
-      this.micKey = null;
-      this.compositor?.setNotice('Microphone disconnected');
-      return;
-    }
-    const entry = this.sources.get(layerId);
-    if (entry) {
-      this.releaseSource(entry, true);
-      this.sources.delete(layerId);
-    }
-    this.markLayerUnavailable(layerId, kind === 'camera' ? 'Camera disconnected' : 'Screen sharing stopped');
+  private audioTracks(): MediaStreamTrack[] {
+    const mixed = this.sources.buildAudioMix(this.activeMoment);
+    return mixed?.getAudioTracks?.() ?? [];
   }
 
   /**
-   * Hide a layer whose source died and show the reason on the canvas.
-   * The compositor keeps rendering, so the program output never goes black.
+   * Hide a layer whose source died and record the reason for the UI.
+   *
+   * The reason is NOT painted into the program. The compositor keeps rendering, so the output
+   * never goes black, and the words stay in the application where the operator can act on them.
    */
   private markLayerUnavailable(layerId: string, notice: string): void {
-    if (this.activeMoment) {
+    if (this.activeMoment && layerId !== '__mic__') {
       const updated: Moment = {
         ...this.activeMoment,
         layers: this.activeMoment.layers.map((layer) => (layer.id === layerId ? { ...layer, visible: false } : layer)),
       };
       this.activeMoment = updated;
-      this.compositor?.setMoment(updated, this.deps.now(), { kind: 'cut', durationMs: 0 });
+      this.renderer.setMoment(updated, this.deps.now(), { kind: 'cut', durationMs: 0 });
     }
-    this.compositor?.setNotice(notice);
+    this.renderer.setNotice(notice);
   }
-
-  private async acquireMic(moment: Moment): Promise<void> {
-    const audio = moment.audio;
-    if (audio.micDeviceId === 'none') {
-      stopStream(this.micStream);
-      this.micStream = null;
-      this.micKey = null;
-      return;
-    }
-    const key = [audio.micDeviceId, audio.echoCancellation, audio.noiseSuppression, audio.autoGain].join('|');
-    if (this.micKey === key && hasLiveTrack(this.micStream)) return;
-    const devices = this.deps.mediaDevices;
-    if (!devices) return;
-    stopStream(this.micStream);
-    this.micStream = null;
-    try {
-      const stream = await devices.getUserMedia({
-        audio: {
-          deviceId: audio.micDeviceId !== 'default' ? { exact: audio.micDeviceId } : undefined,
-          echoCancellation: audio.echoCancellation,
-          noiseSuppression: audio.noiseSuppression,
-          autoGainControl: audio.autoGain,
-        },
-        video: false,
-      });
-      this.micStream = stream;
-      this.micKey = key;
-      this.watchTracks(stream, 'mic', '__mic__', audio.micDeviceId);
-      this.liveCaptureSucceeded = true;
-    } catch (err) {
-      this.micKey = null;
-      this.emit('deviceLost', { kind: 'mic', deviceId: audio.micDeviceId });
-      this.emit('engineError', { code: 'MIC_LOST', technical: describe(err) });
-    }
-  }
-
-  // ---------------------------------------------------------------- audio + capture stream
-
-  private buildPreviewStream(fps: number): void {
-    const canvas = this.canvas;
-    if (!canvas || typeof canvas.captureStream !== 'function') {
-      this.previewStreamValue = null;
-      return;
-    }
-    let stream: MediaStream | null = null;
-    try {
-      stream = canvas.captureStream(fps);
-    } catch {
-      stream = null;
-    }
-    if (!stream) {
-      this.previewStreamValue = null;
-      return;
-    }
-    const mixed = this.buildAudioMix();
-    if (mixed) {
-      for (const track of mixed.getAudioTracks?.() ?? []) {
-        try {
-          stream.addTrack(track);
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    this.previewStreamValue = stream;
-  }
-
-  /**
-   * Mix mic + system audio through per-source GainNodes so micGain/systemGain/mute are
-   * instantaneous and do not require re-acquiring a device.
-   */
-  private buildAudioMix(): MediaStream | null {
-    const Ctor = this.deps.AudioContextCtor;
-    if (!Ctor) {
-      // No WebAudio: fall back to the raw mic track (no gain control, no system mix).
-      return this.micStream;
-    }
-    try {
-      const ctx = this.audioContext ?? new Ctor();
-      this.audioContext = ctx;
-      const destination = this.audioDestination ?? ctx.createMediaStreamDestination();
-      this.audioDestination = destination;
-      if (this.micStream && !this.micGain) {
-        const gain = ctx.createGain();
-        ctx.createMediaStreamSource(this.micStream).connect(gain);
-        gain.connect(destination);
-        this.micGain = gain;
-      }
-      if (this.systemAudioStream && !this.systemGain) {
-        const gain = ctx.createGain();
-        ctx.createMediaStreamSource(this.systemAudioStream).connect(gain);
-        gain.connect(destination);
-        this.systemGain = gain;
-      }
-      if (this.activeMoment) this.refreshAudioGains(this.activeMoment);
-      void ctx.resume?.().catch?.(() => undefined);
-      return destination.stream;
-    } catch {
-      return this.micStream;
-    }
-  }
-
-  private refreshAudioGains(moment: Moment): void {
-    const audio = moment.audio;
-    if (this.micGain) this.micGain.gain.value = audio.micMuted ? 0 : clampGain(audio.micGain);
-    if (this.systemGain) this.systemGain.gain.value = audio.systemAudio ? clampGain(audio.systemGain) : 0;
-  }
-
-  private teardownAudio(): void {
-    try {
-      this.micGain?.disconnect();
-      this.systemGain?.disconnect();
-      void this.audioContext?.close?.().catch?.(() => undefined);
-    } catch {
-      /* ignore */
-    }
-    this.micGain = null;
-    this.systemGain = null;
-    this.audioDestination = null;
-    this.audioContext = null;
-  }
-
-  // ---------------------------------------------------------------- misc
 
   private formatFor(aspect: AspectRatio): OutputFormat {
     return this.formats[aspect] ?? firstFormat(this.formats) ?? formatForPreset('1080p30', aspect);
@@ -1152,28 +819,6 @@ function num(value: unknown): number {
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
-}
-
-function clampGain(gain: number): number {
-  if (!Number.isFinite(gain)) return 1;
-  return Math.min(2, Math.max(0, gain));
-}
-
-function hasLiveTrack(stream: MediaStream | null): boolean {
-  if (!stream) return false;
-  const tracks = stream.getTracks?.() ?? [];
-  return tracks.some((track) => track.readyState !== 'ended');
-}
-
-function stopStream(stream: MediaStream | null): void {
-  if (!stream) return;
-  for (const track of stream.getTracks?.() ?? []) {
-    try {
-      track.stop?.();
-    } catch {
-      /* ignore */
-    }
-  }
 }
 
 function makeBlob(chunks: Blob[], type: string): Blob | undefined {

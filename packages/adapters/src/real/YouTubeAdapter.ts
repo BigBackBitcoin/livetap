@@ -38,6 +38,20 @@ interface YtListResponse<T> {
   items?: T[];
 }
 
+interface YtThumbnail {
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+interface YtChannel {
+  id?: string;
+  snippet?: {
+    title?: string;
+    thumbnails?: { default?: YtThumbnail; medium?: YtThumbnail; high?: YtThumbnail };
+  };
+}
+
 interface YtBroadcast {
   id?: string;
   snippet?: { liveChatId?: string; title?: string };
@@ -163,23 +177,32 @@ export class YouTubeAdapter implements DestinationAdapter {
   > {
     const token = await this.tokenProvider(credential);
     // Cheapest possible proof that the token works and carries a channel (1 quota unit).
-    const body = await request<YtListResponse<{ id?: string; snippet?: { title?: string } }>>(
-      this.fetch,
-      { url: withQuery(`${this.apiBase}/channels`, { part: 'id,snippet', mine: 'true' }), token },
-    );
+    const body = await request<YtListResponse<YtChannel>>(this.fetch, {
+      url: withQuery(`${this.apiBase}/channels`, { part: 'id,snippet', mine: 'true' }),
+      token,
+    });
     const channel = body?.items?.[0];
     if (!channel?.id) {
       return { ok: false, code: 'NOT_ELIGIBLE', technical: 'No YouTube channel on this account.' };
     }
+    /*
+     * A credential is returned even when the caller passed none. The caller that passes none is
+     * the first connect, which is exactly the moment the creator needs to see WHICH channel they
+     * just signed in as: returning `undefined` here is what made every YouTube destination card
+     * read "YouTube" and nothing else. The id is the store handle the token provider already
+     * keys on, so it is reconstructed rather than invented.
+     */
+    const base: CredentialRef = credential ?? { id: `oauth:youtube`, platform: 'youtube' };
+    const avatar = channel.snippet?.thumbnails?.default?.url ?? channel.snippet?.thumbnails?.medium?.url;
     return {
       ok: true,
-      credential: credential
-        ? {
-            ...credential,
-            accountId: channel.id,
-            ...(channel.snippet?.title ? { accountLabel: channel.snippet.title } : {}),
-          }
-        : undefined,
+      credential: {
+        ...base,
+        accountId: channel.id,
+        ...(channel.snippet?.title ? { accountLabel: channel.snippet.title } : {}),
+        ...(avatar ? { avatarUrl: avatar } : {}),
+      },
+      ...(channel.id ? { watchUrl: `https://www.youtube.com/channel/${channel.id}/live` } : {}),
     };
   }
 

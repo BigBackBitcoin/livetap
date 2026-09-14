@@ -195,3 +195,53 @@ describe('parseCallback', () => {
     expect(parseCallback('https://livetap.app/cb')).toEqual({ error: 'invalid_request' });
   });
 });
+
+/**
+ * These are research facts, not preferences, and each one has a failure mode behind it. They are
+ * asserted so that a future edit that "tidies" one of them fails here instead of in production.
+ */
+describe('what the platform research changed', () => {
+  it('spells loopback the way each platform registered it', () => {
+    // Google requires the literal IP for an installed app. Kick's console registers the name,
+    // and a provider compares redirect_uri as a string, so the two are not interchangeable.
+    expect(getOAuthConfig('youtube').loopbackHost).toBe('127.0.0.1');
+    expect(getOAuthConfig('kick').loopbackHost).toBe('localhost');
+  });
+
+  it('gives Twitch a device endpoint, because Twitch documents no PKCE at all', () => {
+    expect(getOAuthConfig('twitch').pkce).toBe('none');
+    expect(getOAuthConfig('twitch').deviceAuthorizationUrl).toBe('https://id.twitch.tv/oauth2/device');
+  });
+
+  it('renews Facebook with fb_exchange_token, because it never issues a refresh token', () => {
+    expect(getOAuthConfig('facebook').refreshGrant).toBe('fb_exchange_token');
+    expect(getOAuthConfig('youtube').refreshGrant).toBe('refresh_token');
+    expect(getOAuthConfig('twitch').refreshGrant).toBe('refresh_token');
+  });
+
+  it('pins one Graph version across authorize and the API', () => {
+    const facebook = getOAuthConfig('facebook');
+    expect(facebook.authorizeUrl).toContain('/v25.0/');
+    expect(facebook.tokenUrl).toContain('/v25.0/');
+    expect(facebook.revokeUrl).toContain('/v25.0/');
+  });
+
+  it('knows where each platform takes a token back, so Disconnect can mean disconnected', () => {
+    expect(getOAuthConfig('youtube').revokeUrl).toBe('https://oauth2.googleapis.com/revoke');
+    expect(getOAuthConfig('twitch').revokeUrl).toBe('https://id.twitch.tv/oauth2/revoke');
+    expect(getOAuthConfig('kick').revokeUrl).toBe('https://id.kick.com/oauth/revoke');
+  });
+
+  it('records the YouTube Testing-status expiry, which is the classic multistreaming bug', () => {
+    const notes = getOAuthConfig('youtube').notes.join(' ');
+    expect(notes).toContain('7 days after consent');
+  });
+
+  it('records that Twitch ingest comes from the list, never from a constant', () => {
+    expect(getOAuthConfig('twitch').notes.join(' ')).toContain('ingest.twitch.tv/ingests');
+  });
+
+  it('records that Kick lets the creator untick the stream key scope', () => {
+    expect(getOAuthConfig('kick').notes.join(' ')).toContain('streamkey:read');
+  });
+});

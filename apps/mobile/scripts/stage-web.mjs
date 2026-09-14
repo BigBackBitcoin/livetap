@@ -48,7 +48,21 @@ for (const entry of readdirSync(WEB_DIST)) {
  * on iOS, so an absolute path resolves inside the bundle rather than reaching the network.
  */
 const app = readFileSync(join(WWW, 'app.html'), 'utf8');
-writeFileSync(join(WWW, 'index.html'), app);
+
+/*
+ * Drop every <link> that points into `/brand/`.
+ *
+ * `brand/` is in SKIP above because a phone that has installed the app does not need the imagery
+ * that sells it, but `app.html` still carries
+ * `<link rel="apple-touch-icon" href="/brand/hero-a.webp">`. Inside the bundle that absolute path
+ * resolves to a file that is not there, so every cold start logs a 404 into the one console the
+ * owner will be reading when something else is actually wrong. The phone's icon comes from
+ * android/app/src/main/res/mipmap-*, never from this tag.
+ */
+const lines = app.split('\n');
+const kept = lines.filter((line) => !(line.includes('<link') && line.includes('/brand/')));
+
+writeFileSync(join(WWW, 'index.html'), kept.join('\n'));
 rmSync(join(WWW, 'app.html'));
 
 const bytes = (dir) =>
@@ -58,5 +72,6 @@ const bytes = (dir) =>
   );
 
 console.log(
-  `[stage-web] staged ${copied} entries, ${(bytes(WWW) / 1024).toFixed(0)} KB, into ${WWW} (app.html -> index.html)`,
+  `[stage-web] staged ${copied} entries, ${(bytes(WWW) / 1024).toFixed(0)} KB, into ${WWW} ` +
+    `(app.html -> index.html, ${lines.length - kept.length} /brand/ link(s) dropped)`,
 );

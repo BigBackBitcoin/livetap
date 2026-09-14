@@ -395,12 +395,14 @@ instead of failing at 20:00 on a Friday.
 | `src/main/ffmpeg/fanout.ts` | `TsFanout`: one stdout → N stdins, never pauses the source |
 | `src/main/ffmpeg/progress.ts` | `-progress` parser + stderr → `ErrorCode` mapping |
 | `src/main/ffmpeg/hardware.ts` | Real encoder probing |
-| `src/main/ffmpeg/ffmpegPath.ts` | Bundled-then-PATH resolution |
+| `src/main/ffmpeg/ffmpegPath.ts` | Bundled, then PATH in dev. A packaged build with an empty `resources/ffmpeg/` reports `unavailable` and never falls back to PATH |
 | `src/main/ffmpeg/cpu.ts` | Best-effort per-pid CPU sampling |
 | `src/preload/index.ts` | The entire renderer-reachable surface |
 | `src/shared/ipc.ts` / `guards.ts` | Channel contract and its runtime guards |
-| `src/renderer/diagnostics.ts` | Codec probe the studio UI runs at startup |
-| `scripts/verify-engine.ts` | Headless end-to-end harness (the evidence in `docs/qa/`) |
+| `packages/media/src/desktop/diagnostics.ts` | Codec probe `DesktopEngine.start()` runs before it builds a recorder. Moved out of `src/renderer/`, which nothing imported and tsup never bundled |
+| `packages/media/src/desktop/DesktopEngine.ts` | The renderer half: capture, composite per aspect, MediaRecorder, `pushChunk` |
+| `scripts/verify-engine.ts` | Headless encoder + sender harness (the evidence in `docs/qa/`) |
+| `e2e/broadcast.mjs` | The whole product end to end: built app, real UI, real getUserMedia, two real RTMP publishers, ffprobe on what was recorded |
 
 ---
 

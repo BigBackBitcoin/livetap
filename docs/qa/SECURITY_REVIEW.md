@@ -12,6 +12,23 @@ before it was written down. Where a thing could not be executed on this host it 
 **Deployment tested:** <https://livetap.vercel.app> (mock mode) as of 2026-09-12 03:50 UTC.
 Note that the live instance predates the fixes in this review; re-verify after the next deploy.
 
+> **Addendum, 2026-09-14.** This review was written while every credential in the
+> product was simulated. Real access tokens, refresh tokens, client secrets and
+> stream keys now enter it, and the model for those specifically is
+> **`docs/security/REAL_CREDENTIAL_SECURITY.md`**: token storage per surface,
+> the OAuth flow, the redirect-URI allow-list, state, secret handling, logging,
+> disconnect, revocation, browser storage, IPC and backend authorization, each
+> labelled with whether it holds today.
+>
+> One thing changed materially here. **SEC-D3, the finding that a stream key
+> reached `main.log` on every broadcast, is now a test that runs in CI**:
+> `infra/dev-harness/broadcast/secret-log.test.mjs`. It checks ten realistic
+> credential carriers against both redactors, nineteen field names against both
+> so the two lists cannot drift apart, and scans every shipped source file for
+> a logging call that names something credential-bearing without a redactor
+> around it — 267 files, zero hits, 2026-09-14. Its detector is proven against
+> the two leaks this review actually found before its silence is trusted.
+
 ---
 
 ## 1. Executive verdict

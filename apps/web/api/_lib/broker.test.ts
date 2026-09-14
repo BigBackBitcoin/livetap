@@ -2,7 +2,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BrokerError,
+  FACEBOOK_GRAPH_VERSION,
+  LIVETAP_REDIRECT_URI,
   RATE_LIMIT_MAX,
+  oauthBaseOverride,
+  pollDeviceCode,
+  revoke,
+  startDeviceCode,
+  validateRevokeInput,
   assertSameOrigin,
   assertWithinRateLimit,
   configuredPlatforms,
@@ -236,5 +243,156 @@ describe('SEC-W2 requestHost', () => {
     // back to the shape check rather than compare against a host we invented.
     expect(requestHost(new Request('https://x/a', { headers: { 'x-forwarded-host': '' } }))).toBeUndefined();
     expect(requestHost(new Request('https://x/a'))).toBeUndefined();
+  });
+});
+
+describe('the private-use redirect is one exact string', () => {
+  /*
+   * On a desktop, any installed program can claim a URI scheme. Accepting `livetap://` with any
+   * authority and any path meant the broker would exchange a code for a callback aimed anywhere,
+   * which is the difference between the OS handing the reply to LIVETAP and handing it to
+   * whatever registered the scheme most recently.
+   */
+  it('accepts the registered callback and refuses every other livetap:// spelling', () => {
+    expect(isAllowedRedirectUri(LIVETAP_REDIRECT_URI)).toBe(true);
+    expect(isAllowedRedirectUri('livetap://oauth/callback?next=x')).toBe(false);
+    expect(isAllowedRedirectUri('livetap://attacker.example/callback')).toBe(false);
+    expect(isAllowedRedirectUri('livetap://oauth/callback/..')).toBe(false);
+  });
+});
+
+describe('Facebook renewal', () => {
+  /*
+   * Facebook issues no refresh_token, ever. A broker that sends grant_type=refresh_token here
+   * gets a refusal, never renews, and the creator is silently signed out at about 60 days with
+   * nothing in the UI explaining why.
+   */
+  it('sends fb_exchange_token with the access token, not a refresh_token grant', async () => {
+    const cap: { url?: string; body?: string } = {};
+    const fbEnv = { LIVETAP_FACEBOOK_APP_ID: 'fb-id', LIVETAP_FACEBOOK_APP_SECRET: 'fb-secret' };
+    await refreshToken(
+      { platform: 'facebook', refreshToken: 'LONG_LIVED_ACCESS_TOKEN' },
+      fbEnv,
+      fakeFetch(200, { access_token: 'AT2', expires_in: 5184000 }, cap),
+    );
+    const params = new URLSearchParams(cap.body);
+    expect(params.get('grant_type')).toBe('fb_exchange_token');
+    expect(params.get('fb_exchange_token')).toBe('LONG_LIVED_ACCESS_TOKEN');
+    expect(params.get('refresh_token')).toBeNull();
+    expect(cap.url).toContain(`/${FACEBOOK_GRAPH_VERSION}/`);
+  });
+
+  it('still sends the standard grant for the platforms that issue refresh tokens', async () => {
+    const cap: { url?: string; body?: string } = {};
+    await refreshToken({ platform: 'youtube', refreshToken: 'RT' }, env, fakeFetch(200, { access_token: 'AT' }, cap));
+    expect(new URLSearchParams(cap.body).get('grant_type')).toBe('refresh_token');
+  });
+});
+
+describe('revoke', () => {
+  it('posts the token to the platform revocation endpoint', async () => {
+    const cap: { url?: string; body?: string } = {};
+    const result = await revoke({ platform: 'youtube', token: 'RT_TO_KILL' }, env, fakeFetch(200, {}, cap));
+    expect(result).toEqual({ revoked: true });
+    expect(cap.url).toBe('https://oauth2.googleapis.com/revoke');
+    expect(new URLSearchParams(cap.body).get('token')).toBe('RT_TO_KILL');
+  });
+
+  it('uses DELETE /me/permissions for Facebook, which publishes no RFC 7009 endpoint', async () => {
+    const cap: { url?: string } = {};
+    const fbEnv = { LIVETAP_FACEBOOK_APP_ID: 'fb-id', LIVETAP_FACEBOOK_APP_SECRET: 'fb-secret' };
+    await revoke({ platform: 'facebook', token: 'AT' }, fbEnv, fakeFetch(200, { success: true }, cap));
+    expect(cap.url).toContain('/me/permissions?access_token=AT');
+  });
+
+  /*
+   * A creator who tapped Disconnect has already decided. An unreachable platform must not leave
+   * them staring at an error beside a credential they still cannot get rid of, so this reports
+   * honestly that the platform was not told and lets the caller delete the local copy anyway.
+   */
+  it('never rejects when the platform cannot be reached', async () => {
+    const failing = (async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+    await expect(revoke({ platform: 'youtube', token: 'RT' }, env, failing)).resolves.toEqual({ revoked: false });
+  });
+
+  it('validates its input like every other handler', () => {
+    expect(() => validateRevokeInput({ platform: 'evil', token: 'aaaaaaaa' })).toThrow(BrokerError);
+    expect(() => validateRevokeInput({ platform: 'youtube', token: 'short' })).toThrow(BrokerError);
+    expect(validateRevokeInput({ platform: 'youtube', token: 'aaaaaaaaaa' }).platform).toBe('youtube');
+  });
+});
+
+describe('device code grant', () => {
+  it('starts a device flow with client_id and scopes, and never the client secret', async () => {
+    const cap: { url?: string; body?: string } = {};
+    const started = await startDeviceCode(
+      'twitch',
+      ['channel:read:stream_key'],
+      env,
+      fakeFetch(
+        200,
+        { device_code: 'DC', user_code: 'ABCD-EFGH', verification_uri: 'https://www.twitch.tv/activate', expires_in: 1800, interval: 5 },
+        cap,
+      ),
+    );
+    expect(cap.url).toBe('https://id.twitch.tv/oauth2/device');
+    const params = new URLSearchParams(cap.body);
+    expect(params.get('client_id')).toBe('tw-id');
+    expect(params.get('client_secret')).toBeNull();
+    expect(started.userCode).toBe('ABCD-EFGH');
+    expect(started.interval).toBe(5);
+  });
+
+  it('refuses a platform that documents no device endpoint', async () => {
+    await expect(startDeviceCode('youtube', ['x'], env, fakeFetch(200, {}))).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
+  });
+
+  // Most polls in a healthy flow land here, while the creator is still typing the code on their
+  // phone. Turning the normal case into an error would make the client's job guesswork.
+  it('reports a not-yet poll as pending rather than as a failure', async () => {
+    await expect(
+      pollDeviceCode('twitch', 'DC', ['channel:read:stream_key'], env, fakeFetch(400, { message: 'authorization_pending' })),
+    ).resolves.toBeUndefined();
+  });
+
+  it('returns the token set once the creator has finished', async () => {
+    const tokens = await pollDeviceCode(
+      'twitch',
+      'DC',
+      ['channel:read:stream_key'],
+      env,
+      fakeFetch(200, { access_token: 'AT', refresh_token: 'RT', expires_in: 14000, scope: ['channel:read:stream_key'] }),
+    );
+    expect(tokens).toMatchObject({ accessToken: 'AT', refreshToken: 'RT' });
+  });
+});
+
+describe('the fake-IdP override', () => {
+  /*
+   * The most dangerous line in the broker: a production deployment that honoured this would post
+   * the owner's real client secret to whatever host the variable named.
+   */
+  it('is accepted only for a loopback http origin outside production', () => {
+    expect(oauthBaseOverride({ LIVETAP_OAUTH_BASE: 'http://127.0.0.1:8789' })).toBe('http://127.0.0.1:8789');
+    expect(oauthBaseOverride({ LIVETAP_OAUTH_BASE: 'http://localhost:8789/' })).toBe('http://localhost:8789');
+    expect(oauthBaseOverride({ LIVETAP_OAUTH_BASE: 'http://127.0.0.1:8789', NODE_ENV: 'production' })).toBeUndefined();
+    expect(oauthBaseOverride({ LIVETAP_OAUTH_BASE: 'https://127.0.0.1:8789' })).toBeUndefined();
+    expect(oauthBaseOverride({ LIVETAP_OAUTH_BASE: 'http://evil.example.com' })).toBeUndefined();
+    expect(oauthBaseOverride({ LIVETAP_OAUTH_BASE: 'not a url' })).toBeUndefined();
+    expect(oauthBaseOverride({})).toBeUndefined();
+  });
+
+  it('redirects the token endpoint at the harness when it is set', async () => {
+    const cap: { url?: string } = {};
+    await exchangeCode(
+      { platform: 'youtube', code: '4/abcd', redirectUri: 'http://127.0.0.1:53219/callback' },
+      { ...env, LIVETAP_OAUTH_BASE: 'http://127.0.0.1:8789' },
+      fakeFetch(200, { access_token: 'AT' }, cap),
+    );
+    expect(cap.url).toBe('http://127.0.0.1:8789/token');
   });
 });

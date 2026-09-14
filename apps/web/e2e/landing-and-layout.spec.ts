@@ -254,3 +254,92 @@ test('the theme choice survives a reload', async ({ page }) => {
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
+
+/**
+ * The invariant that two first-time-creator audits caught and two diagnoses missed.
+ *
+ * A chapter band sat at `opacity: 0` with `pointer-events: auto` across the middle of the stage.
+ * It captured the centre of "Use my camera" and of four destination connect buttons, and because
+ * it was the document's only scroll container it swallowed the first wheel tick as well. Both
+ * auditors reported it as a frozen page with a dead wheel, and it was twice written off as
+ * unreproducible because no wheel listener existed: hit-testing does not need one.
+ *
+ * This walks the whole page rather than a chosen position, because the trap only existed across
+ * two narrow scroll ranges and any single sample would have missed it.
+ */
+test.describe('nothing invisible is ever on top', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('no transparent element is hit-testable anywhere on the page', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('html.sc-ready');
+    await page.waitForTimeout(1000);
+
+    const offenders = await page.evaluate(async () => {
+      const found: Array<{ y: number; blocked: number; who: string }> = [];
+      const max = document.documentElement.scrollHeight - innerHeight;
+      for (let y = 0; y <= max; y += 100) {
+        scrollTo({ top: y, behavior: 'instant' });
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        let blocked = 0;
+        let who = '';
+        for (let gx = 0; gx < 6; gx += 1) {
+          for (let gy = 0; gy < 5; gy += 1) {
+            const el = document.elementFromPoint(200 + gx * 200, 180 + gy * 120);
+            if (!el) continue;
+            /* Walk up: a transparent ancestor makes its children untouchable too. */
+            for (let node: Element | null = el; node; node = node.parentElement) {
+              if (Number.parseFloat(getComputedStyle(node).opacity) <= 0.05) {
+                blocked += 1;
+                who = node.className.toString().slice(0, 60);
+                break;
+              }
+            }
+          }
+        }
+        if (blocked > 0) found.push({ y, blocked, who });
+      }
+      return found;
+    });
+
+    expect(offenders, 'an invisible element is taking pointer events').toEqual([]);
+  });
+
+  test('the page has no accidental scroll container to swallow a wheel tick', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('html.sc-ready');
+    await page.waitForTimeout(800);
+
+    const containers = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('*'))
+        .filter((el) => {
+          const overflow = getComputedStyle(el).overflowY;
+          return (
+            (overflow === 'auto' || overflow === 'scroll') && el.scrollHeight - el.clientHeight > 4
+          );
+        })
+        .map((el) => `${el.tagName}.${el.className.toString().slice(0, 50)}`),
+    );
+    expect(containers, 'an inner scroll area eats the first wheel tick').toEqual([]);
+  });
+
+  test('a wheel tick over the stage always moves the page', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('html.sc-ready');
+    await page.waitForTimeout(800);
+    await page.evaluate(() => scrollTo({ top: 6400, behavior: 'instant' }));
+    await page.waitForTimeout(300);
+    await page.mouse.move(720, 450);
+
+    let dead = 0;
+    let previous = await page.evaluate(() => scrollY);
+    for (let i = 0; i < 12; i += 1) {
+      await page.mouse.wheel(0, 120);
+      await page.waitForTimeout(90);
+      const now = await page.evaluate(() => scrollY);
+      if (now === previous) dead += 1;
+      previous = now;
+    }
+    expect(dead, 'a wheel tick over the stage produced no movement').toBe(0);
+  });
+});

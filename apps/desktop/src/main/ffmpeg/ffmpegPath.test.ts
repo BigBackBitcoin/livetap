@@ -54,14 +54,28 @@ describe('resolveFfmpegPath', () => {
     expect(resolved.bundled).toBe(false);
   });
 
-  it('reports the PATH fallback even when resourcesPath is set but the binary is missing', () => {
+  it('refuses the PATH fallback in a packaged build whose resources/ffmpeg is empty', () => {
     const resolved = resolveFfmpegPath({
       resourcesPath: 'C:\\app\\resources',
       platform: 'win32',
       isPackaged: true,
       exists: () => false,
     });
-    expect(resolved.source).toBe('path');
+    // Not `ffmpeg.exe`: a packaged build must never execute whatever is first on the user PATH,
+    // and must never look healthy on a developer machine that happens to have ffmpeg installed.
+    expect(resolved.source).toBe('unavailable');
+    expect(resolved.path).toBe('C:\\app\\resources\\ffmpeg\\win\\ffmpeg.exe');
+    expect(resolved.bundled).toBe(false);
+  });
+
+  it('refuses the PATH fallback for ffprobe in a packaged build too', () => {
+    const resolved = resolveFfprobePath({
+      resourcesPath: 'C:\\app\\resources',
+      platform: 'win32',
+      isPackaged: true,
+      exists: () => false,
+    });
+    expect(resolved.source).toBe('unavailable');
     expect(resolved.bundled).toBe(false);
   });
 

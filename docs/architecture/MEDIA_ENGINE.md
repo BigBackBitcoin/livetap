@@ -1,7 +1,10 @@
 # LIVETAP Media Engine
 
-Status: implemented for the browser (`@livetap/media`). Desktop (`FfmpegEngine`) is specified here but
-owned by the desktop team.
+Status: implemented for the browser and for desktop. `@livetap/media` now contains three engines:
+`BrowserEngine` (WHIP / relay), `DesktopEngine` (Electron renderer to main-process FFmpeg) and
+`MockEngine`. The desktop path is proven end to end on the build host by
+`node apps/desktop/e2e/broadcast.mjs`, which drives the built app through the real UI and then
+ffprobes what MediaMTX recorded.
 
 Everything in this document is written to be checkable. Where a claim cannot be verified on the build
 host (Windows Server 2022, no camera, no microphone, no GPU, no capture device) it is labelled
@@ -20,17 +23,25 @@ MediaEngine interface            (packages/core/src/media/engine.ts) - the only 
         |
    +----+-----------------+-------------------------+
    |                      |                         |
-BrowserEngine        FfmpegEngine              MockEngine
-(@livetap/media)     (Electron main,           (@livetap/media)
- web + mobile         desktop team)             demos / E2E / CI
- WebView
+BrowserEngine        DesktopEngine             MockEngine
+(@livetap/media)     (@livetap/media,          (@livetap/media)
+ web + mobile         Electron renderer)        demos / E2E / CI
+ WebView                  |
+   |                      +-- window.livetap.engine.pushChunk
+   |                             |
+   |                        FfmpegEngine (Electron MAIN) -> one RTMP sender per destination
+   |                      |
+   +----------------------+
    |
-MomentCompositor (2D canvas)  <-- shared by BrowserEngine and MockEngine's preview pattern
+LocalSources (getUserMedia / getDisplayMedia)  <-- shared by both real engines
    |
-canvas.captureStream() + WebAudio mix
+FormatRenderer: one MomentCompositor and one 2D canvas PER ASPECT RATIO
    |
-   +-- WhipClient  (WebRTC / WHIP) -> ingest or relay
-   +-- MediaRecorder               -> local recording
+canvas.captureStream() per aspect + one shared WebAudio mix
+   |
+   +-- WhipClient        (WebRTC / WHIP) -> ingest or relay   (BrowserEngine)
+   +-- MediaRecorder per aspect -> IPC -> ffmpeg              (DesktopEngine)
+   +-- MediaRecorder             -> local recording
 ```
 
 The orchestrator never learns which engine it is driving. It consumes exactly five event channels:
@@ -55,12 +66,25 @@ A production may have ten destinations. It must never run ten encoders.
 - `EngineStartRequest.formats` is keyed by **aspect ratio**, not by destination
   (`Record<AspectRatio, OutputFormat | undefined>`). `resolveFormats()` in core collapses the
   destination list into the set of distinct aspect ratios.
-- `BrowserEngine` composites once into one canvas, captures that canvas once
-  (`canvas.captureStream(fps)`), and hands the **same** `MediaStream` to every WHIP session and to
-  `MediaRecorder`. Adding a destination adds a `RTCPeerConnection`, not an encoder.
-- `capabilities().maxFormats` is therefore `1` for `BrowserEngine`: a second aspect ratio would need a
-  second canvas plus a second capture, which a browser tab cannot sustain at 1080p. Multi-format in
-  the web app is delegated to the relay (section 4) or to the desktop app.
+- `FormatRenderer` builds one `MomentCompositor` and one canvas **per distinct aspect ratio**, all
+  sharing one `LocalSources` resolver. The camera opens once; each compositor draws the same
+  `<video>` elements into its own geometry, so a 9:16 destination gets the Moment's own `'9:16'`
+  placements rather than the landscape arrangement squashed.
+- Every destination of the same aspect ratio shares that aspect's `MediaStream`. Adding a
+  destination adds an `RTCPeerConnection` (browser) or a `-c copy` sender process (desktop), never
+  an encoder.
+- `streamFor(aspect)` returns **null** for an aspect that was not composed, and the engine refuses
+  that output with `CONFIG_INVALID`. It never substitutes the master picture: a silent
+  wrong-aspect broadcast is worse than a refused one, because the creator cannot see it.
+- `capabilities().maxFormats` is `3` for both real engines, the number of aspect ratios that exist.
+  What it costs is a separate, measured question. On the GPU-less build host, composing a single
+  1920x1080 canvas sustained 22.84 fps into the recording; composing 1920x1080 plus 1080x1920
+  together landed between 9.1 and 13.2 fps across four runs, against a 30 fps target. Measured by
+  ffprobe on what MediaMTX recorded from `apps/desktop/e2e/broadcast.mjs`. Canvas 2D is software
+  rasterised on this host and `backgroundThrottling: false` does not change the number, so the
+  cost is the rasterising itself. A machine with a GPU is not this machine, and this document
+  does not guess for it. **This is the one number an owner with real hardware should re-measure
+  first.**
 - Recording uses `source: 'program'` — the already-composited stream. No second render, no second
   encode. The cost of recording is the MediaRecorder encode only.
 
@@ -171,20 +195,22 @@ in mobile browsers, and inside a worker.
   `fill`) and `mirror`.
 - Camera / screen / window / video layers are drawn from an injected `MediaSourceResolver`
   (`layerId → HTMLVideoElement | ImageBitmap | HTMLImageElement | canvas | null`). The compositor
-  never acquires media; when a source is missing it draws a labelled "Waiting for source" panel, so
-  the program output is never an unexplained black rectangle.
+  never acquires media; when a source is missing it fills the layer's rectangle with a plain
+  plate, so the composition keeps its geometry and the program output is never an unexplained
+  black rectangle. The labelled "Waiting for source" version is operator-overlay only (section 11).
 - Text layers wrap (`wrapText`), scale their font by `outputHeight / 1080`, honour alignment, weight,
   colour and optional background, and truncate with an ellipsis rather than overflowing.
-- **Browser and overlay layers are placeholders in the web engine.** A browser source needs an
-  Electron `BrowserView` (or a `<webview>`); the compositor draws a rounded panel reading
-  "Requires the desktop app". Marked **UNVERIFIED** in the web build — it is not a rendering bug,
-  it is an honest gap.
+- **Browser and overlay layers are placeholders everywhere.** A browser source needs an Electron
+  `BrowserView` (or a `<webview>`), which no engine builds yet. The program draws a plain plate;
+  the "Requires the desktop app" label appears only on an operator-overlay compositor. Marked
+  **UNVERIFIED**: it is not a rendering bug, it is an honest gap.
 - Transitions (`cut`, `fade`, `slide`, `zoom`) are pure functions of time. The engine calls
   `tick(nowMs)`; the loop uses `requestAnimationFrame` when available and `setTimeout` otherwise.
   Because time is a parameter, transitions are unit-tested with a fake clock instead of by eyeballing
   a preview.
-- `setNotice(text)` draws a pill over the program. The engine uses it for "Camera disconnected" /
-  "Screen sharing stopped" / "Microphone disconnected".
+- `setNotice(text)` **records** a reason; it does not draw one. The engines set it for "Camera
+  disconnected" / "Screen sharing stopped" / "Microphone disconnected", and the UI reads
+  `getNotice()`. It reaches pixels only on an operator-overlay compositor (section 11).
 
 ---
 
@@ -284,11 +310,32 @@ Deterministic and timer-driven, for demos, E2E and any UI work without a camera:
 
 ## 10. Open items for the desktop team
 
-- `FfmpegEngine` must satisfy the same `MediaEngine` contract and emit the same events, so the
-  orchestrator and the UI are unchanged.
-- Desktop should report `rtmp: true, srt: true`, real `hardwareEncoders` (nvenc / qsv / amf /
-  videotoolbox) **only after probing the actual machine**, and `maxFormats > 1`.
-- Browser-source layers become real there (Electron `BrowserView` / offscreen rendering); the
-  compositor's placeholder is the web fallback, not a stub to keep.
+- `DesktopEngine` satisfies the `MediaEngine` contract and re-emits the main process's events on
+  the same five channels, so the orchestrator and the UI are unchanged. `capabilities()` merges
+  main's answer (network, encoders) with the renderer's (capture, MediaRecorder) and degrades a
+  main-process PASS to UNAVAILABLE when the renderer cannot record.
+- Browser-source layers are still not real anywhere; they need an Electron `BrowserView` or
+  offscreen rendering. Until then the compositor draws the layer's rectangle as a plain plate,
+  with no words in it. See section 11.
 - Recording on desktop returns a filesystem `path`; the web returns a `blob`. Both shapes are already
   in `stopRecording()`'s return type.
+
+---
+
+## 11. The program output contains the production and nothing else
+
+`MomentCompositor` used to paint operator diagnostics straight into the frames that go on the wire:
+a "Camera disconnected" banner from `setNotice`, and labelled placeholder panels reading "Waiting
+for source", "Requires the desktop app" and "Loading...". An audit found them burned into every
+Moment and every format, and in 9:16 the panel covered the subject.
+
+The rule now: **controls and diagnostics belong in the application UI, never in the video frame.**
+
+- `setNotice()` is state, not paint. `getNotice()` is what the UI reads.
+- A layer with nothing to draw yet gets a plain plate the size of the layer: the composition keeps
+  its geometry and the viewer is told nothing, because none of it was addressed to them.
+- `MomentCompositorOptions.operatorOverlay` re-enables the labelled versions, and is only ever true
+  for a canvas that is NOT captured. `FormatRenderer` never sets it.
+
+`MomentCompositor.test.ts` and `BrowserEngine.test.ts` assert both halves: the program canvas
+receives no `fillText` for any of those strings, and an operator-overlay compositor still does.

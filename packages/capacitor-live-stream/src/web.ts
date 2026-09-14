@@ -5,14 +5,18 @@
  * pretending otherwise would violate ADR-007 (never masquerade as production). The web app uses
  * `BrowserEngine` from @livetap/media, which publishes via WHIP to a relay instead.
  *
- * Every method throws the same explicit error so that a mis-wired build fails loudly in the
- * browser rather than silently doing nothing.
+ * Every method that would DO something throws the same explicit error, so that a mis-wired build
+ * fails loudly in the browser rather than silently doing nothing. The two that only ANSWER
+ * something — `capabilities()` and `checkPermissions()` — return honest negatives instead, because
+ * a UI is supposed to ask those before it commits to anything.
  */
 import { WebPlugin } from '@capacitor/core';
 import type {
   DeviceLostEvent,
   LiveStreamCapabilities,
+  LiveStreamPermissionStatus,
   LiveStreamPlugin,
+  RequestLiveStreamPermissionsOptions,
   SetMuteOptions,
   StartPreviewOptions,
   StartRecordingResult,
@@ -61,6 +65,22 @@ export class LiveStreamWeb extends WebPlugin implements LiveStreamPlugin {
       verification: 'UNAVAILABLE',
       platformNote: NATIVE_ONLY_MESSAGE,
     };
+  }
+
+  /**
+   * The second method that answers instead of throwing. A UI that asks for permission before
+   * previewing must get a usable answer in a browser too, and the honest answer is that there is
+   * nothing here to grant: `denied` sends the caller down the "this needs the app" path rather
+   * than into a dialog that will never appear.
+   */
+  async checkPermissions(): Promise<LiveStreamPermissionStatus> {
+    return { camera: 'denied', microphone: 'denied', notifications: 'denied' };
+  }
+
+  async requestPermissions(
+    _options?: RequestLiveStreamPermissionsOptions,
+  ): Promise<LiveStreamPermissionStatus> {
+    return this.checkPermissions();
   }
 
   async startPreview(_options: StartPreviewOptions): Promise<void> {

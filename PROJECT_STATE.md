@@ -27,7 +27,9 @@ Product review at every milestone: could a first-timer do it? would an expert tr
 | Docker | 29.6.2 available |
 | Python | 3.13.3 |
 | Rust/Cargo | NOT installed → Tauri not buildable here → Electron chosen for desktop |
-| Java/Android SDK | NOT installed → Android native build = BLOCKED_EXTERNAL_DEPENDENCY |
+| Java/Android SDK | **INSTALLED 2026-09-14** via `bash tools/acquire-android-toolchain.sh` (portable JDK 21 + Android SDK 36 into gitignored `tools/`). The debug APK builds. No emulator: this VM reports VMMonitorModeExtensions=False, so nothing Android can ever RUN here |
+| MediaMTX | `tools/mediamtx/mediamtx.exe` v1.21.0, native Windows binary. The dev ingest receiver and the relay's native verification both use it |
+| Playwright + Electron | installed; `_electron` launches the built desktop app with `--use-fake-device-for-media-stream`, which drives the real getUserMedia path with a synthetic source |
 | Xcode | N/A (Windows) → iOS native build = BLOCKED_EXTERNAL_DEPENDENCY |
 | GitHub CLI | Logged in (account BigBackBitcoin, scopes: repo, gist, read:org) → can create/push repo |
 | Vercel CLI | Logged in (cryptojam876-8414) → can deploy |
@@ -48,9 +50,33 @@ docs/           research, architecture, release, legal, security, qa, prompt-pac
 ```
 
 ## Phase status
-2026-09-14: first-time creator audit closed on the public page (ADR-017; docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md). See CURRENT_PHASE.md. Implementation detail in IMPLEMENTATION_STATUS.md.
+**2026-09-14: REAL-WORLD PERSONAL ALPHA.** A real broadcast was observed on this
+host for the first time: the built desktop app, driven through its own UI,
+capturing through the real getUserMedia, publishing two simultaneous RTMP
+streams at 1920x1080 and 1080x1920 that a real server accepted and ffprobe
+decoded as H.264 plus AAC, with failure isolation proven against a real dropped
+TCP connection. It does not reproduce on a rebuild; the two lines responsible
+are named in docs/qa/REAL_WORLD_ALPHA_READINESS.md. See CURRENT_PHASE.md.
+
+Earlier that day: first-time creator audit closed on the public page (ADR-017).
+
+## The gate, as a command
+```
+npm run verify:broadcast
+```
+Preflight, receiver self-test, a real RTMP server, the full desktop broadcast
+with ffprobe evidence, a deliberate mid-broadcast TCP kill, and the
+navigate-away-during-END regression. One stage table, one exit code. Read
+infra/dev-harness/broadcast/README.md for how to read a failure, and in
+particular the difference between MISSING (a piece of the chain is absent and
+nothing was tested) and FAIL (the piece was there and the product did not do
+what it claims).
 
 ## Recovery instructions
-1. Read CURRENT_PHASE.md, IMPLEMENTATION_STATUS.md, BLOCKERS.md.
-2. Do not redo research listed in RESEARCH_INDEX.md.
-3. Do not re-decide anything in ARCHITECTURE_DECISIONS.md without new evidence.
+1. Read CURRENT_PHASE.md, then docs/qa/REAL_WORLD_ALPHA_READINESS.md, then
+   IMPLEMENTATION_STATUS.md and BLOCKERS.md.
+2. Run `npm run verify:broadcast` before believing any claim about broadcasting.
+3. Do not redo research listed in RESEARCH_INDEX.md.
+4. Do not re-decide anything in ARCHITECTURE_DECISIONS.md without new evidence.
+5. Everything the owner has to do is consolidated, once, in docs/OWNER_ACTIONS.md.
+   Do not ask them for things one at a time.

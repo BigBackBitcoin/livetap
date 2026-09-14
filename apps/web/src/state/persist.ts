@@ -15,6 +15,13 @@ export const KEYS = {
   settings: 'livetap.settings',
   destinations: 'livetap.destinations',
   moments: 'livetap.moments',
+  /**
+   * The creator has been told, once, that GO LIVE reaches their real accounts (§37).
+   *
+   * Non-secret and deliberately per-browser-profile: it records that a sentence was read, not
+   * anything about the accounts themselves.
+   */
+  realBroadcastAck: 'livetap.realBroadcastAck',
 } as const;
 
 export interface PersistedSettings {

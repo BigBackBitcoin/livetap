@@ -219,6 +219,20 @@ export class MockEngine extends TypedEmitter<EngineEvents> implements MediaEngin
   // ---------------------------------------------------------------- internals
 
   private register(output: EngineOutput): void {
+    const unreal = simulationRefusal(output.ingest.url);
+    if (unreal) {
+      // The worst state this product can reach is a green LIVE badge with no bytes on the wire.
+      // A simulated engine plus a real destination is exactly that, so it is refused here rather
+      // than reported as connected: the destination card shows why, and nothing claims to be live.
+      this.sessions.set(output.destinationId, { output, state: 'lost' });
+      this.emit('output', {
+        type: 'outputLost',
+        destinationId: output.destinationId,
+        code: 'CONFIG_INVALID',
+        technical: unreal,
+      });
+      return;
+    }
     const session: MockSession = { output, state: 'connecting' };
     this.sessions.set(output.destinationId, session);
     this.later(() => {
@@ -429,6 +443,40 @@ export class MockEngine extends TypedEmitter<EngineEvents> implements MediaEngin
 }
 
 // -------------------------------------------------------------------- helpers
+
+/**
+ * Reserved names that can never be somebody's live server.
+ *
+ * RFC 2606 and RFC 6761 set these aside permanently: `.invalid` is guaranteed never to resolve,
+ * `.test` exists for exactly this kind of harness, and `.example` plus the three example.* domains
+ * are reserved for documentation. `.localhost` is deliberately NOT here - a loopback MediaMTX is a
+ * real server that really records what it is sent, and the mock must not pretend to feed it.
+ */
+const SIMULATED_SUFFIXES = ['.invalid', '.test', '.example', 'example.com', 'example.net', 'example.org'];
+
+/**
+ * Why this ingest target cannot be simulated, or null when it can.
+ *
+ * MockEngine opens no socket and encodes nothing. Pointed at a real ingest it would report
+ * `outputUp` for a destination that receives no bytes at all, and the whole UI - the badge, the
+ * count, the timer, the recording row - would be describing a broadcast that is not happening.
+ */
+export function simulationRefusal(url: string): string | null {
+  const host = hostOf(url);
+  if (host === null) return null;
+  const lower = host.toLowerCase();
+  if (SIMULATED_SUFFIXES.some((suffix) => lower === suffix.replace(/^\./, '') || lower.endsWith(suffix))) return null;
+  return `Demo mode cannot broadcast to ${lower}. Turn demo mode off to stream to a real server.`;
+}
+
+function hostOf(url: string): string | null {
+  const match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(url.trim());
+  if (!match) return null;
+  const authority = match[1] ?? '';
+  const afterCredentials = authority.slice(authority.lastIndexOf('@') + 1);
+  const withoutPort = afterCredentials.replace(/:\d+$/, '');
+  return withoutPort.length > 0 ? withoutPort : null;
+}
 
 /** Deterministic 32-bit PRNG - same seed, same curve, every run. */
 export function mulberry32(seed: number): () => number {

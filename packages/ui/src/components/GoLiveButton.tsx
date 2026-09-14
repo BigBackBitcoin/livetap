@@ -14,6 +14,16 @@ export interface GoLiveButtonProps {
   onCountdownComplete?: () => void;
   /** Fired when a live button is activated. */
   onEnd?: () => void;
+  /**
+   * Fired when a STARTING button is activated.
+   *
+   * STARTING is the window in which broadcast objects are already being created on the
+   * platforms, so it is the window in which a creator most needs a way out - and it was the one
+   * state with no control at all: the button reported itself busy and swallowed the click while
+   * the machine talked to YouTube. Supplying this turns STARTING into "Cancel start"; leaving it
+   * out keeps the old busy behaviour for callers that genuinely cannot stop.
+   */
+  onCancelStart?: () => void;
   /** Elapsed broadcast time, used by the `live` and `stopping` states. */
   elapsedMs?: number;
   /** Countdown length. 3 by design; configurable for tests and for accessibility settings. */
@@ -58,6 +68,7 @@ export function GoLiveButton({
   onCancel,
   onCountdownComplete,
   onEnd,
+  onCancelStart,
   elapsedMs = 0,
   countdownSeconds = 3,
   disabled = false,
@@ -96,7 +107,11 @@ export function GoLiveButton({
   }, [state, onCancel]);
 
   const shown = Math.max(1, remaining);
+  const cancellableStart = state === 'starting' && onCancelStart !== undefined;
   const busy = state === 'starting' || state === 'stopping';
+  // Busy describes the machine; disabled describes the control. A cancellable start is both
+  // genuinely busy and genuinely operable, and conflating the two is what removed the way out.
+  const inert = busy && !cancellableStart;
 
   const classes = ['lt-golive', `lt-golive--${state}`, 'lt-touch', className]
     .filter(Boolean)
@@ -104,6 +119,7 @@ export function GoLiveButton({
 
   const handleClick = (): void => {
     if (disabled) return;
+    if (inert) return;
     switch (state) {
       case 'idle':
         onGoLive?.();
@@ -113,6 +129,9 @@ export function GoLiveButton({
         break;
       case 'live':
         onEnd?.();
+        break;
+      case 'starting':
+        onCancelStart?.();
         break;
       default:
         break;
@@ -124,7 +143,9 @@ export function GoLiveButton({
       case 'countdown':
         return `Going live in ${shown} ${shown === 1 ? 'second' : 'seconds'}. Activate to cancel.`;
       case 'starting':
-        return 'Starting your broadcast';
+        return cancellableStart
+          ? 'Starting your broadcast. Activate to cancel.'
+          : 'Starting your broadcast';
       case 'live':
         return `End broadcast. Live for ${formatElapsed(elapsedMs)}.`;
       case 'stopping':
@@ -140,7 +161,7 @@ export function GoLiveButton({
         type="button"
         className={classes}
         aria-label={ariaLabel}
-        aria-disabled={disabled || busy || undefined}
+        aria-disabled={disabled || inert || undefined}
         aria-busy={busy || undefined}
         aria-describedby={disabled && disabledReason ? reasonId : undefined}
         onClick={handleClick}
@@ -159,7 +180,9 @@ export function GoLiveButton({
         {state === 'starting' ? (
           <>
             <Spinner size={24} />
-            <span className="lt-golive__label">Starting…</span>
+            <span className="lt-golive__label">
+              {cancellableStart ? 'Cancel start' : 'Starting…'}
+            </span>
           </>
         ) : null}
 

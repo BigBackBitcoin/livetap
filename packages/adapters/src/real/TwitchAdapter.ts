@@ -73,6 +73,12 @@ interface HelixStream {
   started_at?: string;
   type?: string;
 }
+interface HelixUser {
+  id?: string;
+  login?: string;
+  display_name?: string;
+  profile_image_url?: string;
+}
 interface HelixChannel {
   broadcaster_id?: string;
   broadcaster_login?: string;
@@ -145,11 +151,19 @@ export class TwitchAdapter implements DestinationAdapter {
     | { ok: true; credential?: CredentialRef; ingest?: IngestTarget; watchUrl?: string }
     | { ok: false; code: ErrorCode; technical?: string }
   > {
-    const broadcasterId = this.broadcasterId(config, credential);
-    if (!broadcasterId) {
-      return { ok: false, code: 'AUTH_FAILED', technical: 'No Twitch broadcaster id on the credential.' };
-    }
     const token = await this.tokenProvider(credential);
+    /*
+     * Who the token belongs to is asked of Twitch, not required from the caller. The previous
+     * code refused outright when the credential carried no accountId, which is the state of
+     * EVERY first connect: nothing can put a broadcaster id on a credential before the first
+     * successful sign-in, so this branch made connecting a fresh Twitch account impossible.
+     * `GET /helix/users` with no parameters is documented to return the authenticated user.
+     */
+    const user = await this.identify(token);
+    const broadcasterId = this.broadcasterId(config, credential) ?? user?.id;
+    if (!broadcasterId) {
+      return { ok: false, code: 'AUTH_FAILED', technical: 'Twitch returned no user for this token.' };
+    }
     const channels = await request<HelixList<HelixChannel>>(this.fetch, {
       url: withQuery(`${this.apiBase}/channels`, { broadcaster_id: broadcasterId }),
       token,
@@ -159,9 +173,17 @@ export class TwitchAdapter implements DestinationAdapter {
     if (!channel) {
       return { ok: false, code: 'PLATFORM_ERROR', technical: 'Twitch returned no channel.' };
     }
-    const login = channel.broadcaster_login;
+    const login = channel.broadcaster_login ?? user?.login;
+    const label = channel.broadcaster_name ?? user?.display_name ?? login;
+    const base: CredentialRef = credential ?? { id: 'oauth:twitch', platform: 'twitch' };
     return {
       ok: true,
+      credential: {
+        ...base,
+        accountId: broadcasterId,
+        ...(label ? { accountLabel: label } : {}),
+        ...(user?.profile_image_url ? { avatarUrl: user.profile_image_url } : {}),
+      },
       ingest: await this.fetchIngest(broadcasterId, token),
       ...(login ? { watchUrl: `https://www.twitch.tv/${login}` } : {}),
     };
@@ -171,9 +193,11 @@ export class TwitchAdapter implements DestinationAdapter {
     config: DestinationConfig,
     credential?: CredentialRef,
   ): Promise<BroadcastHandle> {
-    const broadcasterId = this.broadcasterId(config, credential);
-    if (!broadcasterId) throw new Error('No Twitch broadcaster id on the credential.');
     const token = await this.tokenProvider(credential);
+    // The id is already on the credential after the first validate(), so the common path costs
+    // no extra request. Only a config that has never been validated pays for the lookup.
+    const broadcasterId = this.broadcasterId(config, credential) ?? (await this.identify(token))?.id;
+    if (!broadcasterId) throw new Error('Twitch returned no user for this token.');
 
     // Metadata first, so the stream appears correctly from second zero.
     if (config.metadata?.title || config.metadata?.category) {
@@ -346,6 +370,28 @@ export class TwitchAdapter implements DestinationAdapter {
 
   private broadcasterId(config: DestinationConfig, credential?: CredentialRef): string | undefined {
     return credential?.accountId ?? config.accountId;
+  }
+
+  /**
+   * Who this token is. `GET /helix/users` with no id and no login is documented to return the
+   * user the access token belongs to, which is the only way a first connect can learn its own
+   * broadcaster id.
+   *
+   * Best effort on purpose. The id it supplies is needed only when nothing else has one, and the
+   * avatar it supplies is decoration: a connect that works must not be refused because this one
+   * call was rate limited or because `user:read:email` was not among the granted scopes.
+   */
+  private async identify(token: string): Promise<HelixUser | undefined> {
+    try {
+      const body = await request<HelixList<HelixUser>>(this.fetch, {
+        url: `${this.apiBase}/users`,
+        token,
+        headers: this.headers(),
+      });
+      return body?.data?.[0];
+    } catch {
+      return undefined;
+    }
   }
 
   private async fetchIngest(broadcasterId: string, token: string): Promise<IngestTarget> {

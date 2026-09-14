@@ -19,6 +19,8 @@ export function ProSettings({ live }: { live: boolean }): ReactElement {
   const metrics = useAppStore((s) => s.metrics);
   const log = useAppStore((s) => s.log);
   const engineKind = useAppStore((s) => s.engineKind);
+  const engineHost = useAppStore((s) => s.engineHost);
+  const adapterKind = useAppStore((s) => s.adapterKind);
   const resetEverything = useAppStore((s) => s.resetEverything);
   if (mode !== 'pro') return <></>;
 
@@ -57,6 +59,14 @@ export function ProSettings({ live }: { live: boolean }): ReactElement {
           Per-aspect resolution, frame rate and bitrate are derived from your quality preset in this
           build. The engine in use is <strong>{engineKind}</strong>, and a mock engine reports
           <Badge tone="info">SIMULATED</Badge> rather than claiming a verified encoder.
+        </p>
+        {/*
+          Observed, not configured. Both values are what this process actually built at start-up,
+          which is the only honest answer to "is this real?" - a build-time flag cannot know
+          whether the adapter it asked for is the adapter it got.
+        */}
+        <p className="lt-screen__note">
+          Running on <strong>{engineHost}</strong> with <strong>{adapterKind}</strong> destinations.
         </p>
       </Card>
 

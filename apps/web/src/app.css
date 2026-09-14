@@ -16,6 +16,20 @@ body,
   min-block-size: 100%;
 }
 
+/*
+ * Leave room for the fixed chrome when anything scrolls a control into view.
+ *
+ * Two layers are pinned to the bottom of the window: the navigation on a phone, and the live bar
+ * whenever a broadcast is running. Without this, `scrollIntoView` — which is what the browser
+ * does for keyboard focus, for `:target`, and for every programmatic scroll in the app — parks a
+ * control flush with the bottom edge, underneath them. Measured against a destination's own
+ * "Stop trying" button while live: the element at its centre was the live bar, not the button.
+ */
+html {
+  scroll-padding-block-end: 180px;
+  scroll-padding-block-start: var(--lt-topbar-h, 0px);
+}
+
 body {
   background: var(--lt-bg-0);
   color: var(--lt-text-primary);
@@ -71,7 +85,7 @@ body {
   padding-block-end: calc(var(--lt-space-2) + env(safe-area-inset-bottom));
   position: sticky;
   inset-block-end: 0;
-  z-index: 10;
+  z-index: var(--lt-z-nav);
 }
 
 .lt-shell__brand,
@@ -245,7 +259,7 @@ body {
   .lt-shell__nav {
     position: fixed;
     inset-inline: 0;
-    z-index: 11;
+    z-index: var(--lt-z-nav);
     block-size: var(--lt-navbar-h);
   }
 }
@@ -348,7 +362,7 @@ body {
 .lt-bannerslot {
   position: sticky;
   inset-block-start: var(--lt-topbar-h, 0px);
-  z-index: 9;
+  z-index: var(--lt-z-banner);
   margin-block-end: var(--lt-space-4);
   padding-block: var(--lt-space-2);
   background: var(--lt-bg-0);
@@ -718,13 +732,20 @@ body {
  * On a phone the column above it — banner, preview, stage bar, chips — is 640px before the
  * button starts, so in flow it landed behind the tab bar. Pinned, it is the first thing a thumb
  * finds, which is the whole point of the screen.
+ *
+ * The band this rule used to stop at was the band it was most needed in. The pin ended at
+ * 639.98px and the desktop preview cap started at 1025px, so from 640px to 1024.98px the bar sat
+ * in normal flow under an uncapped preview. Measured at 834x1112 in 9:16: GO LIVE's box was
+ * y=1741.33 in a 1112px window, 629px below the fold, on a tablet held in two hands, which is
+ * exactly how a vertical creator works. Both halves of the fix now cover the whole range below
+ * the desktop breakpoint, and `live-safety.spec.ts` fails on this media query alone.
  */
-@media (max-width: 639.98px) {
+@media (max-width: 1024.98px) {
   .lt-golivebar {
     position: fixed;
     inset-inline: var(--lt-space-4);
     inset-block-end: calc(var(--lt-navbar-h) + var(--lt-space-2));
-    z-index: 9;
+    z-index: var(--lt-z-golive);
     gap: var(--lt-space-2);
     padding-block: var(--lt-space-2);
     background: var(--lt-bg-0);
@@ -733,6 +754,14 @@ body {
   /* Room for the pinned bar, so the Moment strip and the dock can still be scrolled to. */
   .lt-shell__main {
     padding-block-end: calc(var(--lt-navbar-h) + 220px);
+  }
+
+  /* The preview gives up height before the button gives up its place on the screen. */
+  .lt-studio__stage .lt-preview {
+    max-block-size: 46dvh;
+    inline-size: auto;
+    max-inline-size: 100%;
+    margin-inline: auto;
   }
 }
 
@@ -774,17 +803,131 @@ body {
   color: var(--lt-text-secondary);
 }
 
-.lt-endgrace {
+/*
+ * The live bar: the one control that stops a broadcast, on every screen and in every state.
+ *
+ * It is fixed to the window rather than placed in a screen, it is opaque so nothing can be
+ * clicked through it, and it sits at `--lt-z-livebar`: above the navigation, above the honesty
+ * banner, above a Sheet and its scrim, above a tooltip, with only the skip link over it. That
+ * ordering is the rule, not a coincidence of DOM order: a stop control that a panel can cover is
+ * a stop control that does not exist at the moment it is needed.
+ */
+.lt-livebar {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: var(--lt-navbar-h, 0px);
+  z-index: var(--lt-z-livebar);
   display: flex;
-  flex-direction: column;
-  gap: var(--lt-space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-3);
+  padding: var(--lt-space-3) var(--lt-space-4);
+  padding-block-end: calc(var(--lt-space-3) + env(safe-area-inset-bottom));
+  background: var(--lt-bg-1);
+  border-block-start: 1px solid var(--lt-accent-live-solid);
+  box-shadow: var(--lt-shadow-3);
 }
 
-.lt-endgrace__hint {
+.lt-livebar--demo {
+  border-block-start-color: var(--lt-info);
+}
+
+.lt-livebar__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lt-space-1) var(--lt-space-3);
   margin: 0;
-  text-align: center;
+  min-inline-size: 0;
+}
+
+.lt-livebar__dot {
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: var(--lt-radius-full);
+  background: var(--lt-accent-live-solid);
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.lt-livebar--demo .lt-livebar__dot {
+  background: var(--lt-info);
+}
+
+.lt-livebar__headline {
+  font-weight: var(--lt-weight-bold);
+  letter-spacing: 0.04em;
+  color: var(--lt-text-primary);
+}
+
+.lt-livebar__detail {
   color: var(--lt-text-secondary);
   font-size: var(--lt-text-14);
+}
+
+.lt-livebar__ending {
+  margin: 0;
+  color: var(--lt-text-secondary);
+  font-size: var(--lt-text-14);
+}
+
+/*
+ * The one control keeps a full touch target at every width, and on a phone it takes the whole
+ * row so it is the widest thing on the screen rather than a chip beside a sentence.
+ */
+.lt-livebar__action .lt-btn {
+  min-block-size: var(--lt-control-lg);
+}
+
+@media (max-width: 639.98px) {
+  .lt-livebar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lt-livebar__action .lt-btn {
+    inline-size: 100%;
+    min-block-size: 56px;
+  }
+}
+
+/* While the bar is up, the scrolling column ends above it rather than under it. */
+.lt-shell.is-onair .lt-shell__main {
+  padding-block-end: calc(var(--lt-navbar-h, 0px) + 160px);
+}
+
+/*
+ * The first real broadcast says so, in words, and waits for an answer (§37).
+ *
+ * In the column, not over the preview: a dialog at the moment of going live arrives when a
+ * person is least able to read one, and §4.3's reasoning against confirmation modals has not
+ * changed. This appears once per browser profile and never again.
+ */
+.lt-realconfirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--lt-space-2);
+  padding: var(--lt-space-4);
+  background: var(--lt-bg-2);
+  border: 1px solid var(--lt-accent-live-solid);
+  border-radius: var(--lt-radius-lg);
+}
+
+.lt-realconfirm__what {
+  margin: 0;
+  font-size: var(--lt-text-18);
+  line-height: var(--lt-leading-18);
+  font-weight: var(--lt-weight-semibold);
+  text-align: center;
+}
+
+.lt-realconfirm__who {
+  margin: 0;
+  color: var(--lt-text-secondary);
+  font-size: var(--lt-text-14);
+  text-align: center;
 }
 
 .lt-dock__empty,
@@ -1271,10 +1414,18 @@ body {
   font-size: var(--lt-text-13);
 }
 
-/* Nothing scrolls sideways, at any width. */
+/*
+ * Nothing scrolls sideways, at any width.
+ *
+ * `clip`, not `hidden`. `overflow-x: hidden` makes the element a scroll container in the block
+ * axis too, and a `position: sticky` descendant sticks to its nearest scroll container — so with
+ * `hidden` on `body` every sticky rule in this file was silently inert, including the honesty
+ * banner, which exists specifically to stay on screen while the user scrolls down to GO LIVE.
+ * `clip` cuts the overflow without creating the scroll container.
+ */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .lt-pronotes {

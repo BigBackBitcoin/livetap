@@ -111,8 +111,20 @@ UI / orchestrator  ──CredentialRef──>  Adapter  ──tokenProvider(ref)
 ```
 
 - `CredentialRef` is an opaque handle plus non-secret display data (`id`, `platform`,
-  `accountId`, `accountLabel`, `expiresAt`, `scopes`). It is safe to put in renderer state, logs
-  and snapshots.
+  `accountId`, `accountLabel`, `avatarUrl`, `expiresAt`, `scopes`). It is safe to put in renderer
+  state, logs and snapshots.
+- `DestinationSnapshot.account` is the half of that a screen may read: `AccountSummary`
+  (`accountId`, `accountLabel`, `avatarUrl`, `scopes`, `expiresAt`) and nothing else. The
+  orchestrator builds it field by field in `accountSummary()`, so adding a field to
+  `CredentialRef` can never widen what reaches a snapshot, and it is dropped the moment
+  `disconnect()` releases the credential.
+- `scopes` is what the platform **granted**, never what LIVETAP asked for. Kick's consent screen
+  lets the creator untick `streamkey:read`, so the two lists routinely differ and only the
+  granted list may decide whether LIVETAP can fetch a key or has to ask for a pasted one.
+- Every `validate()` returns a credential **even when it was passed none**. The call that passes
+  none is the first connect, which is the exact moment the creator needs to see which channel
+  they just signed in as. Returning `undefined` there is what made every destination card read
+  "YouTube" and nothing else.
 - Every real adapter is constructed with
   `{ fetch, tokenProvider: (credential) => Promise<string>, apiBase?, ... }`. The adapter calls
   `tokenProvider` **per request**, so refresh, rotation and revocation are entirely the store's
@@ -144,7 +156,7 @@ never sends one to Twitch and never omits one where it is mandatory.
 | Platform | Desktop | Web | Notes |
 |---|---|---|---|
 | **YouTube** | Authorization code + **PKCE (S256)** with a loopback redirect (`http://127.0.0.1:<port>`) | Server-side code exchange with the client secret | OOB is dead and custom schemes are deprecated. `access_type=offline&prompt=consent` for a refresh token. `youtube.force-ssl` is sensitive, so a public app needs Google OAuth verification **and** a YouTube compliance audit for quota. |
-| **Twitch** | **Device code grant** (`https://id.twitch.tv/oauth2/device`) | Authorization code, secret server-side | Twitch documents no PKCE, so authorization code from a desktop binary would mean shipping a secret. Device-code refresh tokens are single-use with a 30-day inactivity expiry. |
+| **Twitch** | **Device code grant** (`https://id.twitch.tv/oauth2/device`) | Authorization code, secret server-side | Twitch documents no PKCE, so authorization code from a desktop binary would mean shipping a secret. Device-code refresh tokens are single-use with a 30-day inactivity expiry. The RTMP host comes from `GET https://ingest.twitch.tv/ingests` (`url_template_secure`, falling back to `url_template`), never from a hardcoded `rtmps://live.twitch.tv/app`. |
 | **Kick** | Authorization code + **PKCE (mandatory)** with a **server-side token exchange** | Authorization code + PKCE, secret server-side | Kick requires `client_secret` at the token endpoint *even with* PKCE — there is no public-client mode, so a LIVETAP-operated exchange is required. Use `http://localhost/...`, not `127.0.0.1`. `state` is required. |
 | **Facebook** | Loopback redirect + **server-side** code exchange and long-lived-token exchange | Server-side code flow | PKCE is documented for the OIDC flow only; secret-less Graph auth is unverified. Never ship the app secret in a desktop build. Login for Business uses a `config_id` instead of a scope list. |
 | **Instagram** | Server-side exchange (no PKCE documented) | Server-side code flow | Authorizes comment/status reads only — **never** going live. |
@@ -158,6 +170,62 @@ for Kick, Facebook and the YouTube web client); the **desktop app uses a loopbac
 for YouTube, device code for Twitch, and calls the same hosted exchange for Kick and Facebook.
 The desktop binary ships no usable secret.
 
+### What drives all three surfaces
+
+`apps/web/src/state/oauthFlow.ts` is the single entry point. `beginAuth(platform)` reads the
+public client id from `GET /api/oauth/config`, generates PKCE and state, and then branches:
+
+- **web** parks `{platform, state, codeVerifier, redirectUri}` under `PKCE_SESSION_KEY` and
+  navigates. `OAuthCallback` picks it up on the way back.
+- **desktop** calls `window.livetap.oauth.startLoopback({ host })` and **uses the state the main
+  process returned**. The loopback listener refuses any callback whose state is not its own, so a
+  renderer that generated a second state would build a URL the listener is guaranteed to reject.
+  `host` is `'127.0.0.1'` for Google and `'localhost'` for Kick, because a provider compares
+  `redirect_uri` as a string and the two spellings are not interchangeable.
+- **mobile** is the desktop shape behind the same bridge, which the Android workstream registers.
+
+`apps/web/src/state/tokens.ts` owns storage and renewal. Desktop and mobile keep the token set in
+`window.livetap.vault` (OS keychain, atomic 0600, refuses to store anything when encryption is
+unavailable) under `oauth:<platform>`; web keeps it in memory for the life of the page and
+nowhere else, for the same reason `secrets.ts` refuses to persist a stream key. Renewal happens
+inside the token provider immediately before the call that needs it, never on a timer, and the
+rotated refresh token is always persisted.
+
+### Two platform facts the UI must honour
+
+1. **YouTube in Testing status expires weekly.** While the Google Cloud OAuth app sits in Testing,
+   the authorization itself expires **7 days after consent** and takes the refresh token with it.
+   That is the classic multistreaming-tool bug: the creator is shown `invalid_grant` and concludes
+   the product is broken. `tokens.ts` throws a `status: 401`-shaped error so core's
+   `classifyFailure` maps it to `AUTH_EXPIRED`, which humanizes to *"needs you to sign in again"*.
+   No error code ever reaches a creator.
+2. **Facebook never issues a refresh token.** Renewal is `grant_type=fb_exchange_token` against
+   the same endpoint, using the access token itself. A broker that assumed the standard grant
+   would never renew and would sign the creator out silently at about 60 days. `PlatformSpec`
+   carries a per-platform `refreshGrant` so this cannot be assumed anywhere.
+
+### Disconnect
+
+`POST /api/oauth/revoke` hands the token back to the platform (RFC 7009 form POST for Google,
+Twitch and Kick; `DELETE /me/permissions` for Graph, which publishes no RFC 7009 endpoint) and
+then the local copy is deleted. The **refresh** token is what is revoked, because revoking only
+the access token leaves a refresh token able to mint another one. The revoke is best effort by
+construction and never rejects: a creator who tapped Disconnect has already decided, and an
+unreachable platform must not leave them holding a credential they cannot get rid of.
+
+### Proving it without platform credentials
+
+`infra/dev-harness/fake-idp/` is a local identity provider that really verifies PKCE, really
+burns a code after one use, really rotates refresh tokens, really enforces scopes on API calls
+and serves YouTube-shaped and Twitch-shaped responses. Setting `LIVETAP_OAUTH_BASE` points the
+broker at it. That variable is the most dangerous line in `broker.ts`, so it is refused outright
+under `NODE_ENV=production` and refused for anything but an http loopback origin.
+
+`infra/dev-harness/fake-idp/real-adapters.test.mjs` drives the whole path with no piece faked but
+the platform: production `generatePkce` and `buildAuthorizeUrl`, the production broker's
+`exchangeCode`, the real `YouTubeAdapter`, and a real `BroadcastOrchestrator`, asserting that the
+snapshot ends up carrying the channel name and avatar and that it carries neither token.
+
 ---
 
 ## 5. Mock-mode isolation
@@ -169,7 +237,11 @@ Enforced by construction:
 1. `MockDestinationAdapter` forces `profile.mock = true` even when handed a production profile.
    `mockProfile(id)` copies the honest profile and flips the flag; the real profiles keep
    `mock: undefined` and a test asserts it.
-2. Every mock ingest is a `.livetap.local` address (`rtmp://mock.<platform>.livetap.local/live`),
+2. Every mock ingest is a `.invalid` address (`rtmp://mock.<platform>.livetap.invalid/live`),
+   reserved by RFC 2606 and guaranteed never to resolve. It used to be `.local`, which is real
+   mDNS namespace: `MockEngine.simulationRefusal` cannot tell an invented `.local` host from one
+   that genuinely answers on the local network, so it refused every demo destination for an
+   account platform at GO LIVE rather than risk a LIVE badge with no bytes on the wire,
    every watch URL is `https://mock.livetap.app/<platform>/<id>`, every `BroadcastHandle` carries
    `mock: true`, and every `ChatMessage` carries `mock: true`.
 3. `DestinationConfig.mock` and `DestinationSnapshot` flow through the orchestrator unchanged, so

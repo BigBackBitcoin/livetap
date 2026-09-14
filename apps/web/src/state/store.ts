@@ -32,6 +32,7 @@ import type {
   Moment,
   PlatformId,
   ProductionSnapshot,
+  ProductionState,
   QualityPreset,
 } from '@livetap/core';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
@@ -47,6 +48,7 @@ import type { EngineHost } from './engine.js';
 import { createRegistry } from './registry.js';
 import type { RegistryKind } from './registry.js';
 import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
+import { broadcastReality } from '../components/preflight.js';
 
 export type Mode = 'simple' | 'pro';
 
@@ -103,6 +105,15 @@ export interface AppState {
 
   goLive: GoLiveState;
   endingAt: number | null;
+  /**
+   * The creator has been told, once, that the next broadcast reaches real accounts.
+   *
+   * Persisted, because it is a fact about the person rather than about the session, and asking
+   * again every time is how a confirmation becomes a reflex that confirms nothing.
+   */
+  realBroadcastAck: boolean;
+  /** GO LIVE was pressed on a real broadcast that has not been acknowledged yet. */
+  pendingConfirm: boolean;
   micMuted: boolean;
   screenSharing: boolean;
 
@@ -148,7 +159,11 @@ export interface AppState {
 
   startCountdown(): void;
   cancelCountdown(): void;
+  /** Acknowledge the real-broadcast warning and begin the countdown. */
+  confirmRealBroadcast(): void;
   commitGoLive(): Promise<void>;
+  /** Abandon a start that is still in STARTING, before anything is live. */
+  cancelStart(): Promise<void>;
   requestEnd(): void;
   undoEnd(): void;
   confirmEnd(): Promise<void>;
@@ -188,6 +203,16 @@ interface Runtime {
    * the broadcast keeps running with no way to stop it from where they now are.
    */
   graceTimer: ReturnType<typeof setTimeout> | null;
+  /** Releases the GO LIVE button if a platform call hangs. Never touches the broadcast. */
+  startTimer: ReturnType<typeof setTimeout> | null;
+  /**
+   * The in-flight `goLive()`, so a cancel can outlive the start it is cancelling.
+   *
+   * `BroadcastOrchestrator.goLive` sets the production LIVE when its own work finishes, and it
+   * does not re-check whether a stop landed while it was in flight. Stopping once during STARTING
+   * therefore stops what is already up and then watches the start bring it back.
+   */
+  starting: Promise<unknown> | null;
 }
 
 let seq = 0;
@@ -217,6 +242,39 @@ const DEMO_CONNECT_DELAY_MS = 800;
  * tick — which is the entire point of the demo (PRODUCT_REVIEW P2-11).
  */
 const DEMO_OUTAGE_MS = 4000;
+
+/**
+ * The grace period between tapping END and the stream actually ending (PRODUCT_SPEC §4.3).
+ *
+ * The timer that runs it lives on the runtime below rather than in a screen's effect. A stop
+ * owned by a React effect is cancelled by unmounting that screen, and the measurement was
+ * unambiguous: press END, tap Destinations, and twelve seconds later both destinations still
+ * read Live with `goLive` still `'live'`. The stop has to outlive the screen that asked for it.
+ */
+export const END_GRACE_MS = 5000;
+
+/**
+ * The in-button countdown before anything reaches a platform.
+ *
+ * Three seconds for a demo, because nothing leaves the machine and the pause is only a chance to
+ * change your mind. Five for a real broadcast, matching the END grace exactly: the same amount of
+ * time to stop a stream starting as to stop one ending, with the same activate-to-cancel gesture
+ * in the same control. There is still no modal - §4.3's reasoning has not changed, and a dialog
+ * over the preview at the moment of going live is the worst possible time to read.
+ */
+export const DEMO_COUNTDOWN_SECONDS = 3;
+export const REAL_COUNTDOWN_SECONDS = 5;
+
+/**
+ * How long `commitGoLive` waits for the orchestrator before it gives the button back.
+ *
+ * `goLive` used to be set to `'starting'` and only cleared after `orchestrator.goLive()`
+ * resolved, so a platform API that never answered left the one dominant control spinning with
+ * no way out. The orchestrator's own work is unaffected by this: the timeout releases the
+ * button, never the broadcast, and `mirror()` reconciles the button back to whatever the machine
+ * actually did the moment it says so.
+ */
+const START_BUTTON_TIMEOUT_MS = 30_000;
 
 function markLive(live: boolean): void {
   try {
@@ -255,6 +313,28 @@ function engineEmitter(runtime: Runtime | null): EngineEmitter | null {
   return typeof candidate?.emit === 'function' ? candidate : null;
 }
 
+/**
+ * What the one dominant control should say, given what the machine is actually doing.
+ *
+ * `goLive` used to be set only by the actions that drove it, so any transition the orchestrator
+ * made on its own - every destination failing, a desktop shell disappearing, a stop that came
+ * from somewhere other than the button - left the button describing a broadcast that had ended.
+ * The two states the machine has no opinion about are the two that exist before it is involved:
+ * a countdown and a start that has been asked for but not yet reported.
+ */
+export function reconcileGoLive(state: ProductionState, current: GoLiveState): GoLiveState {
+  switch (state) {
+    case 'LIVE':
+      return 'live';
+    case 'STARTING':
+      return 'starting';
+    case 'STOPPING':
+      return 'stopping';
+    default:
+      return current === 'countdown' || current === 'starting' ? current : 'idle';
+  }
+}
+
 const EMPTY_PRODUCTION: ProductionSnapshot = {
   state: 'IDLE',
   activeMomentId: null,
@@ -288,15 +368,38 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       });
     };
 
+    /** Cancel a scheduled END. Called by anything that makes the scheduled stop wrong. */
+    const clearGrace = (): void => {
+      if (runtime?.graceTimer) clearTimeout(runtime.graceTimer);
+      if (runtime) runtime.graceTimer = null;
+    };
+
+    const clearStartTimer = (): void => {
+      if (runtime?.startTimer) clearTimeout(runtime.startTimer);
+      if (runtime) runtime.startTimer = null;
+    };
+
     const mirror = (): void => {
       const r = runtime;
       if (!r) return;
       const production = r.orchestrator.getProduction();
       markLive(production.state === 'LIVE');
+      const previous = get().goLive;
+      const goLive = reconcileGoLive(production.state, previous);
+      /*
+       * A scheduled END only means anything while there is something to end. If the production
+       * left LIVE by itself - every destination failed, the encoder died, the desktop shell went
+       * away - the countdown would otherwise keep ticking towards a stop of nothing, over a bar
+       * that says "Ending in 3" about a broadcast that has already stopped.
+       */
+      const stillEnding = get().endingAt !== null && production.state === 'LIVE';
+      if (!stillEnding) clearGrace();
       set({
         production,
         destinations: r.orchestrator.listDestinations(),
         moments: [...r.orchestrator.moments],
+        goLive,
+        endingAt: stillEnding ? get().endingAt : null,
       });
     };
 
@@ -348,6 +451,8 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
 
       goLive: 'idle',
       endingAt: null,
+      realBroadcastAck: persist.read<boolean>(persist.KEYS.realBroadcastAck, false),
+      pendingConfirm: false,
       micMuted: false,
       screenSharing: false,
 
@@ -376,7 +481,16 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
             recording: { ...DEFAULT_PRODUCTION_SETTINGS.recording, enabled: settings.recordEveryStream },
           },
         });
-        runtime = { orchestrator, engine, mockMode, offs: [], recordingId: null, graceTimer: null };
+        runtime = {
+          orchestrator,
+          engine,
+          mockMode,
+          offs: [],
+          recordingId: null,
+          graceTimer: null,
+          startTimer: null,
+          starting: null,
+        };
 
         runtime.offs.push(
           orchestrator.on('destination', () => {
@@ -516,7 +630,14 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       },
 
       setAspect(aspect: AspectRatio): void {
-        if (get().production.state === 'LIVE') return;
+        /*
+         * Locked from the moment a start begins, not from the moment it succeeds. Platforms are
+         * told the format when the broadcast object is created, which happens in STARTING, and
+         * STOPPING is still sending frames - so `=== 'LIVE'` left two windows in which the shape
+         * could be changed under a stream that had already committed to the old one.
+         */
+        const state = get().production.state;
+        if (state !== 'IDLE' && state !== 'PREVIEW') return;
         applySettings({ aspect });
         set({ aspect });
         void runtime?.orchestrator.startPreview();
@@ -742,36 +863,120 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
 
       startCountdown(): void {
         if (get().goLive !== 'idle') return;
-        set({ goLive: 'countdown' });
+        /*
+         * §37: a real broadcast says so before it starts, once. The countdown alone is the right
+         * confirmation for every broadcast after that - it is cancellable, it is in the control
+         * the creator is already looking at, and it costs nothing to ignore - but the FIRST time
+         * a creator's own accounts are on the line they are told in words, and have to answer.
+         * Which destinations are real is read from the adapters actually in use, never from a
+         * build flag: `addCustomDestination` sets `mock: false` regardless of demo mode, so the
+         * config alone would call a simulated RTMP push a real broadcast.
+         */
+        const s = get();
+        const reality = broadcastReality(s.destinations, s.adapterKind, s.engineHost);
+        if (reality.real.length > 0 && !s.realBroadcastAck) {
+          set({ pendingConfirm: true });
+          return;
+        }
+        set({ goLive: 'countdown', pendingConfirm: false });
       },
 
       cancelCountdown(): void {
-        if (get().goLive !== 'countdown') return;
-        set({ goLive: 'idle' });
+        const state = get();
+        if (state.goLive !== 'countdown' && !state.pendingConfirm) return;
+        set({ goLive: 'idle', pendingConfirm: false });
+      },
+
+      confirmRealBroadcast(): void {
+        if (!get().pendingConfirm) return;
+        persist.write(persist.KEYS.realBroadcastAck, true);
+        set({ realBroadcastAck: true, pendingConfirm: false, goLive: 'countdown' });
       },
 
       async commitGoLive(): Promise<void> {
         const r = runtime;
         if (!r) return;
-        set({ goLive: 'starting' });
-        await r.orchestrator.goLive();
-        mirror();
-        const state = r.orchestrator.getProduction().state;
-        set({ goLive: state === 'LIVE' ? 'live' : 'idle' });
+        set({ goLive: 'starting', pendingConfirm: false });
+        clearStartTimer();
+        r.startTimer = setTimeout(() => {
+          if (runtime) runtime.startTimer = null;
+          // The machine is still working; only the button is handed back, and `mirror()` will
+          // correct it the moment the orchestrator reports what actually happened.
+          if (get().goLive === 'starting') mirror();
+        }, START_BUTTON_TIMEOUT_MS);
+        const started = r.orchestrator.goLive();
+        r.starting = started;
+        try {
+          await started;
+        } finally {
+          if (r.starting === started) r.starting = null;
+          clearStartTimer();
+          mirror();
+        }
       },
 
+      /**
+       * Abandon a start that has not finished.
+       *
+       * `BroadcastOrchestrator.stop()` already accepts STARTING, and a destination's own state
+       * machine has `STARTING -> STOP -> STOPPING`, so this is the machine's own path rather than
+       * a special case. Before it existed, the seconds in which broadcast objects are created on
+       * the platforms were the seconds with no way out at all.
+       */
+      async cancelStart(): Promise<void> {
+        const r = runtime;
+        if (!r) return;
+        clearGrace();
+        clearStartTimer();
+        set({ goLive: 'stopping', endingAt: null });
+        const inFlight = r.starting;
+        try {
+          await r.orchestrator.stop();
+          if (inFlight) {
+            /*
+             * Stop again once the start has finished committing. Measured: without this the
+             * production came back LIVE a few milliseconds after the cancel, because `goLive()`
+             * ends by setting LIVE unconditionally. The second stop is a no-op when the first
+             * one won the race, and it is the whole cancel when it did not.
+             */
+            await inFlight.catch(() => undefined);
+            await r.orchestrator.stop();
+          }
+        } finally {
+          mirror();
+          set({ goLive: 'idle' });
+        }
+      },
+
+      /**
+       * Schedule the stop, and own the schedule.
+       *
+       * The timer is on the runtime, so navigating away from Studio mid-grace cannot cancel it.
+       * That was P0-1 and it is the worst defect this screen had: the one control that ends a
+       * broadcast was owned by the one screen a user leaves to go and look at something else.
+       */
       requestEnd(): void {
         if (get().goLive !== 'live') return;
+        const r = runtime;
+        if (!r) return;
+        clearGrace();
         set({ endingAt: now() });
+        r.graceTimer = setTimeout(() => {
+          if (runtime) runtime.graceTimer = null;
+          void get().confirmEnd();
+        }, END_GRACE_MS);
       },
 
       undoEnd(): void {
+        clearGrace();
         set({ endingAt: null });
       },
 
       async confirmEnd(): Promise<void> {
         const r = runtime;
         if (!r) return;
+        clearGrace();
+        clearStartTimer();
         set({ goLive: 'stopping', endingAt: null });
         // Capture the recording before the engine tears down, so the web build has a file.
         const engine = r.engine as {
@@ -904,6 +1109,8 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         set({
           intent: null,
           onboardingDone: false,
+          realBroadcastAck: false,
+          pendingConfirm: false,
           mode: 'simple',
           quality: DEFAULT_SETTINGS.quality,
           recordEveryStream: DEFAULT_SETTINGS.recordEveryStream,

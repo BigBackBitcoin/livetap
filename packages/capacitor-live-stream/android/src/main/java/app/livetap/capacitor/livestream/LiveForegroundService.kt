@@ -43,8 +43,11 @@ import androidx.core.app.ServiceCompat
  *   `getMediaProjection(resultCode, data)` be called. The consent Intent is single-use — caching
  *   and replaying it throws. Screen capture is post-MVP; the plumbing is marked below.
  *
- * VERIFICATION: UNVERIFIED. There is no Android SDK, emulator or device on the build host, so
- * none of this has been compiled or run. See docs/architecture/MOBILE_ARCHITECTURE.md.
+ * VERIFICATION: this class COMPILES (Android SDK 36 + JDK 21 are present on the build host) and
+ * ships in the debug APK's dex, and the manifest merger's output is asserted against. It has never
+ * been RUN: there is no emulator image and no nested virtualisation here, so the notification, its
+ * "End broadcast" action and the Android 14+ startForeground type check are owner-hardware steps in
+ * docs/release/ANDROID_MANUAL_TEST.md. See docs/architecture/MOBILE_ARCHITECTURE.md.
  */
 class LiveForegroundService : Service() {
 
@@ -55,6 +58,12 @@ class LiveForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                // End the BROADCAST, then the service. Stopping only the service used to leave every
+                // GenericStream encoding with an open RTMP socket and no foreground service, which
+                // on Android 14+ means the push dies at a moment the OS picks, with nothing reaching
+                // JavaScript and the destination card still reading LIVE. onStartCommand runs on the
+                // main thread, which is where the encoder teardown has to happen anyway.
+                onStopRequested?.invoke()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -178,6 +187,19 @@ class LiveForegroundService : Service() {
         private const val MAX_BROADCAST_MS = 6L * 60L * 60L * 1000L
 
         const val ACTION_STOP = "app.livetap.capacitor.livestream.action.STOP_BROADCAST"
+
+        /**
+         * How the notification's "End broadcast" action reaches the encoder.
+         *
+         * A field rather than a bound Service or a LocalBroadcast because the service and the plugin
+         * are the same process and the same main thread, and the alternatives both add a round trip
+         * the user would feel: binding is asynchronous, and a broadcast is queued. LiveStreamPlugin
+         * installs this in `load()` and clears it in `handleOnDestroy()`, so there is exactly one
+         * owner and it is never a stale one.
+         */
+        @Volatile
+        @JvmStatic
+        var onStopRequested: (() -> Unit)? = null
         const val EXTRA_WITH_SCREEN = "withScreen"
         const val EXTRA_TITLE = "title"
         const val EXTRA_DETAIL = "detail"

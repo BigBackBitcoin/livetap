@@ -2,13 +2,14 @@ import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { Badge, Button, Card, Sheet, StatusChip, Toggle } from '@livetap/ui';
 import { PLATFORM_PROFILES } from '@livetap/adapters';
-import type { PlatformId } from '@livetap/core';
+import { isActiveState, type AccountSummary, type PlatformId } from '@livetap/core';
 import { chipLabel, statusText } from '../components/DestinationChips.js';
 import { DestinationErrorCard, NoticeCards } from '../components/NoticeCards.js';
 import { StreamKeyForm } from '../components/StreamKeyForm.js';
 import { ProDestinationLine, ProPlatformNotes } from './pro/ProDestinationLine.js';
 import { COPY } from '../lib/copy.js';
 import { PLATFORM_ORDER, platformStatus } from '../lib/platformStatus.js';
+import { beginAuth, missingScopes } from '../state/oauthFlow.js';
 import { useAppStore } from '../state/store.js';
 
 /**
@@ -35,12 +36,60 @@ export function Destinations(): ReactElement {
   const addCustom = useAppStore((s) => s.addCustomDestination);
   const setEnabled = useAppStore((s) => s.setDestinationEnabled);
   const remove = useAppStore((s) => s.removeDestination);
+  const disconnect = useAppStore((s) => s.disconnect);
   const live = useAppStore((s) => s.production.state === 'LIVE');
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [keyFlow, setKeyFlow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
+  const [signInNote, setSignInNote] = useState<{ what: string; why: string; youCan: string } | null>(null);
+
+  /*
+   * Tapping a platform is the whole product's first promise, and what it does depends on what
+   * this build actually is. In mock mode it makes a simulated destination, which is honest
+   * because the sheet says DEMO on the row. On a real build it opens a real browser, and on
+   * desktop the whole sign-in finishes before this function returns, which is why the
+   * destination is only created after the account exists.
+   */
+  const connect = async (platform: PlatformId): Promise<void> => {
+    setSignInNote(null);
+    if (mockMode) {
+      await connectPlatform(platform);
+      return;
+    }
+    setBusy(true);
+    try {
+      const outcome = await beginAuth(platform);
+      if (outcome.kind === 'connected') {
+        await connectPlatform(platform);
+        return;
+      }
+      // 'redirected' means this page is on its way to the platform; there is nothing left to do
+      // here and anything rendered now would be torn down mid-navigation.
+      if (outcome.kind === 'redirected') return;
+      if (outcome.kind === 'unavailable') {
+        setSignInNote({
+          what: `LIVETAP cannot sign you in to ${PLATFORM_PROFILES[platform].displayName} yet.`,
+          why: outcome.reason,
+          youCan: 'You can still add it as a destination you paste a stream key into.',
+        });
+        return;
+      }
+      if (outcome.kind === 'denied') {
+        setSignInNote({
+          what: `${PLATFORM_PROFILES[platform].displayName} did not sign you in.`,
+          why: outcome.reason,
+          youCan: 'Nothing was saved. Tap it again when you are ready.',
+        });
+        return;
+      }
+      setSignInNote({ what: outcome.what, why: outcome.why, youCan: outcome.youCan });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   /*
    * Which rows of the add sheet are demos is a fact about this build, not a label: in a demo
@@ -65,6 +114,16 @@ export function Destinations(): ReactElement {
 
       <NoticeCards />
 
+      {signInNote ? (
+        <Card title={signInNote.what}>
+          <p>{signInNote.why}</p>
+          <p>{signInNote.youCan}</p>
+          <Button variant="ghost" size="sm" onClick={() => setSignInNote(null)}>
+            Got it
+          </Button>
+        </Card>
+      ) : null}
+
       {destinations.length === 0 ? (
         <Card title="No destinations yet">
           <p>
@@ -80,6 +139,13 @@ export function Destinations(): ReactElement {
           {destinations.map((snap) => {
             const profile = PLATFORM_PROFILES[snap.config.platform];
             const isLive = snap.state === 'LIVE' || snap.state === 'DEGRADED';
+            /*
+             * A destination in an active state must never be removable from the next stream by a
+             * toggle: switching it off filtered it out of Studio, which took its stop button with
+             * it, while it carried on broadcasting. The destination list is where you turn things
+             * on and off between streams; while one is running, the only control is stop.
+             */
+            const active = isActiveState(snap.state);
             return (
               <li key={snap.config.id}>
                 <Card
@@ -93,12 +159,14 @@ export function Destinations(): ReactElement {
                   actions={
                     <Toggle
                       pressed={snap.config.enabled}
+                      disabled={active}
                       onPressedChange={(next) => setEnabled(snap.config.id, next)}
                     >
                       In your next stream
                     </Toggle>
                   }
                 >
+                  <AccountLine account={snap.account} platform={snap.config.platform} />
                   <StatusChip
                     state={snap.state}
                     label={chipLabel(snap.state)}
@@ -107,6 +175,12 @@ export function Destinations(): ReactElement {
                   <p className="lt-destcard__meta">
                     {`${snap.config.aspectRatio} · up to ${profile.recommended.maxHeight}p${profile.recommended.maxFps}`}
                   </p>
+                  {active ? (
+                    <p className="lt-destcard__meta">
+                      This destination is part of the stream that is running now. Stop it from
+                      Studio to change whether it joins the next one.
+                    </p>
+                  ) : null}
                   {mode === 'pro' ? (
                     <>
                       <ProDestinationLine config={snap.config} />
@@ -143,15 +217,53 @@ export function Destinations(): ReactElement {
                           Keep
                         </Button>
                       </>
+                    ) : confirmDisconnect === snap.config.id ? (
+                      <>
+                        <p>
+                          {`Sign ${snap.account?.accountLabel ?? profile.displayName} out? LIVETAP tells ${profile.displayName} to forget it, deletes what it kept on this device, and leaves the destination here so you can sign in again.`}
+                        </p>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            void disconnect(snap.config.id);
+                            setConfirmDisconnect(null);
+                          }}
+                        >
+                          Sign out
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setConfirmDisconnect(null)}>
+                          Stay signed in
+                        </Button>
+                      </>
                     ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={isLive}
-                        onClick={() => setConfirmRemove(snap.config.id)}
-                      >
-                        {isLive ? 'Stop it first' : 'Remove'}
-                      </Button>
+                      <>
+                        {/*
+                          Two different things, split because they used to be one. Removing a
+                          destination deletes the row; disconnecting releases the account and
+                          leaves the row where the creator can see it and sign in again. Offering
+                          only "Remove" meant the only way to change accounts was to delete the
+                          destination and rebuild it.
+                        */}
+                        {snap.account ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isLive}
+                            onClick={() => setConfirmDisconnect(snap.config.id)}
+                          >
+                            {isLive ? 'Stop it first' : 'Disconnect account'}
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isLive}
+                          onClick={() => setConfirmRemove(snap.config.id)}
+                        >
+                          {isLive ? 'Stop it first' : 'Remove'}
+                        </Button>
+                      </>
                     )}
                   </div>
                 </Card>
@@ -208,8 +320,8 @@ export function Destinations(): ReactElement {
                     demo={false}
                     onPasteKey={() => setKeyFlow(true)}
                     onConnect={() => {
-                      void connectPlatform(id);
                       setSheetOpen(false);
+                      void connect(id);
                     }}
                   />
                 ))}
@@ -244,8 +356,8 @@ export function Destinations(): ReactElement {
                       demo
                       onPasteKey={() => setKeyFlow(true)}
                       onConnect={() => {
-                        void connectPlatform(id);
                         setSheetOpen(false);
+                        void connect(id);
                       }}
                     />
                   ))}
@@ -260,6 +372,43 @@ export function Destinations(): ReactElement {
           LIVETAP checks what it can and tells you before you try.
         </p>
       </Sheet>
+    </div>
+  );
+}
+
+/**
+ * Who this destination is connected as.
+ *
+ * This is the sentence the whole accounts workstream exists to print. Every adapter has always
+ * asked the platform who the token belongs to, and every adapter threw the answer away, so a
+ * creator with two YouTube channels saw two rows both reading "YouTube" and had no way to tell
+ * which one was about to broadcast.
+ *
+ * Absent for a destination with no account, which for a pasted stream key is the permanent and
+ * correct answer, so nothing is rendered rather than an empty "Connected as".
+ */
+export function AccountLine({
+  account,
+  platform,
+}: {
+  account?: AccountSummary;
+  platform: PlatformId;
+}): ReactElement | null {
+  if (!account?.accountLabel && !account?.accountId) return null;
+  const name = account.accountLabel ?? account.accountId ?? '';
+  const missing = missingScopes(platform, account.scopes);
+  return (
+    <div className="lt-account">
+      {account.avatarUrl ? (
+        <img className="lt-account__avatar" src={account.avatarUrl} alt="" width={32} height={32} />
+      ) : null}
+      <span className="lt-account__name">{name}</span>
+      <Badge tone="success">Connected</Badge>
+      {missing.length > 0 ? (
+        <span className="lt-account__note">
+          {`${PLATFORM_PROFILES[platform].displayName} held back one of the permissions LIVETAP asked for, so it may still ask you for a stream key.`}
+        </span>
+      ) : null}
     </div>
   );
 }

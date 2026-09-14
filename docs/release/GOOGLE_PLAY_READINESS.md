@@ -1,8 +1,15 @@
 # Google Play Readiness — audit of THIS repository
 
-Audited 2026-09-11 against the checklist in
+Audited 2026-09-11, re-audited 2026-09-14, against the checklist in
 [`docs/research/DESKTOP_MOBILE_STORE_RESEARCH.md`](../research/DESKTOP_MOBILE_STORE_RESEARCH.md) §3.4.
-Host: Windows Server 2022, Node 20.11, **no JDK, no Android SDK, no Play Console account, no device**.
+Host: Windows Server 2022, Node 20.11, portable **JDK 21** (`tools/jdk21`) and **Android SDK 36**
+(`tools/android-sdk`), **no Play Console account, no emulator image, no device**.
+
+What changed on 2026-09-14: the toolchain rows (G5, G7, G9) went from FAIL/UNVERIFIED to PASS,
+because `bash apps/mobile/scripts/build-android.sh` now builds a sideloadable debug APK on this host
+and `node apps/mobile/scripts/verify-apk.mjs` asserts 42 facts about it. Nothing about RUNTIME
+behaviour changed: there is still no device, and the owner journey that settles it is
+[`ANDROID_MANUAL_TEST.md`](./ANDROID_MANUAL_TEST.md).
 
 This audits **files that exist in this repository**. Where the research said "PASS (implementable)",
 this audit asks whether it *is* implemented here and answers **FAIL** when it is not.
@@ -45,11 +52,13 @@ real calendar risks.
 | G2 | Organization account: D-U-N-S + documents + Search Console verification | **BLOCKED_EXTERNAL_DEPENDENCY** | Only if an organization account is chosen. Developer-verification enforcement dates (reported 2026-09-30 in BR/ID/SG/TH, worldwide 2027) are **UNVERIFIED** secondary reporting — check `support.google.com/googleplay/android-developer/answer/10841920` before deciding, because the dates are close. |
 | G3 | `targetSdk 36` (required for new apps and updates from 2026-08-31) | **PASS (config)** | `apps/mobile/android/variables.gradle`: `targetSdkVersion = 36`. Raised from Capacitor 7's template default of 35. |
 | G4 | `compileSdk 36`, `minSdk` set deliberately | **PASS** | Same file: `compileSdkVersion = 36`, `minSdkVersion = 26`. 26 (not the template's 23, not the research's 24) because RootEncoder's Camera2 + MediaCodec surface path is predictable from 26 and notification channels — required for the live foreground-service notification — are mandatory from 26. |
-| G5 | Android SDK + JDK + Gradle installed on the dev host | **FAIL** | `java: command not found`. **Fixable locally and no Mac required** — this is the cheapest unblock in the whole mobile deliverable. |
+| G5 | Android SDK + JDK + Gradle installed on the dev host | **PASS** | Portable JDK 21 under `tools/jdk21` and Android SDK 36 under `tools/android-sdk`, neither installed system-wide. `apps/mobile/scripts/build-android.sh` finds them itself and writes `sdk.dir` into `android/local.properties` with forward slashes (a Java properties file treats a backslash as an escape). |
 | G6 | Node version adequate for the Capacitor CLI | **PASS** | Node 20.11 satisfies `@capacitor/cli@7`'s `node >= 20.0.0`. (Capacitor **8** needs Node ≥ 22.12 — the reason 7 is pinned. See `docs/architecture/MOBILE_ARCHITECTURE.md` §2.) |
-| G7 | AGP / Gradle / Kotlin combination valid for compileSdk 36 | **UNVERIFIED** | `android/build.gradle`: AGP **8.13.0**; wrapper **gradle-8.14.3-all.zip**; `kotlin_version = 2.2.20`; Kotlin Android plugin applied in `app/build.gradle` with `jvmTarget = 21`. Capacitor 7 ships AGP 8.7.2 / Gradle 8.11.1, which predate stable API 36. **This is the single highest-risk change in `apps/mobile` and the prime suspect for the first red CI build.** |
+| G7 | AGP / Gradle / Kotlin combination valid for compileSdk 36 | **PASS** | `android/build.gradle`: AGP **8.13.0**; wrapper **gradle-8.14.3-all.zip**; `kotlin_version = 2.2.20`; the plugin module applies the Kotlin Android plugin with `jvmTarget = 21`. Capacitor 7 ships AGP 8.7.2 / Gradle 8.11.1, so this was the highest-risk change in `apps/mobile`. It builds: `BUILD SUCCESSFUL`, `assembleDebug`, 334 tasks. |
 | G8 | Gradle project exists and Capacitor plugins are wired | **PASS** | `cap add android` generated the project; `capacitor.build.gradle` now lists **8** plugin modules, the eighth being `:livetap-capacitor-live-stream` (the `packages/capacitor-live-stream` workspace package). `cap sync` re-verified that manual edits to `variables.gradle`, `app/build.gradle`, `build.gradle` and `AndroidManifest.xml` all **survive** (md5-compared before/after), and that the sync is idempotent. LiveStream registration no longer depends on a hand-written `registerPlugin(...)` call in `MainActivity`: `cap sync` writes `{"pkg": "@livetap/capacitor-live-stream", "classpath": "app.livetap.capacitor.livestream.LiveStreamPlugin"}` into `app/src/main/assets/capacitor.plugins.json`, which `BridgeActivity` loads. Android was never broken here, but it now uses the same mechanism as iOS instead of a second, divergent one — see `docs/architecture/MOBILE_ARCHITECTURE.md` §3. |
-| G9 | `./gradlew assembleDebug` produces an APK | **UNVERIFIED** | Workflow step exists (`.github/workflows/mobile.yml`, `android` job, uploads `livetap-android-debug-apk`). Never executed. **This is the gate that resolves G7.** |
+| G9 | `./gradlew assembleDebug` produces an APK | **PASS** | `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`, 10,160,720 bytes, debug-signed by the SDK's debug key, `package: name='app.livetap.mobile'`, launchable `app.livetap.mobile.MainActivity`. Enough for `adb install -r`; not enough for Play, which needs G12. |
+| G9a | The APK contains what this repo claims it contains | **PASS** | `node apps/mobile/scripts/verify-apk.mjs`, 42/42. Reads the APK as a zip with Node's own zlib, so it needs no SDK: the three LIVETAP native classes plus `GenericStream`/`Camera2Source`/`MicrophoneSource`/`OpenGlView` in the dex, all nine `@PluginMethod` names, both plugins in `capacitor.plugins.json`, `webContentsDebuggingEnabled` on with no `server.url`, the app shell rather than the marketing page as the entry point, demo mode compiled out of the web bundle, and the merged manifest's permissions and foreground-service types. |
+| G9b | The APK actually streams | **UNVERIFIED** | No emulator image exists under `tools/android-sdk` and this VM has no nested virtualisation. Camera preview, permission dialogs, the foreground-service notification, real RTMP and thermals are all owner hardware: [`ANDROID_MANUAL_TEST.md`](./ANDROID_MANUAL_TEST.md). |
 | G10 | CI uses a JDK Capacitor 7 actually accepts | **PASS** | `setup-java` with **`java-version: '21'`**, not 17. `apps/mobile/android/app/capacitor.build.gradle` is generated by `cap sync` with `sourceCompatibility/targetCompatibility = VERSION_21` and is marked *do not edit*, so JDK 17 cannot compile this project. Documented inline in the workflow. |
 | G11 | AAB build for release | **BLOCKED_EXTERNAL_DEPENDENCY** | AAB is mandatory for new apps. `./gradlew bundleRelease` needs the upload keystore (G12). CI builds `assembleDebug` only and says so in a step log. |
 | G12 | Upload keystore created and held as a CI secret | **BLOCKED_EXTERNAL_DEPENDENCY** | Needs a JDK (`keytool`) — so G5 unblocks creating it — and then a Play Console account to register it. **No keystore and no signing config is committed**, and `app/build.gradle`'s release block carries a comment saying why. |
@@ -74,7 +83,7 @@ real calendar risks.
 | G26 | `density` in the activity's `configChanges` (Capacitor requirement) | **PASS** | Added to `MainActivity`'s `configChanges`, so the WebView does not reload on resize. |
 | G27 | Hardware features declared optional | **PASS** | `android.hardware.camera`, `.camera.autofocus`, `.microphone` all `required="false"`, so the app still installs on a device without them and `capabilities()` then reports `camera: false` honestly rather than the install silently failing. |
 | G28 | Prominent in-app disclosure **before** the system permission prompt | **FAIL** | The manifest and the plugin are correct, but nothing in this repository shows a disclosure screen first. Play policy requires the explanation to precede the prompt. `apps/mobile` contributes no UI — this is work for `@livetap/web`, and it is blocking. |
-| G29 | Deep link / App Link intent filters | **PASS (manifest)** / **BLOCKED_EXTERNAL_DEPENDENCY** (verification) | Both filters exist: custom scheme `livetap://oauth`, and an `autoVerify="true"` App Link on `https://livetap.example/oauth/callback`. **The host is a placeholder and must be replaced.** Verification needs `.well-known/assetlinks.json` carrying the SHA-256 of the **Play app signing key** (not the upload key) — that fingerprint only exists after G13, and getting it wrong is the classic cause of App Links silently falling back to the browser. |
+| G29 | Deep link / App Link intent filters | **PASS (custom scheme)** / **BLOCKED_EXTERNAL_DEPENDENCY** (App Link) | The custom scheme `livetap://oauth` exists and carries the OAuth callback today, paired with PKCE precisely because any installed app can claim a scheme. The `autoVerify="true"` App Link on the placeholder host `https://livetap.example/oauth/callback` has been **removed** (2026-09-14): verification fetches `.well-known/assetlinks.json` at install time, on a host nobody owns that fetch can only fail, and a failed verification costs an install-time round trip and leaves a permanently unverified domain the creator can see in the app's link settings. Restore the filter with the real hostname at G13, when the SHA-256 of the **Play app signing key** (not the upload key) exists to put in `assetlinks.json`. A comment in `AndroidManifest.xml` says exactly this. |
 | G30 | MediaProjection runtime ordering respected | **PASS (design + service branch)** / **UNVERIFIED (behaviour)** | Post-MVP, so no code path requests consent and `capabilities().screenCapture` is `false`. The rules are written into `LiveForegroundService`'s header comment so whoever builds it cannot miss them: consent Intent → `startForeground(MEDIA_PROJECTION)` → `getMediaProjection`; the consent Intent is single-use; one `MediaProjection` gets exactly one `createVirtualDisplay()`; a `MediaProjection.Callback` **must** be registered or `createVirtualDisplay()` throws; rotation uses `VirtualDisplay.resize()`/`setSurface()`, never a new projection. |
 | G31 | Android 16 orientation/resizability handled without the compat opt-out | **PASS** | No `PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY` anywhere (it dies at API 37) and no `android:screenOrientation` lock — for `targetSdk 36`, Android ignores it above `sw600dp` anyway. Policy is in `docs/architecture/MOBILE_ARCHITECTURE.md` §5: responsive window, vertical *composition*. |
 | G32 | Android 16 FGS / media-projection behaviour deltas reviewed | **UNVERIFIED** | The research could not cover `behavior-changes-all` and `changes/foreground-service-types` for 16. Read both before release. |
@@ -149,20 +158,26 @@ plugins — none of which phones home. There is no analytics SDK, no crash repor
 
 ## Appendix C — Ordered path to a first release
 
-1. **G5 — install a JDK 21 and the Android SDK on the build host.** Free, no Mac, unblocks G9, G12
-   and local iteration. Cheapest high-value action in the whole mobile deliverable.
-2. **G9 — run `./gradlew assembleDebug`** (locally or via the `android` CI job) and fix G7. Expect
-   the AGP 8.13 / Gradle 8.14.3 / Kotlin 2.2.20 bump on a Capacitor 7 template to be the first
-   thing that breaks.
-3. **G1 — Play Console account, choosing the type with G39 in mind.** An organization account skips
+1. ~~**G5**, install a JDK 21 and the Android SDK on the build host.~~ **Done** (2026-09-14):
+   portable copies under `tools/`, nothing installed system-wide.
+2. ~~**G9**, run `./gradlew assembleDebug` and fix G7.~~ **Done** (2026-09-14): the AGP 8.13 /
+   Gradle 8.14.3 / Kotlin 2.2.20 bump on a Capacitor 7 template was indeed the suspect, and it
+   builds.
+3. **Sideload the APK and walk [`ANDROID_MANUAL_TEST.md`](./ANDROID_MANUAL_TEST.md).** This is now
+   the highest-value action for Android: everything left unverified is a question only a handset
+   answers, and nothing below it is worth doing if the camera does not open.
+4. **G1, Play Console account, choosing the type with G39 in mind.** An organization account skips
    the 12-tester/14-day gate entirely; a personal account adds 3+ weeks to the calendar.
-4. **G28 — build the prominent-disclosure screen** (blocking product work in `@livetap/web`).
-5. **G35/G36/G37 — host the privacy policy, terms, and the deletion-information page**, with a real
+5. **G28, build the prominent-disclosure screen** (blocking product work in `@livetap/web`).
+6. **G35/G36/G37, host the privacy policy, terms, and the deletion-information page**, with a real
    support address.
-6. **G40 — in-app open-source licences screen**, and confirm whether RootEncoder ships a `NOTICE`.
-7. **Decide on `mediaProjection`** in the manifest for v1 (Appendix A).
-8. G12/G13 — keystore, then Play App Signing; then G11 `bundleRelease` and G29's `assetlinks.json`
-   with the **app signing key** fingerprint.
-9. G22, G33, G38 — Play Console declarations.
-10. G41 — device testing, including one large-screen/foldable device for G31; then G14 (R8) with
+7. **G40, in-app open-source licences screen**, and confirm whether RootEncoder ships a `NOTICE`.
+8. **Decide on `mediaProjection`** in the manifest for v1 (Appendix A).
+9. G12/G13, keystore, then Play App Signing; then G11 `bundleRelease` and G29's `assetlinks.json`
+   with the **app signing key** fingerprint. The `autoVerify` App Link filter on the placeholder
+   host `livetap.example` has been REMOVED from the manifest (a verification that can only fail
+   costs an install-time round trip and shows the creator a broken domain); restore it with the real
+   hostname at the same time as Play App Signing.
+10. G22, G33, G38, Play Console declarations.
+11. G41, device testing, including one large-screen/foldable device for G31; then G14 (R8) with
     the device to prove it.

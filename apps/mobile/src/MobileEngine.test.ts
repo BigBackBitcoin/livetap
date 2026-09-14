@@ -13,7 +13,10 @@ import { MobileEngine } from './MobileEngine.js';
 import type {
   DeviceLostEvent,
   LiveStreamCapabilities,
+  LiveStreamPermissionAlias,
+  LiveStreamPermissionStatus,
   LiveStreamPlugin,
+  RequestLiveStreamPermissionsOptions,
   SetMuteOptions,
   StartPreviewOptions,
   StartRecordingResult,
@@ -54,11 +57,40 @@ class FakeLiveStream implements LiveStreamPlugin {
     verification: 'SIMULATED',
   };
 
+  /** What the OS reports today. Tests move it to 'prompt' or 'denied' to drive the gate. */
+  permissions: LiveStreamPermissionStatus = {
+    camera: 'granted',
+    microphone: 'granted',
+    notifications: 'granted',
+  };
+  /** Aliases the fake creator refuses when the dialog appears. */
+  deny: LiveStreamPermissionAlias[] = [];
+
   private listeners = new Map<string, Array<(e: never) => void>>();
 
   async capabilities(): Promise<LiveStreamCapabilities> {
     this.calls.push({ method: 'capabilities' });
     return this.caps;
+  }
+
+  async checkPermissions(): Promise<LiveStreamPermissionStatus> {
+    this.calls.push({ method: 'checkPermissions' });
+    return { ...this.permissions };
+  }
+
+  async requestPermissions(
+    options?: RequestLiveStreamPermissionsOptions,
+  ): Promise<LiveStreamPermissionStatus> {
+    this.calls.push({ method: 'requestPermissions', args: options });
+    const asked: LiveStreamPermissionAlias[] = options?.permissions ?? [
+      'camera',
+      'microphone',
+      'notifications',
+    ];
+    for (const alias of asked) {
+      this.permissions[alias] = this.deny.includes(alias) ? 'denied' : 'granted';
+    }
+    return { ...this.permissions };
   }
 
   async startPreview(options: StartPreviewOptions): Promise<void> {
@@ -240,6 +272,61 @@ describe('MobileEngine', () => {
         { method: 'setMute', args: { muted: true } },
       ]),
     );
+  });
+
+  it('asks the OS for camera and microphone before it touches the camera', async () => {
+    const plugin = new FakeLiveStream();
+    plugin.permissions = { camera: 'prompt', microphone: 'prompt', notifications: 'prompt' };
+    const engine = new MobileEngine({ plugin });
+
+    await engine.startPreview(moment(), '9:16');
+
+    const methods = plugin.calls.map((c) => c.method);
+    expect(methods.indexOf('requestPermissions')).toBeLessThan(methods.indexOf('startPreview'));
+    expect(plugin.calls).toContainEqual({
+      method: 'requestPermissions',
+      args: { permissions: ['camera', 'microphone'] },
+    });
+  });
+
+  it('does not re-prompt when the OS has already granted capture', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = new MobileEngine({ plugin });
+
+    await engine.startPreview(moment(), '9:16');
+
+    expect(plugin.calls.filter((c) => c.method === 'requestPermissions')).toEqual([]);
+  });
+
+  it('refuses to preview when the creator denies the camera, and says which one', async () => {
+    const plugin = new FakeLiveStream();
+    plugin.permissions = { camera: 'prompt', microphone: 'prompt', notifications: 'prompt' };
+    plugin.deny = ['camera'];
+    const engine = new MobileEngine({ plugin });
+    const errors: Array<{ code: string }> = [];
+    engine.on('engineError', (e) => errors.push(e));
+
+    await expect(engine.startPreview(moment(), '9:16')).rejects.toThrow(/camera/);
+
+    expect(plugin.calls.map((c) => c.method)).not.toContain('startPreview');
+    expect(errors).toEqual([
+      { code: 'CAMERA_LOST', technical: 'permission not granted: camera' },
+    ]);
+  });
+
+  it('asks for notifications separately and previews anyway when they are refused', async () => {
+    const plugin = new FakeLiveStream();
+    plugin.permissions = { camera: 'prompt', microphone: 'prompt', notifications: 'prompt' };
+    plugin.deny = ['notifications'];
+    const engine = new MobileEngine({ plugin });
+
+    await engine.startPreview(moment(), '9:16');
+
+    expect(plugin.calls).toContainEqual({
+      method: 'requestPermissions',
+      args: { permissions: ['notifications'] },
+    });
+    expect(plugin.calls.map((c) => c.method)).toContain('startPreview');
   });
 
   it('switches camera when the Moment flips to a non-mirrored camera layer', async () => {

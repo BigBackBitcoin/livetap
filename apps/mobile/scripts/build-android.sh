@@ -44,12 +44,21 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 SDK_FWD="$(cd "$ANDROID_HOME" && pwd -W 2>/dev/null || echo "$ANDROID_HOME")"
 printf 'sdk.dir=%s\n' "$SDK_FWD" > apps/mobile/android/local.properties
 
-echo "[android] 1/3 building the web application"
-npm run build -w @livetap/web >/dev/null
+# VITE_LIVETAP_MOCK_MODE=false is the difference between an app and a demo of an app.
+# `envMockMode()` in apps/web/src/state/mockMode.ts treats anything other than the literal string
+# "false" as mock mode, and Vite constant-folds it at build time, so the previous bundle shipped a
+# hardcoded `return true`: simulated adapters, a simulated engine, and a phone that could never put
+# a byte on the wire however real the destination was.
+#
+# LIVETAP_ANDROID_VARIANT=debug is read by capacitor.config.ts to turn on
+# webContentsDebuggingEnabled for this variant only. A sideloaded alpha with a white screen and no
+# inspector cannot be diagnosed.
+echo "[android] 1/3 building the web application (real adapters, real engine)"
+VITE_LIVETAP_MOCK_MODE=false npm run build -w @livetap/web >/dev/null
 
 echo "[android] 2/3 staging it as the app bundle and syncing Capacitor"
 node apps/mobile/scripts/stage-web.mjs
-( cd apps/mobile && npx cap sync android )
+( cd apps/mobile && LIVETAP_ANDROID_VARIANT=debug npx cap sync android )
 
 echo "[android] 3/3 gradle assembleDebug"
 cd apps/mobile/android
@@ -63,5 +72,10 @@ if [ ! -f "$APK" ]; then
 fi
 echo "[android] APK: $APK ($(stat -c %s "$APK") bytes)"
 "$ANDROID_HOME/build-tools/36.0.0/aapt.exe" dump badging "$APK" 2>/dev/null |
-  grep -E "^package:|^launchable-activity:|^uses-permission: name='android.permission.(CAMERA|RECORD_AUDIO|INTERNET)'" || true
+  grep -E "^package:|^launchable-activity:|^uses-permission: name='android.permission.(CAMERA|RECORD_AUDIO|INTERNET|POST_NOTIFICATIONS)'" || true
+
+# Assert on the artifact, not on the build log. Every line below is a claim this repo makes about
+# the APK elsewhere, checked against the APK itself so it cannot quietly stop being true.
+node "$ROOT/apps/mobile/scripts/verify-apk.mjs" "$APK"
+
 echo "[android] install with: adb install -r \"$APK\""

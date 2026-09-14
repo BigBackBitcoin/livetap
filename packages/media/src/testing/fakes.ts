@@ -398,9 +398,24 @@ export class FakeMediaRecorder implements MediaRecorderLike {
     this.onstop?.();
   }
 
-  /** Push a chunk of `size` bytes as if a timeslice elapsed. */
-  emitChunk(size = 1024): void {
-    const blob = { size, type: this.mimeType } as unknown as Blob;
+  /**
+   * Push a chunk of `size` bytes as if a timeslice elapsed.
+   *
+   * The blob carries a real `arrayBuffer()` filled with `fill`, because the desktop engine turns
+   * every chunk into bytes and forwards it over IPC - a fake without those bytes would let a
+   * chunk-ordering bug pass unnoticed. `resolveAfter` defers the conversion so a test can prove
+   * that a slow chunk still reaches the bridge before the chunk behind it.
+   */
+  emitChunk(size = 1024, fill = 0, resolveAfter?: () => Promise<void>): void {
+    const bytes = new Uint8Array(size).fill(fill);
+    const blob = {
+      size,
+      type: this.mimeType,
+      arrayBuffer: async (): Promise<ArrayBuffer> => {
+        if (resolveAfter) await resolveAfter();
+        return bytes.buffer;
+      },
+    } as unknown as Blob;
     this.ondataavailable?.({ data: blob });
   }
 }

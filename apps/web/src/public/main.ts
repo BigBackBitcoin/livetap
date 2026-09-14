@@ -2075,11 +2075,15 @@ function watchActs(): void {
       if (probe >= top) here = act;
     }
     syncBandHits();
-    if (here.id === activeAct) return;
+    if (here.id === activeAct) {
+      settle();
+      return;
+    }
     const prev = activeAct;
     activeAct = here.id;
     document.body.dataset.ltAct = activeAct;
     syncBandHits();
+    settle();
     items.forEach((it) => it.classList.toggle('is-here', it.getAttribute('href') === `#${activeAct}`));
 
     if (activeAct === 'act-break') {
@@ -2098,6 +2102,21 @@ function watchActs(): void {
 
   const schedule = (): void => {
     if (!actRaf) actRaf = requestAnimationFrame(apply);
+  };
+
+  /*
+   * One more sync on the following frame.
+   *
+   * A band's opacity can change in the same frame this reads it: the engine writes the act's
+   * progress and the CSS derives opacity from it, and whether that lands before or after this
+   * callback depends on ordering the page does not control. Sampling once left a band at full
+   * opacity and not marked interactive, which is the same class of mismatch in the other
+   * direction: visible and untouchable rather than invisible and touchable.
+   */
+  const settle = (): void => {
+    requestAnimationFrame(() => {
+      syncBandHits();
+    });
   };
   addEventListener('scroll', schedule, { passive: true });
   addEventListener('resize', schedule, { passive: true });

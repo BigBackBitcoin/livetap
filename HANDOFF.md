@@ -1,8 +1,84 @@
-# HANDOFF — LIVETAP release candidate
+# HANDOFF — LIVETAP
 
-Status: FINAL for the autonomous portion (2026-09-12). Release audit: docs/release/RELEASE_AUDIT.md. Everything below is verified on the build host
-unless labelled otherwise; see IMPLEMENTATION_STATUS.md for per-area labels and BLOCKERS.md for the
-human dependency queue.
+Status: **REAL-WORLD PERSONAL ALPHA, in progress (2026-09-14).** Everything below is
+verified on the build host unless labelled otherwise; see IMPLEMENTATION_STATUS.md for
+per-area labels and BLOCKERS.md for the human dependency queue. Release audit:
+docs/release/RELEASE_AUDIT.md.
+
+## Read these first
+
+| Document | What it answers |
+|---|---|
+| `docs/qa/REAL_WORLD_ALPHA_READINESS.md` | the owner's completion gate, item by item, with what is proven, what is proven only against the local harness, and what waits on the owner |
+| `docs/OWNER_ACTIONS.md` | **everything the owner has to do, once, in order.** Do not ask them for things one at a time |
+| `docs/platforms/PLATFORM_AUTH_MATRIX.md` | why each platform is Level 1, 2, 3 or 4, and the exact console steps per platform |
+| `docs/qa/REAL_PLATFORM_TEST_MATRIX.md` | per destination: what has actually been run against the real platform (today: almost nothing, and it says so) |
+| `docs/qa/REAL_DEVICE_TEST_MATRIX.md` | per surface: Windows, macOS, Android, iOS |
+| `docs/security/REAL_CREDENTIAL_SECURITY.md` | where every token and stream key lives now that they are real, and which guarantees hold today |
+| `docs/architecture/REAL_BROADCAST_PIPELINE.md` | the path from a lens to a platform, on each surface |
+| `infra/dev-harness/broadcast/README.md` | the completion gate as one command, and how to read a failure |
+
+## The state of the broadcast, in two sentences
+
+A real two-destination broadcast was measured on 2026-09-14 at 12:43: real
+getUserMedia, real canvases, real MediaRecorder, real IPC, real ffmpeg, two real
+RTMP publishers at 1920x1080 and 1080x1920, a real mid-broadcast TCP kill that the
+survivor rode through, and a clean END. It does **not** reproduce on a rebuild, for
+the two reasons named below, and fixing them is the shortest path to a green gate.
+
+## Open cross-workstream handoffs, 2026-09-14
+
+These were found by running the gate. Each names the file, the mechanism and the
+reason it matters. None of them was edited by the workstream that found them.
+
+0. **A destination reports LIVE with no publisher behind it.** The most serious
+   item on this page, and the reason it is numbered zero. Build the desktop
+   renderer with `VITE_LIVETAP_MOCK_MODE=false`, add two Custom RTMP
+   destinations pointed at a running local receiver, tap GO LIVE and confirm.
+   Twelve seconds later the app reads `Live`, `0:07 · live on 2 of 2`, `You are
+   live on 2 destinations`, and both cards read `Custom RTMP · Live / Sending to
+   this destination` — while MediaMTX reports **zero publishers**. A LIVE badge
+   with no bytes on the wire is the worst defect this product can ship, and it
+   is invisible in every current build because mock mode is on everywhere and a
+   mock LIVE with no bytes is correct. Not diagnosed; reproduced twice.
+1. **`apps/web/src/state/registry.ts` — a Custom RTMP destination is simulated when
+   it does not need to be.** `createRegistry` returns `createMockAdapters()` for the
+   whole registry when `mockMode` is true, including `custom`. A Custom RTMP
+   destination needs no credentials and is the one path that works with nothing
+   configured anywhere, so simulating it makes the app's own "LIVETAP is not
+   broadcasting anywhere" banner accidentally true even when the creator pasted a
+   real server address. The right behaviour is already described in the file's own
+   comment for the other branch: register the real `CustomRtmpAdapter` (and the
+   paste-key profiles) on the mock branch too, and keep mock adapters only for the
+   account-based platforms.
+2. **`apps/desktop/package.json` — the desktop app builds in demo mode.**
+   `build:renderer` runs a bare `vite build` with `VITE_LIVETAP_MOCK_MODE` unset, and
+   mock mode is the default. The Android script already gets this right
+   (`apps/mobile/scripts/build-android.sh:57`).
+3. **The Studio screen points a returning creator at the wrong action.** Stream keys
+   are deliberately not persisted, so a destination restored from a previous session
+   comes back needing its key. The Destinations screen says exactly that ("is missing
+   something", "Paste a new key"). Studio says only "No destination is ready" and
+   offers "Add a destination", so the creator is told to create a second copy of a
+   destination they already have.
+4. **`packages/adapters/src/real/http.ts` — one redactor asymmetry, recorded not
+   hidden.** Its `redact` does not mask the `-authorization <token>` argv shape,
+   which `packages/core`'s `redactSecrets` does. That flag only ever appears in an
+   ffmpeg command line and never travels through the HTTP layer, so the split may be
+   correct; the secret-log test assigns the responsibility explicitly rather than
+   leaving it to be discovered. Decide and record which one owns it.
+5. **`apps/desktop/e2e/broadcast.mjs` cannot drive a non-demo build.** With mock
+   mode off, tapping GO LIVE raises a real-broadcast confirmation ("You are
+   about to broadcast to your connected accounts... This is not a demo",
+   **Yes, go live on 2** / **Not yet**). The driver taps `.lt-golive` and waits
+   for an in-button countdown, so it stops there and never reaches a broadcast.
+   Separately worth a decision: the plan called for that confirmation to be the
+   existing in-button countdown naming the real destinations, explicitly not a
+   modal over a live preview. What shipped is a confirmation surface.
+6. **Reconnect-and-return-to-LIVE is unverified end to end.** The gate asserts that
+   the surviving destination keeps climbing through a real TCP drop, which is the
+   half the product's promise rests on, and does not wait for the dropped destination
+   to republish and come back to LIVE.
 
 ## Where things are
 
@@ -25,8 +101,8 @@ human dependency queue.
 ## One-command human actions (from BLOCKERS.md)
 
 - B-001 `gh auth refresh -h github.com -s workflow` then move `.github/workflows-pending/*.yml` to `.github/workflows/` → CI, macOS/Ubuntu runner builds.
-- B-006 create OAuth apps and paste credentials into Vercel env → real YouTube/Twitch/Kick/Facebook go-live.
-- B-004/B-005 signing certificates and store accounts → signed desktop releases, TestFlight/Play testing.
+- B-006 **`docs/OWNER_ACTIONS.md`** is the whole list, in order, with every redirect URI and scope → real YouTube/Twitch/Kick/Facebook go-live. Start with Twitch: ten minutes, no review, no queue.
+- B-004/B-005c/B-005d signing certificates and store accounts → signed desktop releases, TestFlight/Play testing. **B-005's Android toolchain half is resolved**: `bash tools/acquire-android-toolchain.sh` installs a portable JDK 21 and Android SDK 36 and the debug APK builds. What remains is a physical phone (B-005b).
 - B-007 run `npm run verify:engine -w @livetap/desktop` on a machine with a GPU and camera → hardware PASS labels.
 
 ## Public experience (rebuilt 2026-09-14 for the first-time creator audit)

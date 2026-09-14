@@ -215,7 +215,8 @@ describe('BrowserEngine.capabilities', () => {
     expect(caps.rtmp).toBe(false);
     expect(caps.srt).toBe(false);
     expect(caps.whip).toBe(true);
-    expect(caps.maxFormats).toBe(1);
+    // One canvas and one encode per aspect ratio, so the browser can now carry all three.
+    expect(caps.maxFormats).toBe(3);
   });
 
   it('is UNVERIFIED until a real capture succeeds', async () => {
@@ -444,7 +445,7 @@ describe('BrowserEngine preview + capture', () => {
     track.end();
 
     expect(h.deviceLost).toEqual([{ kind: 'camera', deviceId: 'default' }]);
-    // Preview keeps running: same stream, compositor still looping, notice drawn on the canvas.
+    // Preview keeps running: same stream, compositor still looping, reason recorded for the UI.
     expect(h.engine.isPreviewing).toBe(true);
     expect(h.engine.previewStream).toBe(streamBefore);
     expect(h.engine.composer?.isRunning).toBe(true);
@@ -452,7 +453,8 @@ describe('BrowserEngine preview + capture', () => {
 
     h.canvas.calls.length = 0;
     h.engine.composer?.renderFrame(h.clock.now());
-    expect(h.canvas.texts()).toContain('Camera disconnected');
+    // The words stay out of the broadcast. The program is the production, never the diagnostics.
+    expect(h.canvas.texts()).not.toContain('Camera disconnected');
     // The dead camera layer is hidden rather than drawn as a frozen frame.
     expect(h.canvas.ops('drawImage')).toHaveLength(0);
   });

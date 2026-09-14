@@ -118,16 +118,25 @@ describe('MomentCompositor', () => {
     expect(scales).toHaveLength(1);
   });
 
-  it('draws a placeholder panel when a media source is not ready', () => {
+  it('draws a wordless plate, not a label, when a media source is not ready', () => {
     const { fake, compositor } = build({ resolver: () => null });
     compositor.setMoment(moment({ id: 'cam', layers: [cameraLayer('cam')] }), 0);
     compositor.renderFrame(0);
     expect(fake.ops('drawImage')).toHaveLength(0);
+    // The layer keeps its shape so the composition still reads, but "Waiting for source" is a
+    // sentence for the operator and must never reach a viewer.
+    expect(fake.ops('fill').length).toBeGreaterThan(0);
+    expect(fake.texts()).toEqual([]);
+  });
+
+  it('labels the placeholder only on an operator-overlay compositor', () => {
+    const { fake, compositor } = build({ resolver: () => null, operatorOverlay: true });
+    compositor.setMoment(moment({ id: 'cam', layers: [cameraLayer('cam')] }), 0);
+    compositor.renderFrame(0);
     expect(fake.texts()).toContain('Waiting for source');
   });
 
-  it('marks browser layers as needing the desktop app', () => {
-    const { fake, compositor } = build();
+  it('keeps "Requires the desktop app" out of the program frame for a browser layer', () => {
     const browser: Layer = {
       id: 'guest',
       kind: 'browser',
@@ -140,9 +149,15 @@ describe('MomentCompositor', () => {
       widthPx: 1280,
       heightPx: 720,
     };
-    compositor.setMoment(moment({ id: 'g', layers: [browser] }), 0);
-    compositor.renderFrame(0);
-    expect(fake.texts()).toContain('Requires the desktop app');
+    const program = build();
+    program.compositor.setMoment(moment({ id: 'g', layers: [browser] }), 0);
+    program.compositor.renderFrame(0);
+    expect(program.fake.texts()).toEqual([]);
+
+    const operator = build({ operatorOverlay: true });
+    operator.compositor.setMoment(moment({ id: 'g', layers: [browser] }), 0);
+    operator.compositor.renderFrame(0);
+    expect(operator.fake.texts()).toContain('Requires the desktop app');
   });
 
   it('wraps text and scales the font with the output height', () => {
@@ -225,8 +240,19 @@ describe('MomentCompositor', () => {
     expect(compositor.transitionState(10)).toBeNull();
   });
 
-  it('draws a notice banner over the program and clears it', () => {
+  it('records a notice without ever painting it into the program frame', () => {
     const { fake, compositor } = build();
+    compositor.setMoment(moment({ id: 'a', layers: [colorLayer('bg', '#000')] }), 0);
+    compositor.setNotice('Camera disconnected');
+    compositor.renderFrame(0);
+    // The canvas that goes on the wire carries the production and nothing else. The words are
+    // still available to the UI, which renders them in the app beside the preview.
+    expect(fake.texts()).not.toContain('Camera disconnected');
+    expect(compositor.getNotice()).toBe('Camera disconnected');
+  });
+
+  it('paints the notice only on an operator-overlay compositor, and clears it', () => {
+    const { fake, compositor } = build({ operatorOverlay: true });
     compositor.setMoment(moment({ id: 'a', layers: [colorLayer('bg', '#000')] }), 0);
     compositor.setNotice('Camera disconnected');
     compositor.renderFrame(0);
@@ -394,7 +420,8 @@ describe('MomentCompositor', () => {
     };
     compositor.setMoment(moment({ id: 'i', layers: [imageLayer] }), 0);
     compositor.renderFrame(0);
-    expect(fake.texts()).toContain('Loading...');
+    // "Loading..." is operator chrome: the program shows the plate, never the word.
+    expect(fake.texts()).toEqual([]);
     compositor.renderFrame(0);
     await Promise.resolve();
     await Promise.resolve();

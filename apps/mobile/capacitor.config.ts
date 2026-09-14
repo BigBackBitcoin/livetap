@@ -6,11 +6,11 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * Capacitor 7 (not 8) is pinned deliberately: `@capacitor/cli@8` declares `node >= 22` and the
  * build host runs Node 20.11. See docs/architecture/MOBILE_ARCHITECTURE.md §"Why Capacitor 7".
  *
- * `webDir` currently points at the placeholder `www/` because `apps/web/dist` does not exist on
- * this host yet (the web team builds it). Once `npm run build -w @livetap/web` produces
- * `apps/web/dist`, change `webDir` to `../web/dist` and delete `www/`. The CI workflow
- * (.github/workflows/mobile.yml) already builds the web app before `cap sync`, so the switch is a
- * one-line change in this file.
+ * `webDir` is `www/`, and it stays `www/`. It is NOT a placeholder for `../web/dist`: the web build
+ * emits the marketing page at `index.html` and the application at `app.html`, so pointing Capacitor
+ * at `dist` directly would make the phone app boot into the page that sells the phone app.
+ * `apps/mobile/scripts/stage-web.mjs` is what fills `www/`: it copies the build, drops the
+ * marketing files, and promotes `app.html` to `index.html`.
  */
 const config: CapacitorConfig = {
   appId: 'app.livetap.mobile',
@@ -41,8 +41,16 @@ const config: CapacitorConfig = {
     backgroundColor: '#0B0B0F',
   },
   android: {
-    // Debug-only: never enable in a release build.
-    webContentsDebuggingEnabled: false,
+    /*
+     * Remote debugging, for the debug variant only.
+     *
+     * A sideloaded alpha that boots to a white screen is undiagnosable without an inspector: there
+     * is no console, no network panel and no way to tell a bundle error from a permission refusal.
+     * `apps/mobile/scripts/build-android.sh` exports LIVETAP_ANDROID_VARIANT=debug before
+     * `cap sync`, so this is true for exactly the build that gets sideloaded and false for anything
+     * else, including a release build that forgets to think about it.
+     */
+    webContentsDebuggingEnabled: process.env.LIVETAP_ANDROID_VARIANT === 'debug',
     allowMixedContent: false,
     captureInput: true,
     backgroundColor: '#0B0B0F',

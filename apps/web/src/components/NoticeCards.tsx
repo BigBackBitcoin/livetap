@@ -1,4 +1,5 @@
-import type { ReactElement, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react';
 import { Banner, ErrorCard } from '@livetap/ui';
 import type { ErrorCardAction } from '@livetap/ui';
 import type { DestinationSnapshot, HumaneError } from '@livetap/core';
@@ -51,6 +52,50 @@ export function NoticeCards(): ReactElement | null {
       ))}
     </div>
   );
+}
+
+/**
+ * Hold a value steady for as long as a finger or a pointer is down on the thing showing it.
+ *
+ * This is the fix for the worst interaction defect an auditor found in this product: pressing
+ * "Stop this destination" inside a recovery card fired the control underneath it instead. The
+ * mechanism is ordinary and it is why it is so easy to ship: a card that renders from a live
+ * condition disappears the instant the machine fixes that condition, and if it disappears
+ * between pointerdown and pointerup the click event has no common target left except an
+ * ancestor, so it lands on whatever has reflowed into that spot. When the thing that reflows
+ * into that spot is a live control, the user has pressed something they never aimed at.
+ *
+ * Freezing the rendered value for the ~150 ms of a press is honest: the condition is restated a
+ * moment later, and the action the creator pressed is the action that runs. Release is deferred
+ * by one macrotask because `click` is dispatched after `pointerup` in the same turn, and
+ * releasing synchronously would put the unmount back in front of the click.
+ */
+export function useSteadyWhilePressed<T>(value: T): {
+  steady: T;
+  onPointerDown: (event: ReactPointerEvent) => void;
+} {
+  const [pressed, setPressed] = useState(false);
+  const frozen = useRef(value);
+  if (!pressed) frozen.current = value;
+
+  useEffect(() => {
+    if (!pressed) return undefined;
+    const release = (): void => {
+      window.setTimeout(() => setPressed(false), 0);
+    };
+    const cancel = (): void => setPressed(false);
+    document.addEventListener('pointerup', release);
+    document.addEventListener('pointercancel', cancel);
+    return () => {
+      document.removeEventListener('pointerup', release);
+      document.removeEventListener('pointercancel', cancel);
+    };
+  }, [pressed]);
+
+  return {
+    steady: pressed ? frozen.current : value,
+    onPointerDown: () => setPressed(true),
+  };
 }
 
 /**

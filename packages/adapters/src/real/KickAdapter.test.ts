@@ -75,6 +75,36 @@ describe('KickAdapter validate', () => {
     expect(fake.calls[0]?.headers['Authorization']).toBe('Bearer kick-access-token');
   });
 
+  /*
+   * Kick's consent screen has a tick box per permission, so "authorized successfully" and
+   * "granted streamkey:read" are two different facts. Reading the key anyway on a credential
+   * that records the scope as withheld is how a connect that looked fine fails at GO LIVE.
+   */
+  it('refuses the API stream key when the creator unticked streamkey:read', async () => {
+    const { adapter } = adapterWith(
+      [
+        {
+          match: '/public/v1/channels',
+          body: {
+            data: [
+              {
+                broadcaster_user_id: 777,
+                slug: 'adastreams',
+                stream: { url: 'rtmps://fa723fc1b171.global-contribute.live-video.net', key: 'sk_live_from_api' },
+              },
+            ],
+          },
+        },
+      ],
+      true,
+    );
+    const withheld = { ...credential, scopes: ['user:read', 'channel:read'] };
+    const result = await adapter.validate(config(), withheld);
+    expect(result.ok).toBe(true);
+    // The pasted ingest survives; the API's key is not used, so nothing silently changes target.
+    if (result.ok) expect(result.ingest).toEqual(ingest);
+  });
+
   it('requires a pasted stream key because Kick has no documented key endpoint', async () => {
     const { adapter } = adapterWith([
       { match: '/public/v1/channels', body: { data: [{ broadcaster_user_id: 777 }] } },

@@ -22,7 +22,7 @@ electron   38.8.6 (Chromium 140.0.7339.249)
 
 | # | Check | Verdict |
 |---|---|---|
-| a | MediaMTX in Docker | **EXTERNALLY BLOCKED** — fell back to `ffmpeg -listen 1` |
+| a | A real RTMP server | **CORRECTED 2026-09-14: PASS.** Docker was blocked; MediaMTX itself never was. A native Windows binary is present and has since accepted a real LIVETAP broadcast |
 | b1 | Hardware encoder probe (real 1-second encodes) | **PASS** |
 | b2 | One encode fanned out to 2 RTMP destinations + recording | **PASS** |
 | b3 | Encoder CPU at 1080p30 libx264 veryfast, 30 s | **PASS** (66.6 % of one core) |
@@ -42,7 +42,31 @@ electron   38.8.6 (Chromium 140.0.7339.249)
 
 ---
 
-## (a) MediaMTX — EXTERNALLY BLOCKED
+## (a) A real RTMP server
+
+> **Corrected 2026-09-14.** This section used to conclude that MediaMTX was
+> EXTERNALLY BLOCKED. That conclusion was wrong, and the mistake is worth
+> naming because it cost this project a substitute it did not need: what was
+> blocked was **Docker**, and MediaMTX was only ever reached for through
+> Docker. MediaMTX ships a **native Windows binary**. It now lives at
+> `tools/mediamtx/mediamtx.exe` (v1.21.0), it is what
+> `infra/dev-harness/ingest/` drives, and on 2026-09-14 at 12:43 it accepted
+> two simultaneous real RTMP publishers from the built LIVETAP desktop app at
+> 1920x1080 and 1080x1920 and recorded both to disk. See
+> `docs/qa/REAL_WORLD_ALPHA_READINESS.md`.
+>
+> The original Docker transcript is kept below unedited, because the Docker
+> finding itself was correct and is still recorded as BLOCKERS.md B-008 for the
+> relay's container packaging. Only the conclusion drawn from it was too broad.
+>
+> **One thing this correction does not fix, and it is a handoff.**
+> `apps/desktop/scripts/verify-engine.ts` still publishes into per-destination
+> `ffmpeg -listen 1` servers, with the port-1936 workaround the caveat below
+> describes. That file belongs to the desktop workstream. Pointing it at
+> MediaMTX would remove the workaround entirely, because one server accepts
+> every destination on its own path and accepts a reconnect on the same path.
+
+### The original Docker attempt, unedited
 
 ```
 $ docker run --rm -d --name livetap-mtx -p 1935:1935 -p 8889:8889 -p 8890:8890/udp -p 9997:9997 bluenviron/mediamtx:latest
@@ -87,7 +111,8 @@ ffmpeg -hide_banner -loglevel error -listen 1 -f flv -i rtmp://127.0.0.1:1936/li
 
 One caveat, recorded honestly: `-listen 1` accepts exactly **one** publisher and exits, so the
 re-add test (b5) needed a fresh listener on port 1936. MediaMTX would have accepted the reconnect on
-the same path. This is a limitation of the substitute, not of the engine.
+the same path. This is a limitation of the substitute, not of the engine — and, as the correction
+above records, a substitute that was never necessary.
 
 ---
 
@@ -293,7 +318,8 @@ ffprobe: h264 / High / 1920x1080 + aac / LC / 48000 Hz, mpegts, 9.59 s, 4,371,49
 
 The `streamid=publish:live/srt` form in the brief is MediaMTX's publish convention; FFmpeg's own SRT
 listener accepts and ignores it, so the parameter round-trips correctly but its *authorisation*
-effect is **UNVERIFIED** without MediaMTX.
+effect is **UNVERIFIED**: MediaMTX is available on this host now, and its SRT listener has not been
+turned on or driven.
 
 A measurement caveat worth recording: an initial run read **0 bytes** and looked like a failure. The
 receiving FFmpeg must probe a stream it joined mid-flight before it writes its first output byte, so

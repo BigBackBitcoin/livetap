@@ -18,10 +18,14 @@
  *   `capabilities().maxSimultaneousStreams` outputs are refused with `CONFIG_INVALID`; real
  *   multi-destination belongs behind a relay in LIVETAP CLOUD (ADR-009).
  *
- * Verification: UNVERIFIED. The mapping logic below is unit-tested against a fake plugin; the
- * native side behind it has never been compiled or run on this host.
+ * Verification: the mapping logic below is unit-tested against a fake plugin, including the
+ * permission gate, the aspect refusal and every event translation. The Android native side behind
+ * it compiles and ships in the debug APK's dex on this host but has never been RUN (no emulator
+ * image, no nested virtualisation, no handset); the iOS side has not been compiled at all. See
+ * docs/release/ANDROID_MANUAL_TEST.md.
  */
 import { TypedEmitter } from '@livetap/core';
+import { installVaultBridge } from '@livetap/capacitor-live-stream';
 import type {
   AspectRatio,
   EngineCapabilities,
@@ -39,6 +43,7 @@ import type {
   LiveStreamAspect,
   LiveStreamCamera,
   LiveStreamCapabilities,
+  LiveStreamPermissionStatus,
   LiveStreamPlugin,
   StreamStateEvent,
   ThermalEvent,
@@ -52,6 +57,14 @@ export interface MobileEngineOptions {
   /** Defaults to 'web' when Capacitor is not present (keeps unit tests free of a device). */
   platform?: MobilePlatform;
   now?: () => number;
+  /**
+   * Install the Keystore-backed `window.livetap.vault` bridge. Default true.
+   *
+   * Constructing the engine is the earliest hook this package owns that runs inside the WebView:
+   * `apps/web/src/state/engine.ts` builds it during store creation, before any destination exists
+   * and therefore before anything has a secret to keep. Set false in tests that assert on globals.
+   */
+  installVault?: boolean;
 }
 
 interface OutputSession {
@@ -101,6 +114,7 @@ export class MobileEngine implements MediaEngine {
   constructor(options: MobileEngineOptions = {}) {
     this.options = options;
     this.now = options.now ?? (() => Date.now());
+    if (options.installVault !== false) installVaultBridge();
   }
 
   // ---------------------------------------------------------------- capabilities
@@ -137,11 +151,62 @@ export class MobileEngine implements MediaEngine {
   async startPreview(moment: Moment, masterAspect: AspectRatio): Promise<void> {
     const plugin = await this.resolvePlugin();
     await this.subscribe(plugin);
+    await this.ensureCapturePermissions(plugin);
     this.masterAspect = masterAspect;
     this.camera = cameraFromMoment(moment) ?? this.camera;
     await plugin.startPreview({ camera: this.camera, aspect: ASPECTS[masterAspect] });
     await plugin.setMute({ muted: isMuted(moment) });
     this.previewing = true;
+  }
+
+  /**
+   * Ask for camera and microphone, and only then for notifications.
+   *
+   * Nothing on this surface works without the first two: every native method rejects until the OS
+   * has granted them, and before this ran the creator met a raw native rejection string on a fresh
+   * install instead of the system dialog. They are requested together and their refusal is thrown,
+   * because a broadcast with no camera is not a degraded broadcast, it is no broadcast.
+   *
+   * Notifications are asked for afterwards and best-effort. On Android 13+ the live notification is
+   * the only handle on a broadcast once the creator leaves the app, but a refusal costs the handle
+   * and not the bytes, so it must never stand between the creator and GO LIVE. On older Android and
+   * on iOS the alias can report `denied` on a device where the notification will appear anyway,
+   * which is another reason not to gate on it.
+   */
+  private async ensureCapturePermissions(plugin: LiveStreamPlugin): Promise<void> {
+    let status: LiveStreamPermissionStatus;
+    try {
+      status = await plugin.checkPermissions();
+    } catch {
+      // A plugin build without the permission methods (an old native binary against a new bundle)
+      // must not make the app unusable: let startPreview reject with the native reason instead.
+      return;
+    }
+
+    if (status.camera !== 'granted' || status.microphone !== 'granted') {
+      status = await plugin.requestPermissions({ permissions: ['camera', 'microphone'] });
+    }
+
+    const missing = (['camera', 'microphone'] as const).filter((k) => status[k] !== 'granted');
+    if (missing.length > 0) {
+      const code: ErrorCode = missing.includes('camera') ? 'CAMERA_LOST' : 'MIC_LOST';
+      this.emitter.emit('engineError', {
+        code,
+        technical: `permission not granted: ${missing.join(', ')}`,
+      });
+      throw new Error(
+        `LIVETAP needs ${missing.join(' and ')} access on this phone. ` +
+          'Grant it in Settings, then tap the preview again.',
+      );
+    }
+
+    if (status.notifications !== 'granted') {
+      try {
+        await plugin.requestPermissions({ permissions: ['notifications'] });
+      } catch {
+        // Best effort by design; see the note above.
+      }
+    }
   }
 
   async stopPreview(): Promise<void> {
@@ -170,6 +235,10 @@ export class MobileEngine implements MediaEngine {
   async start(req: EngineStartRequest): Promise<void> {
     const plugin = await this.resolvePlugin();
     await this.subscribe(plugin);
+    // GO LIVE can be reached without ever having opened the preview (a saved layout, a deep link),
+    // and the native layer rejects every call until capture is granted. Asking here as well costs
+    // one no-op check when the preview already asked.
+    await this.ensureCapturePermissions(plugin);
     this.formats = { ...req.formats };
     const master = this.formats[this.masterAspect];
     this.targetKbps = master ? master.videoKbps : 0;

@@ -166,9 +166,40 @@ export interface DestinationHealth {
   updatedAt: number;
 }
 
+/**
+ * The non-secret half of a connected account, safe for the UI and for persistence.
+ *
+ * This exists because the adapters have always fetched it and thrown it away: every `validate()`
+ * calls the platform's "who am I" endpoint and returns a CredentialRef the orchestrator keeps
+ * private, so the destination card could only ever show the platform's own name. A creator who
+ * connects two YouTube channels then sees two rows reading "YouTube" and has no way to tell which
+ * one is about to broadcast.
+ *
+ * Nothing here is a secret: no access token, no refresh token, no stream key. `scopes` is what the
+ * platform GRANTED, so the UI can say "LIVETAP cannot fetch your key, paste one" instead of
+ * failing at GO LIVE. `expiresAt` is when the authorization dies, which for a YouTube app still in
+ * Google's Testing status is seven days after consent, every time.
+ */
+export interface AccountSummary {
+  /** Channel id, user id, page id. Stable, non-secret, and never shown as the label. */
+  accountId?: string;
+  /** What the creator calls this account: channel title, Twitch login, Page name. */
+  accountLabel?: string;
+  avatarUrl?: string;
+  /** Scopes the platform granted. A missing scope is a capability LIVETAP must stop claiming. */
+  scopes?: string[];
+  /** Epoch ms at which this authorization stops working, when the platform says. */
+  expiresAt?: number;
+}
+
 export interface DestinationSnapshot {
   config: DestinationConfig;
   state: DestinationState;
+  /**
+   * Who this destination is connected as, once `validate()` has said. Absent means no account is
+   * attached, which for a paste-key or custom destination is the permanent and correct answer.
+   */
+  account?: AccountSummary;
   /** Humane error explaining the current FAILED/DEGRADED/RECONNECTING state. */
   error?: HumaneError;
   health?: DestinationHealth;

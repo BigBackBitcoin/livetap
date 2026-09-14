@@ -650,6 +650,10 @@ body {
   position: absolute;
   inset: 0;
   opacity: 0;
+  /* Decoration, and `aria-hidden` says so: what it draws is also stated in text. It covers the
+     whole picture, so without this it is hit-testable across the stage even at opacity 0, which
+     is the same invisible-blocker defect that made the wheel and the connect buttons dead. */
+  pointer-events: none;
   transition: opacity var(--lt-dur-3) var(--lt-ease-standard);
 }
 

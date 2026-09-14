@@ -23,6 +23,34 @@ describe('LoopbackOAuthServer', () => {
     }
   });
 
+  /*
+   * A provider compares redirect_uri as a STRING, so `http://localhost:5000/callback` and
+   * `http://127.0.0.1:5000/callback` are two different values however identically they resolve.
+   * Google requires the literal IP for an installed app; Kick's developer console registers the
+   * name, because its front end rewrites the first 127.0.0.1 it finds. Both spellings must be
+   * available, and the SOCKET must be bound to the loopback address either way.
+   */
+  it('spells the redirect the way the platform registered it, without moving the socket', async () => {
+    const server = new LoopbackOAuthServer();
+    try {
+      const named = await server.start({ host: 'localhost' });
+      expect(named.redirectUri).toBe(`http://localhost:${named.port}/callback`);
+      // The listener is still on the loopback IP: reachable at the name only because the name
+      // resolves there, never because anything was bound to a wider interface.
+      const answered = await get(`http://127.0.0.1:${named.port}/callback?state=${named.state}`);
+      expect(answered.status).toBe(200);
+
+      const numeric = await server.start({ host: '127.0.0.1' });
+      expect(numeric.redirectUri).toBe(`http://127.0.0.1:${numeric.port}/callback`);
+
+      // Anything that is not one of the two spellings falls back to the safe literal.
+      const odd = await server.start({ host: 'evil.example.com' as unknown as 'localhost' });
+      expect(odd.redirectUri).toBe(`http://127.0.0.1:${odd.port}/callback`);
+    } finally {
+      server.stop();
+    }
+  });
+
   it('generates a fresh, unpredictable state per flow', async () => {
     const server = new LoopbackOAuthServer();
     try {

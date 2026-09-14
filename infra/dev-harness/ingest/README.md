@@ -228,6 +228,7 @@ others beneath it. Common ones:
 | `LIVETAP_DEV_INGEST_API_PORT` | `9997` | something else already owns 9997 |
 | `LIVETAP_DEV_INGEST_PATH` | `live/dev` | default path for every script |
 | `LIVETAP_DEV_INGEST_MEDIAMTX` | `tools/mediamtx/mediamtx(.exe)` | a MediaMTX binary kept elsewhere |
+| `LIVETAP_DEV_INGEST_WHIP` | unset | set to `1` to also accept **WHIP** on `127.0.0.1:8889`. The browser surface cannot open an RTMP socket, so it publishes WHIP to a relay; this makes that leg provable here with the same control API and the same ffprobe evidence, without the relay VPS or Docker. Still loopback only: the WebRTC media port is pinned to `127.0.0.1:8189` and the ICE server list is empty, because a STUN lookup is an egress this harness must never make |
 
 Port overrides are passed to MediaMTX through its own `MTX_RTMPADDRESS` /
 `MTX_APIADDRESS` mechanism, so the YAML file and the scripts cannot end up

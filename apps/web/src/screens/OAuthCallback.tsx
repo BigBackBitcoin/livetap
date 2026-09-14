@@ -2,70 +2,44 @@ import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Link } from 'react-router';
 import { Card, Spinner } from '@livetap/ui';
-import { parseCallback } from '@livetap/adapters';
+import { PLATFORM_PROFILES } from '@livetap/adapters';
 import type { PlatformId } from '@livetap/core';
+import {
+  completeAuth,
+  missingScopes,
+  readPending,
+  resolveCallback,
+  PKCE_SESSION_KEY,
+} from '../state/oauthFlow.js';
+import type { PendingAuth, CallbackOutcome } from '../state/oauthFlow.js';
+import { useAppStore } from '../state/store.js';
 
-/** Where the PKCE verifier and the state live between opening the platform's page and coming back. */
-export const PKCE_SESSION_KEY = 'livetap.oauth.pending';
-
-export interface PendingAuth {
-  platform: PlatformId;
-  state: string;
-  codeVerifier?: string;
-  redirectUri: string;
-}
-
-export type CallbackOutcome =
-  | { kind: 'ok'; platform: PlatformId; code: string; codeVerifier?: string; redirectUri: string }
-  | { kind: 'denied'; reason: string }
-  | { kind: 'mismatch' }
-  | { kind: 'missing' };
-
-/**
- * Resolve a callback URL against the request we started.
- *
- * The `state` check is not a formality: without it, anyone who can make the user's browser open
- * this URL can trade an attacker's authorization code for a token bound to the user's session.
- * A mismatched or absent state is refused outright — never "tried anyway".
+/*
+ * Re-exported so this screen stays the one place a reader looks for "what happens when the
+ * platform sends the browser back", while the logic itself lives in `state/oauthFlow.ts` where
+ * the desktop and mobile surfaces can reach it without importing React.
  */
-export function resolveCallback(url: string, pending: PendingAuth | null): CallbackOutcome {
-  const parsed = parseCallback(url);
-  if (parsed.error) {
-    return { kind: 'denied', reason: parsed.errorDescription ?? parsed.error };
-  }
-  if (!pending) return { kind: 'missing' };
-  if (!parsed.state || parsed.state !== pending.state) return { kind: 'mismatch' };
-  if (!parsed.code) return { kind: 'missing' };
-  const outcome: CallbackOutcome = {
-    kind: 'ok',
-    platform: pending.platform,
-    code: parsed.code,
-    redirectUri: pending.redirectUri,
-  };
-  if (pending.codeVerifier) outcome.codeVerifier = pending.codeVerifier;
-  return outcome;
-}
-
-export function readPending(storage: Pick<Storage, 'getItem' | 'removeItem'> | null): PendingAuth | null {
-  if (!storage) return null;
-  try {
-    const raw = storage.getItem(PKCE_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PendingAuth;
-    return typeof parsed?.state === 'string' && typeof parsed?.platform === 'string' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
+export { PKCE_SESSION_KEY, readPending, resolveCallback };
+export type { PendingAuth, CallbackOutcome };
 
 type Status =
   | { kind: 'working' }
   | { kind: 'unconfigured' }
   | { kind: 'failed'; what: string; why: string; youCan: string }
-  | { kind: 'done'; platform: PlatformId };
+  | { kind: 'done'; platform: PlatformId; label: string; avatarUrl?: string; partial?: string };
 
+/**
+ * The last step of a sign-in, and the first moment the creator sees their own name.
+ *
+ * What this used to do: POST the code to the broker, check `response.ok`, drop the token set on
+ * the floor, and render "You are signed in. LIVETAP can now go live on youtube for you." Nothing
+ * was stored, no destination was created, and the claim was false in every particular. What it
+ * does now is exchange the code, store the token where that surface stores tokens, create the
+ * destination, let the adapter ask the platform who this is, and only then say anything.
+ */
 export function OAuthCallback(): ReactElement {
   const [status, setStatus] = useState<Status>({ kind: 'working' });
+  const connectPlatform = useAppStore((s) => s.connectPlatform);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,76 +56,69 @@ export function OAuthCallback(): ReactElement {
         return;
       }
 
-      const outcome = resolveCallback(window.location.href, pending);
-      if (outcome.kind === 'mismatch') {
-        if (!cancelled) {
-          setStatus({
-            kind: 'failed',
-            what: 'LIVETAP did not finish signing you in.',
-            why: 'The reply did not match the sign-in this device started, so it was refused.',
-            youCan: 'Start the sign-in again from Destinations.',
-          });
-        }
-        return;
-      }
+      const outcome = await completeAuth(window.location.href);
+      if (cancelled) return;
+
       if (outcome.kind === 'denied') {
-        if (!cancelled) {
-          setStatus({
-            kind: 'failed',
-            what: 'The platform did not sign you in.',
-            why: outcome.reason,
-            youCan: 'Try again from Destinations, or connect with a stream key instead.',
-          });
-        }
+        setStatus({
+          what: 'The platform did not sign you in.',
+          why: outcome.reason,
+          youCan: 'Try again from Destinations, or connect with a stream key instead.',
+          kind: 'failed',
+        });
         return;
       }
-      if (outcome.kind === 'missing') {
-        if (!cancelled) {
-          setStatus({
-            kind: 'failed',
-            what: 'LIVETAP did not finish signing you in.',
-            why: 'The reply from the platform had no sign-in code in it.',
-            youCan: 'Start the sign-in again from Destinations.',
-          });
-        }
+      if (outcome.kind === 'failed') {
+        setStatus({ kind: 'failed', what: outcome.what, why: outcome.why, youCan: outcome.youCan });
+        return;
+      }
+      if (outcome.kind !== 'connected') {
+        setStatus({ kind: 'unconfigured' });
         return;
       }
 
-      storage?.removeItem(PKCE_SESSION_KEY);
-      try {
-        const body: Record<string, string> = {
-          platform: outcome.platform,
-          code: outcome.code,
-          redirectUri: outcome.redirectUri,
-        };
-        if (outcome.codeVerifier) body.codeVerifier = outcome.codeVerifier;
-        const response = await fetch('/api/oauth/token', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (!response.ok) {
-          if (!cancelled) setStatus({ kind: 'unconfigured' });
-          return;
-        }
-        if (!cancelled) setStatus({ kind: 'done', platform: outcome.platform });
-      } catch {
-        if (!cancelled) setStatus({ kind: 'unconfigured' });
+      /*
+       * The token is stored, so the destination can now be created and connected: `connect()`
+       * calls the adapter's `validate()`, which asks the platform who this token belongs to and
+       * comes back with the channel name and picture. That answer is what the card shows, and it
+       * is why this screen waits for it rather than declaring success on the exchange alone.
+       */
+      const snapshot = await connectPlatform(outcome.platform);
+      if (cancelled) return;
+
+      const profile = PLATFORM_PROFILES[outcome.platform];
+      const account = snapshot?.account ?? outcome.account;
+      const missing = missingScopes(outcome.platform, account.scopes);
+      const done: Status = {
+        kind: 'done',
+        platform: outcome.platform,
+        label: account.accountLabel ?? profile.displayName,
+      };
+      if (account.avatarUrl) done.avatarUrl = account.avatarUrl;
+      if (missing.length > 0) {
+        /*
+         * Kick's consent screen has a tick box per permission, so a creator can authorize
+         * successfully and still have withheld the one permission that lets LIVETAP fetch a
+         * stream key. Saying so here, in the creator's terms, is the difference between a
+         * five second fix now and a failure at GO LIVE later.
+         */
+        done.partial = `${profile.displayName} did not give LIVETAP everything it asked for, so you may still be asked to paste a stream key.`;
       }
+      setStatus(done);
     };
     void run();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [connectPlatform]);
 
   return (
     <div className="lt-screen lt-screen--centred">
       {status.kind === 'working' ? (
         <Card title="Finishing your sign-in">
           <p>
-            <Spinner size={24} /> LIVETAP is exchanging the reply from the platform for a key it can
-            stream with. This takes a moment.
+            <Spinner size={24} /> LIVETAP is finishing the sign-in and checking which account it
+            just connected. This takes a moment.
           </p>
         </Card>
       ) : null}
@@ -184,8 +151,20 @@ export function OAuthCallback(): ReactElement {
       ) : null}
 
       {status.kind === 'done' ? (
-        <Card title="You are signed in">
-          <p>{`LIVETAP can now go live on ${status.platform} for you.`}</p>
+        <Card title={`Connected as ${status.label}`}>
+          {status.avatarUrl ? (
+            <img
+              className="lt-account__avatar"
+              src={status.avatarUrl}
+              alt=""
+              width={48}
+              height={48}
+            />
+          ) : null}
+          <p>
+            {`LIVETAP will go live on ${PLATFORM_PROFILES[status.platform].displayName} as ${status.label}. You will never be asked for a stream key for it.`}
+          </p>
+          {status.partial ? <p>{status.partial}</p> : null}
           <Link className="lt-btn lt-btn--primary lt-btn--md" to="/app/studio">
             Open Studio
           </Link>
