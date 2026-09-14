@@ -34,8 +34,7 @@ import type {
   ProductionSnapshot,
   QualityPreset,
 } from '@livetap/core';
-import { PLATFORM_PROFILES, createMockAdapters } from '@livetap/adapters';
-import { createEngineForEnvironment } from '@livetap/media';
+import { PLATFORM_PROFILES } from '@livetap/adapters';
 import type { GoLiveState } from '@livetap/ui';
 import { demoIngest } from '../lib/mockIngest.js';
 import { platformStatus } from '../lib/platformStatus.js';
@@ -43,6 +42,10 @@ import * as persist from './persist.js';
 import { DEFAULT_SETTINGS } from './persist.js';
 import type { StorageLike } from './persist.js';
 import { envMockMode } from './mockMode.js';
+import { createEngine } from './engine.js';
+import type { EngineHost } from './engine.js';
+import { createRegistry } from './registry.js';
+import type { RegistryKind } from './registry.js';
 import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
 
 export type Mode = 'simple' | 'pro';
@@ -77,6 +80,10 @@ export interface AppState {
   ready: boolean;
   mockMode: boolean;
   engineKind: string;
+  /** Whether the destinations in use are simulated or real, as observed rather than configured. */
+  adapterKind: RegistryKind;
+  /** Which host surface the engine resolved to: browser, desktop, mobile or mock. */
+  engineHost: EngineHost;
 
   production: ProductionSnapshot;
   destinations: DestinationSnapshot[];
@@ -121,6 +128,14 @@ export interface AppState {
   reconnect(id: string): Promise<void>;
   retry(id: string): Promise<void>;
   removeDestination(id: string): Promise<void>;
+  /**
+   * Sign an account out without deleting the destination.
+   *
+   * Distinct from `removeDestination` on purpose: removing a destination while it is LIVE
+   * also removes the only control that can stop it. Disconnecting releases the credential
+   * and returns the destination to DISCONNECTED, which is a state the user can see.
+   */
+  disconnect(id: string): Promise<void>;
   setDestinationEnabled(id: string, enabled: boolean): void;
   stopOne(id: string): Promise<void>;
 
@@ -165,6 +180,14 @@ interface Runtime {
   mockMode: boolean;
   offs: Array<() => void>;
   recordingId: string | null;
+  /**
+   * The END grace timer.
+   *
+   * It lives on the runtime, not in a React effect, because a stop that is owned by a screen is
+   * cancelled by navigating away from that screen: the user presses END, taps another tab, and
+   * the broadcast keeps running with no way to stop it from where they now are.
+   */
+  graceTimer: ReturnType<typeof setTimeout> | null;
 }
 
 let seq = 0;
@@ -305,6 +328,8 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       ready: false,
       mockMode: deps.mockMode ?? envMockMode(),
       engineKind: 'mock',
+      adapterKind: 'mock',
+      engineHost: 'mock',
 
       production: EMPTY_PRODUCTION,
       destinations: [],
@@ -329,14 +354,15 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       async init(): Promise<void> {
         if (runtime) return;
         const mockMode = deps.mockMode ?? envMockMode();
-        const registry = deps.registry ?? createMockAdapters();
-        const engine =
-          deps.engine ??
-          createEngineForEnvironment({
-            preferMock: mockMode,
-            // Stated rather than inherited, because the demo outage below is timed against it.
-            mock: { connectDelayMs: DEMO_CONNECT_DELAY_MS },
-          });
+        const chosen = deps.registry
+          ? { registry: deps.registry, kind: 'injected' as RegistryKind }
+          : await createRegistry({ mockMode });
+        const registry = chosen.registry;
+        const engineChoice = deps.engine
+          ? { engine: deps.engine, kind: deps.engine.kind, host: 'browser' as EngineHost }
+          : // Stated rather than inherited, because the demo outage below is timed against it.
+            await createEngine({ mockMode, mock: { connectDelayMs: DEMO_CONNECT_DELAY_MS } });
+        const engine = engineChoice.engine;
         const stored = persist.readMoments();
         const settings = persist.read(persist.KEYS.settings, DEFAULT_SETTINGS);
         const orchestrator = new BroadcastOrchestrator({
@@ -350,7 +376,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
             recording: { ...DEFAULT_PRODUCTION_SETTINGS.recording, enabled: settings.recordEveryStream },
           },
         });
-        runtime = { orchestrator, engine, mockMode, offs: [], recordingId: null };
+        runtime = { orchestrator, engine, mockMode, offs: [], recordingId: null, graceTimer: null };
 
         runtime.offs.push(
           orchestrator.on('destination', () => {
@@ -421,7 +447,13 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           }
         }
         const wasLive = takeWasLive();
-        set({ ready: true, mockMode, engineKind: engine.kind });
+        set({
+          ready: true,
+          mockMode,
+          engineKind: engineChoice.kind,
+          adapterKind: chosen.kind,
+          engineHost: engineChoice.host,
+        });
         mirror();
 
         if (wasLive) {
@@ -616,6 +648,11 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         }
         set((s) => ({ notices: s.notices.filter((n) => n.destinationId !== destinationId) }));
         mirror();
+      },
+
+      async disconnect(destinationId: string): Promise<void> {
+        await runtime?.orchestrator.disconnect(destinationId);
+        await forgetStreamKey(destinationId);
       },
 
       async removeDestination(destinationId: string): Promise<void> {

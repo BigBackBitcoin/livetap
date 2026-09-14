@@ -173,7 +173,7 @@ export interface LivetapApi {
     list(): Promise<string[]>;
   };
   oauth: {
-    startLoopback(): Promise<LoopbackInfo>;
+    startLoopback(options?: { host?: 'localhost' | '127.0.0.1' }): Promise<LoopbackInfo>;
     waitForCallback(): Promise<string>;
     openExternal(url: string): Promise<{ ok: boolean }>;
     onDeepLink(cb: (url: string) => void): () => void;

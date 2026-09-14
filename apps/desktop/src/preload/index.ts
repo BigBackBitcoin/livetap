@@ -125,7 +125,10 @@ const api: LivetapApi = {
   },
 
   oauth: {
-    startLoopback: (): Promise<LoopbackInfo> => ipcRenderer.invoke(CH.oauthStartLoopback),
+    startLoopback: (options?: { host?: 'localhost' | '127.0.0.1' }): Promise<LoopbackInfo> => {
+      const host = options?.host === 'localhost' ? 'localhost' : '127.0.0.1';
+      return ipcRenderer.invoke(CH.oauthStartLoopback, { host });
+    },
     waitForCallback: (): Promise<string> => ipcRenderer.invoke(CH.oauthWaitForCallback),
     openExternal: (url: string) => ipcRenderer.invoke(CH.oauthOpenExternal, requireString(url, 'url')),
     onDeepLink: (cb: (url: string) => void) => subscribe<string>(CH.oauthDeepLink, cb),

@@ -27,7 +27,17 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
 import type { LoopbackInfo } from '../shared/ipc.js';
 
-const LOOPBACK_HOST = '127.0.0.1';
+/**
+ * The two spellings of loopback, and why both are needed.
+ *
+ * RFC 8252 says a native app should bind the loopback IP, and Google requires exactly that: a
+ * literal 127.0.0.1 or [::1], never the name. Kick's developer documentation registers the
+ * redirect as `http://localhost:<port>` instead, and a provider compares the redirect_uri as a
+ * STRING, so the two are not interchangeable however identical they resolve. The socket is bound
+ * to the loopback address either way; only the spelling in the URL changes.
+ */
+const LOOPBACK_IP = '127.0.0.1';
+export type LoopbackHost = 'localhost' | '127.0.0.1';
 const CALLBACK_PATH = '/callback';
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -63,7 +73,8 @@ export class LoopbackOAuthServer {
   }
 
   /** Bind an ephemeral loopback port and return the redirect_uri to send to the provider. */
-  async start(): Promise<LoopbackInfo> {
+  async start(options: { host?: LoopbackHost } = {}): Promise<LoopbackInfo> {
+    const host: LoopbackHost = options.host === 'localhost' ? 'localhost' : LOOPBACK_IP;
     this.stop();
     this.state = (this.options.randomState ?? defaultState)();
     this.buffered = null;
@@ -73,8 +84,9 @@ export class LoopbackOAuthServer {
 
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
-      // Port 0 = let the OS pick a free ephemeral port. Host 127.0.0.1 = loopback only.
-      server.listen(0, LOOPBACK_HOST, () => {
+      // Port 0 = let the OS pick a free ephemeral port. The socket is always bound to the
+      // loopback IP; `host` only decides how the redirect_uri spells it for the provider.
+      server.listen(0, LOOPBACK_IP, () => {
         server.off('error', reject);
         resolve();
       });
@@ -87,7 +99,7 @@ export class LoopbackOAuthServer {
     }
     this.port = address.port;
     return {
-      redirectUri: `http://${LOOPBACK_HOST}:${this.port}${CALLBACK_PATH}`,
+      redirectUri: `http://${host}:${this.port}${CALLBACK_PATH}`,
       port: this.port,
       state: this.state,
     };
@@ -118,7 +130,7 @@ export class LoopbackOAuthServer {
     const rawUrl = req.url ?? '/';
     let parsed: URL;
     try {
-      parsed = new URL(rawUrl, `http://${LOOPBACK_HOST}:${this.port}`);
+      parsed = new URL(rawUrl, `http://${LOOPBACK_IP}:${this.port}`);
     } catch {
       res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
       res.end('Bad request');

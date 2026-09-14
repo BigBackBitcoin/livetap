@@ -158,7 +158,12 @@ export function registerIpcHandlers(context: IpcContext): () => void {
 
   /* --------------------------------------------------------------- oauth */
 
-  handle(CH.oauthStartLoopback, (): Promise<LoopbackInfo> => context.oauth.start());
+  handle(CH.oauthStartLoopback, (_event, payload): Promise<LoopbackInfo> => {
+    /* Main re-validates: the renderer may ask for a spelling, never for an arbitrary host. */
+    const asked = (payload as { host?: unknown } | undefined)?.host;
+    const host = asked === 'localhost' ? ('localhost' as const) : ('127.0.0.1' as const);
+    return context.oauth.start({ host });
+  });
 
   handle(CH.oauthWaitForCallback, (): Promise<string> => context.oauth.waitForCallback());
 

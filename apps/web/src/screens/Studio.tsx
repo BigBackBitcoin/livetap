@@ -19,6 +19,7 @@ import { DestinationList, NoDestinationsPrompt } from '../components/Destination
 import { DeviceControls } from '../components/DeviceControls.js';
 import { NoticeCards } from '../components/NoticeCards.js';
 import { PreviewCanvas } from '../components/PreviewCanvas.js';
+import { OutputStrip } from '../components/OutputStrip.js';
 import { evaluatePreflight, goLiveSubtitle } from '../components/preflight.js';
 import { COPY } from '../lib/copy.js';
 import { elapsed } from '../lib/format.js';
@@ -158,6 +159,8 @@ export function Studio(): ReactElement {
 
       <section className="lt-studio__stage" aria-label="What viewers can see">
         <PreviewCanvas aspect={aspect} live={live} muted={micMuted} />
+
+        <OutputStrip />
 
         <div className="lt-studio__stagebar">
           <div className="lt-segmented" role="radiogroup" aria-label="Stream shape">
