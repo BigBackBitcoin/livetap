@@ -481,6 +481,19 @@
               <a class="lt-btn lt-btn--secondary lt-btn--md" href="./app/start">Try the web demo</a>
               <span class="ltp-band__trust">Runs on your machine. Nothing on this page is broadcast.</span>
             </div>
+            <!--
+              The offer, made once.
+              Inline rather than floating: a fixed panel over the stage would be a second thing
+              owning a region that already has an owner, and this page has an end-to-end test
+              that fails when anything invisible or uninvited sits on top of a control.
+              Hidden by default and revealed by script only for a visitor who has not answered
+              it, so a returning visitor never sees it flash before it is taken away.
+            -->
+            <p class="ltp-offer" data-lt-offer hidden>
+              <span class="ltp-offer__q">New here?</span>
+              <button class="lt-btn lt-btn--secondary lt-btn--sm lt-touch" type="button" data-lt-offer-yes>Quick tour</button>
+              <button class="lt-textlink lt-touch" type="button" data-lt-offer-no>Skip</button>
+            </p>
           </div>
         </div>
       </section>
@@ -494,13 +507,18 @@
           <span class="ltp-act__plate" aria-hidden="true"></span>
           <div class="ltp-band ltp-band--lead" data-lt-band="act-break" data-sc-cue="0.02 0.95 0.06 0.12">
             <h2 id="a2-h" class="ltp-band__title">Break it yourself.</h2>
-            <p class="ltp-band__lede">
-              Drag a live destination off the stage. Its connection snaps, the others never notice,
-              LIVETAP explains what happened and brings it back on its own.
-            </p>
+            <p class="ltp-band__lede">Drag a live destination off the stage.</p>
             <div class="ltp-band__tools">
               <button class="lt-btn lt-btn--primary lt-btn--md lt-touch" type="button" data-lt-break-cta>Go live, then break YouTube</button>
-              <span class="ltp-band__hint" data-lt-break-hint>Or drag any live tile off the stage. Keyboard: focus a live tile and press Delete.</span>
+              <!--
+                A first-use hint, not a caption. It says the one thing a visitor cannot guess, and
+                it leaves the moment they have done it once - the act then shows what happens
+                rather than describing it in advance, which is the whole point of the act.
+                The keyboard route is never hidden: it is the only route for anyone not using a
+                pointer, so it lives in the screen-reader line below and stays there forever.
+              -->
+              <span class="ltp-band__hint" data-lt-break-hint>Or drag any live tile off the stage.</span>
+              <span class="lt-sr-only">To break a destination with the keyboard, focus a live tile and press Delete.</span>
             </div>
           </div>
         </div>

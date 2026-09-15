@@ -1343,10 +1343,44 @@ function onTileKey(e: KeyboardEvent, i: number): void {
 }
 
 /** The break, and the four things that happen. Nothing in here touches a sibling. */
+/**
+ * The first-use hint for the break mechanic, and the one place it is retired.
+ *
+ * A hint that never leaves is a caption, and a caption explaining a control the visitor has
+ * already used is the "wall of words" this page is meant not to be. It goes the moment they
+ * have done it once - by drag, by keyboard, or by the button - and it stays gone.
+ *
+ * The keyboard instruction is NOT part of this: it lives in a screen-reader-only line beside
+ * the hint, because for anyone not using a pointer it is not a hint, it is the only route in.
+ */
+const BROKE_ONE = 'livetap.brokeOne';
+
+function retireBreakHint(): void {
+  const hint = document.querySelector<HTMLElement>('[data-lt-break-hint]');
+  if (hint) hint.hidden = true;
+  try {
+    localStorage.setItem(BROKE_ONE, 'true');
+  } catch {
+    /* Private mode, or storage switched off. The hint simply returns next visit. */
+  }
+}
+
+function restoreBreakHint(): void {
+  try {
+    if (localStorage.getItem(BROKE_ONE) === 'true') {
+      const hint = document.querySelector<HTMLElement>('[data-lt-break-hint]');
+      if (hint) hint.hidden = true;
+    }
+  } catch {
+    /* Storage unreadable: show the hint, which is the safe direction to be wrong in. */
+  }
+}
+
 function breakDest(i: number, degradeMs = 700): void {
   const row = rows[i]!;
   const d = DESTINATIONS[i]!;
   if (row.state !== 'LIVE' && row.state !== 'DEGRADED') return;
+  retireBreakHint();
   row.drag?.disable();
   note(`${d.name} lost the connection`);
   say(sayBroadcast, `${d.name} stopped accepting the picture. Your other destinations are not affected.`);
@@ -2193,6 +2227,7 @@ async function boot(): Promise<void> {
   buildMoments();
   buildIntents();
   wire();
+  restoreBreakHint();
 
   picture.mount(canvas);
   picture.onChange(() => {

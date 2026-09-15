@@ -1,10 +1,12 @@
 /**
  * LIVETAP Bond: adaptive multi-path broadcast networking.
  *
- * What is here today is the decision layer and the proving ground for it: the path model, the
- * capacity estimator, the scorer, the policy engine, and the Bond Lab that drives all of them
- * across simulated time. What is NOT here is a wire protocol or a relay - those come next, and
- * this file exports nothing that pretends otherwise.
+ * What is here today: the decision layer (path model, capacity estimator, scorer, policy engine),
+ * the transport logic that makes a bonded stream reconstructable (scheduler, reorder buffer), and
+ * the Bond Lab that drives all of it across simulated time.
+ *
+ * What is NOT here: a wire protocol, a relay, or any platform network discovery. Nothing in this
+ * package has opened a socket. It exports nothing that pretends otherwise.
  *
  * The layering is deliberate and is the reason this was built before any transport was chosen:
  * every decision above is transport-agnostic, so whichever of SRT, QUIC, MPTCP or a custom UDP
@@ -60,6 +62,22 @@ export {
   type PathAllocation,
   type RedundancyLevel,
 } from './policy/decide.js';
+
+export {
+  DEFAULT_REASSEMBLE,
+  Reassembler,
+  recommendedDeadlineMs,
+  type BondChunk,
+  type FrameType,
+  type ReassembleOptions,
+  type ReassembleStats,
+} from './transport/reassemble.js';
+
+export {
+  BondScheduler,
+  type ChunkAssignment,
+  type SchedulerStats,
+} from './transport/schedule.js';
 
 export {
   formatResult,
