@@ -72,18 +72,31 @@ test.describe('screens', () => {
   test.setTimeout(180_000);
 
   /*
-   * Captured under reduced motion, for the same reason the baseline below is.
+   * These rewrite files that are committed, so they do not run unless asked.
    *
-   * These files are committed, so every pixel that moves between runs is a line in somebody's
-   * diff forever. Freezing the clip fixed the pictures that composite from it; what was left was
-   * everything the product animates on its own - the output previews looping, the microphone
-   * meter, the Studio's test pattern - none of which a still photograph can represent anyway.
+   * Measured, twice, from a clean tree: with every capture waiting for a rendered page and the
+   * demo clip paused, 14 of 41 files still differed between two consecutive runs. Under reduced
+   * motion as well, 11 still did. The survivors are every screen carrying the engine's preview -
+   * Studio, Moments, the third onboarding step - and that canvas is a test pattern drawn on
+   * `requestAnimationFrame`, so a still photograph of it is a photograph of whatever millisecond
+   * the shutter opened on. Nothing short of masking the product's own picture, or changing the
+   * product to hold it still, makes those bytes repeatable.
    *
-   * It does mean these document the reduced-motion rendering rather than the default one. That is
-   * a real trade and worth naming: what is lost is motion that a screenshot could never show, and
-   * what is gained is that a change to any of these files means somebody changed the product.
+   * So they are not made repeatable; they are made deliberate. Nothing asserts on these files -
+   * they are artefacts for review - which is the whole reason it was possible for twenty-one of
+   * them to sit in the repository completely blank without anyone noticing. Regenerating them is
+   * now something a person chooses to do and then looks at:
+   *
+   *     LIVETAP_CAPTURE=1 npx playwright test screenshots
+   *
+   * The two visual BASELINES below are unaffected and still run on every `npx playwright test`.
+   * They are the ones that assert, they tolerate the moving parts with a pixel budget and a mask,
+   * and they are what actually stops a visual regression shipping.
    */
-  test.use({ reducedMotion: 'reduce' });
+  test.skip(
+    process.env.LIVETAP_CAPTURE !== '1',
+    'Documentation captures rewrite committed files. Run with LIVETAP_CAPTURE=1 to regenerate.',
+  );
 
   for (const viewport of VIEWPORTS) {
     test(`captured at ${viewport.name}`, async ({ page }) => {
