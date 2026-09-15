@@ -126,3 +126,25 @@ export async function dismissTour(win) {
   await win.waitForTimeout(200);
   return true;
 }
+
+/**
+ * Switch the Moment the broadcast is composing, by its visible name.
+ *
+ * This exists because of a defect found on the owner's own build host: a machine with no camera
+ * cannot broadcast the `Main Camera` Moment, whose only layer IS the camera, and the app's
+ * preflight promises the opposite — "viewers will see your title card instead of your face".
+ * `Starting Soon` is a colour, a title and a camera layer marked `visible: false`, so it paints
+ * a real picture with no capture device at all. Being able to choose the Moment is what lets a
+ * test tell "this machine cannot broadcast" apart from "this Moment cannot".
+ */
+export async function chooseMoment(win, name) {
+  /* Adding destinations leaves the app on /app/destinations, which has no Moment strip. */
+  if ((await win.locator('.lt-momentstrip').count()) === 0) {
+    await win.getByRole('link', { name: 'Studio' }).first().click();
+    await win.locator('.lt-momentstrip').first().waitFor({ timeout: 10_000 });
+  }
+  const card = win.locator('.lt-momentstrip').getByRole('button', { name, exact: false }).first();
+  await card.scrollIntoViewIfNeeded();
+  await card.click();
+  await win.waitForTimeout(400);
+}

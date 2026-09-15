@@ -27,6 +27,7 @@
 import { _electron as electron } from 'playwright';
 import {
   addCustomDestination,
+  chooseMoment,
   dismissTour,
   goLive,
   pressEnd,
@@ -44,6 +45,31 @@ const ingestDir = path.join(repoRoot, 'infra', 'dev-harness', 'ingest');
 
 const args = process.argv.slice(2);
 const seconds = Number(readArg('--seconds') ?? 12);
+/*
+ * `--no-fake-camera` runs the path the OWNER actually has.
+ *
+ * Every broadcast this product has ever proven was captured from
+ * `--use-fake-device-for-media-stream`, Chromium's synthetic source. That is the right default:
+ * it exercises every line of permission handling, track lifecycle and constraint negotiation for
+ * real, and only the photons are fake. But it also means the machine always HAS a camera, and
+ * the owner's build host does not.
+ *
+ * "No camera" is a different code path, not a quieter version of the same one. `getUserMedia`
+ * rejects with `NotFoundError` instead of resolving, `enumerateDevices` returns no `videoinput`,
+ * preflight raises `no-camera` — "viewers will see your title card instead of your face" — and
+ * the composition has to build a picture out of a Moment's own layers with no camera layer in
+ * it. The product is designed for that and it had never been run.
+ */
+const noFakeCamera = args.includes('--no-fake-camera');
+/*
+ * `--moment=<name>` picks the Moment the broadcast composes, by its visible name.
+ *
+ * Which Moment is live decides whether a capture device is needed at all. `Main Camera` is one
+ * layer and that layer is the camera. `Starting Soon` is a colour, a title, and a camera layer
+ * marked `visible: false` — a real picture that needs no camera, which is exactly what the app's
+ * own preflight promises a camera-less machine will get.
+ */
+const moment = readArg('--moment');
 const apiBase = process.env.LIVETAP_DEV_INGEST_API ?? 'http://127.0.0.1:9997';
 const rtmpBase = process.env.LIVETAP_DEV_INGEST_RTMP ?? 'rtmp://127.0.0.1:1935';
 
@@ -169,13 +195,18 @@ async function main() {
     throw new Error(`No receiver at ${apiBase}. Run: node infra/dev-harness/ingest/start-ingest.mjs`);
   }
 
-  step('[1/8] launching the built desktop app with a fake capture device');
+  step(
+    noFakeCamera
+      ? '[1/8] launching the built desktop app with NO capture device, as the owner has'
+      : '[1/8] launching the built desktop app with a fake capture device',
+  );
   const app = await electron.launch({
     args: [
       appDir,
       // The REAL getUserMedia path, with a synthetic source. This VM has no camera; every line of
       // permission handling, track lifecycle and constraint negotiation still runs for real.
-      '--use-fake-device-for-media-stream',
+      // `--no-fake-camera` withholds it, to prove the no-camera path rather than assume it.
+      ...(noFakeCamera ? [] : ['--use-fake-device-for-media-stream']),
       '--use-fake-ui-for-media-stream',
       '--autoplay-policy=no-user-gesture-required',
     ],
@@ -235,6 +266,12 @@ async function main() {
   const added = await win.evaluate(() => document.querySelectorAll('.lt-destlist > li').length);
   if (added === TARGETS.length) ok(`every destination was created in the app (${added} rows)`);
   else bad(`expected ${TARGETS.length} destinations, the app shows ${added}`);
+
+  if (moment) {
+    step(`[2b/8] switching the live Moment to ${JSON.stringify(moment)}`);
+    await chooseMoment(win, moment);
+    ok(`the broadcast will compose the ${moment} Moment`);
+  }
 
   step('[3/8] tapping GO LIVE');
   await win.evaluate(() => {
