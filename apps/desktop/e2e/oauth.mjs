@@ -505,16 +505,44 @@ async function main() {
     if (shippedBase === null) {
       bad('could not find the folded brokerBaseUrl() constant in the shipped bundle');
     } else if (shippedBase === '') {
+      /*
+       * This WAS a CRITICAL finding, and it is the reason this check exists.
+       *
+       * `VITE_LIVETAP_BROKER_URL` was read by `brokerBaseUrl()` and set by no build in the
+       * repository, so the shipped desktop renderer folded it to `""` and every broker call
+       * resolved against `file://`. Connect account could only ever answer "no sign-in set up"
+       * and drop the creator on the paste form — on a build where sign-in worked.
+       *
+       * `mockMode.ts` now falls back to the deployment when it detects a native shell, so an empty
+       * folded constant means BOTH the env var and the fallback are gone, which is the same
+       * failure with two things wrong instead of one.
+       */
       finding(
         'CRITICAL',
-        'apps/web/src/state/mockMode.ts:48 (VITE_LIVETAP_BROKER_URL is set by no build in this repo)',
-        'the shipped desktop renderer compiled brokerBaseUrl() to "", so every broker call resolves ' +
-          'against file:// and cannot leave the machine. On an installed build, Connect account can ' +
-          'only ever answer "no sign-in set up" and drop the creator on the paste-a-stream-key form.',
+        'apps/web/src/state/mockMode.ts brokerBaseUrl()',
+        'the shipped desktop renderer compiled brokerBaseUrl() to "" AND lost its native-shell ' +
+          'fallback, so every broker call resolves against file:// and cannot leave the machine. ' +
+          'Connect account can only ever answer "no sign-in set up".',
       );
       bad('the app as built cannot reach a token broker at all');
     } else {
       ok(`the renderer in this tree calls the broker at ${shippedBase}`);
+    }
+
+    /*
+     * The fallback itself, checked in the bundle rather than in the source.
+     *
+     * A desktop renderer is a `file://` document with no origin of its own, so an empty broker
+     * base is not "same origin" there, it is "nowhere". Whether the fallback SURVIVED the build is
+     * a different question from whether it is written down, and only the bundle can answer it.
+     */
+    const bundleText = rendererChunks(shippedRenderer).join('\n');
+    if (/livetap\.vercel\.app/.test(bundleText)) {
+      ok('the shipped bundle carries a native-shell broker fallback');
+    } else if (shippedBase !== '') {
+      ok(`no fallback needed: this build has an explicit broker (${shippedBase})`);
+    } else {
+      bad('no explicit broker and no native-shell fallback reached the bundle');
     }
 
     /* ---------------------------------------------------------------- [2/10] */

@@ -843,8 +843,16 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
          * the right order: a revoke that fails because the machine is offline must still not leave
          * the credential behind.
          */
+        /*
+         * Only a destination that HAS an account signs one out.
+         *
+         * Tokens are keyed per platform (`oauth:youtube`), because the product is one account per
+         * platform. Destinations are not: a creator can have an API-connected YouTube and a
+         * pasted-key YouTube side by side. Revoking on every disconnect would mean removing the
+         * pasted one — which never had a token — signs them out of the connected one.
+         */
         const platform = snap?.config.platform;
-        if (platform && platform !== 'custom') await revokeTokens(platform);
+        if (platform && platform !== 'custom' && snap?.account) await revokeTokens(platform);
       },
 
       async removeDestination(destinationId: string): Promise<void> {
