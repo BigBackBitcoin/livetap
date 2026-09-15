@@ -93,6 +93,8 @@ export {
   type BondPathTelemetry,
 } from './net/BondClient.js';
 
+export { BondSink, type BondSinkOptions } from './net/BondSink.js';
+
 export {
   BondRelay,
   type BondRelayOptions,

@@ -60,6 +60,19 @@ export interface DesktopEngineOutput {
   destinationId: string;
   aspectRatio: AspectRatio;
   ingest: IngestTarget;
+  /**
+   * Send this destination through LIVETAP Bond instead of straight out as RTMP.
+   *
+   * Optional, and absent means exactly today's behaviour: one `ffmpeg -c copy` child per
+   * destination, pushing RTMP from this machine. When set, the same TS bytes go to a Bond session
+   * and the relay performs the RTMP - which is what lets one uplink serve several destinations, and
+   * what multipath needs in order to exist at all.
+   *
+   * Per destination rather than per broadcast on purpose: a Bond destination and a direct one can
+   * run side by side in the same broadcast, which makes them directly comparable and means turning
+   * Bond on can never be all-or-nothing.
+   */
+  viaBond?: boolean;
 }
 
 /**

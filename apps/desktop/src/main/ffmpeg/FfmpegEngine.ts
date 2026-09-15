@@ -43,6 +43,7 @@ import { ArgvRefusedError, buildEncoderArgv, buildRecordingArgv, buildSenderArgv
 import type { EncoderSource } from './argv.js';
 import { CpuSampler } from './cpu.js';
 import { TsFanout } from './fanout.js';
+import { BondClient, BondSink, importPublicKey, type BondPathSpec } from '@livetap/bond';
 import type { HardwareReport } from './hardware.js';
 import { chooseEncoder, probeEncoders } from './hardware.js';
 import { FfmpegStderrParser, classifyStderrLine } from './progress.js';
@@ -70,6 +71,32 @@ export interface FfmpegEngineOptions {
   cpuSampling?: boolean;
   /** Emitted metrics cadence, ms. */
   metricsIntervalMs?: number;
+  /**
+   * Where LIVETAP Bond should send, when a destination asks for it.
+   *
+   * Absent - the default, and what ships today - means no Bond session is ever created and every
+   * destination takes the direct RTMP path it always has. This is the brief's §58 rule expressed
+   * in a type: bonding is an addition, never a requirement, and a build with no relay configured
+   * behaves exactly as it did before Bond existed.
+   */
+  bond?: BondRelayConfig;
+}
+
+export interface BondRelayConfig {
+  readonly host: string;
+  readonly port: number;
+  /** The relay's X25519 public key, 32 raw bytes, base64. */
+  readonly relayStaticPublicBase64: string;
+  /** The broker-signed session token, base64. */
+  readonly tokenBase64: string;
+  /** Extra local addresses to bind, beyond the default route. One path each. */
+  readonly extraPaths?: readonly BondPathSpec[];
+}
+
+/** One Bond session per broadcast, shared by every destination that asked for it. */
+interface BondState {
+  client: BondClient;
+  sinks: Map<string, BondSink>;
 }
 
 interface EncoderState {
@@ -128,6 +155,7 @@ export class FfmpegEngine {
   private readonly encoders = new Map<AspectRatio, EncoderState>();
   private readonly senders = new Map<string, SenderState>();
   private recorder: RecorderState | null = null;
+  private bond: BondState | null = null;
   private hardware: HardwareReport | null = null;
   private request: DesktopStartRequest | null = null;
   private metricsTimer: NodeJS.Timeout | null = null;
@@ -236,6 +264,18 @@ export class FfmpegEngine {
 
     this.request = req;
     this.startedAt = this.now();
+
+    /*
+     * Open the Bond session before any encoder starts, but only if a destination actually wants it.
+     *
+     * A failure here is logged and NOT fatal. Bond is an addition; a relay that cannot be reached
+     * must degrade to the direct RTMP path rather than take a broadcast down, and the destinations
+     * that asked for it will refuse individually with a reason the creator can read. Experimental
+     * networking is not allowed to destroy the basic broadcast system.
+     */
+    if (this.options.bond && usable.some((output) => output.viaBond)) {
+      await this.openBondSession();
+    }
 
     for (const aspect of aspects) {
       const format = req.formats[aspect];
@@ -348,6 +388,33 @@ export class FfmpegEngine {
       return { ok: false, errors: [`No encoder for aspect ratio ${output.aspectRatio}.`] };
     }
 
+    /*
+     * A Bond destination is a sink like any other.
+     *
+     * This is the whole integration, and it is four lines because the fan-out was already the right
+     * shape: it takes a `Writable`, and `BondSink` is one. Every guarantee the fan-out already makes
+     * - the source is never paused, every live sink gets every byte in order, a failing sink is
+     * removed while the others continue, writes arrive aligned to whole TS packets - applies here
+     * unchanged, and none of it had to be asked for.
+     *
+     * The direct path below is untouched. A build with no relay configured never reaches this
+     * branch, which is how §58's "one path behaves exactly as it does today" is kept true by
+     * construction rather than by testing for it afterwards.
+     */
+    if (output.viaBond) {
+      const bond = this.bond;
+      if (!bond) {
+        const reason = 'This destination asked for LIVETAP Bond, but no relay is configured.';
+        this.emit({ type: 'outputLost', destinationId: output.destinationId, code: 'CONFIG_INVALID', technical: reason });
+        return { ok: false, errors: [reason] };
+      }
+      const sink = new BondSink(bond.client, { label: output.destinationId });
+      bond.sinks.set(output.destinationId, sink);
+      encoder.fanout.addSink(output.destinationId, sink);
+      this.log.info('bond sender started', { destinationId: output.destinationId });
+      return { ok: true };
+    }
+
     let argv: string[];
     try {
       argv = buildSenderArgv({ ingest: output.ingest, format: encoder.format });
@@ -396,7 +463,60 @@ export class FfmpegEngine {
     return { ok: true };
   }
 
+  /** Connect one Bond session for this broadcast, plus any extra local paths configured. */
+  private async openBondSession(): Promise<void> {
+    const config = this.options.bond;
+    if (!config || this.bond) return;
+    try {
+      const client = new BondClient({
+        relayHost: config.host,
+        relayPort: config.port,
+        relayStaticPublic: importPublicKey(Buffer.from(config.relayStaticPublicBase64, 'base64')),
+        tokenBlob: Buffer.from(config.tokenBase64, 'base64'),
+      });
+      client.on('health', ({ health, reason }) => this.log.info('bond health', { health, reason }));
+      client.on('pathLost', ({ label }) => this.log.warn('bond path lost', { label }));
+
+      await client.connect({ transport: 'other', label: 'Network', metered: 'unknown' });
+      for (const spec of config.extraPaths ?? []) {
+        await client.addPath(spec).catch(() => undefined);
+      }
+      this.bond = { client, sinks: new Map() };
+      this.log.info('bond session open', { relay: `${config.host}:${config.port}` });
+    } catch (error) {
+      // Degrade, never fail. The destinations that wanted Bond will say so one at a time.
+      this.log.warn('bond session could not be opened', {
+        technical: error instanceof Error ? error.message : String(error),
+      });
+      this.bond = null;
+    }
+  }
+
+  private async closeBondSession(): Promise<void> {
+    const bond = this.bond;
+    this.bond = null;
+    if (!bond) return;
+    for (const id of bond.sinks.keys()) {
+      for (const encoder of this.encoders.values()) encoder.fanout.removeSink(id);
+    }
+    await bond.client.close().catch(() => undefined);
+  }
+
+  /** Live Bond telemetry, or null when this broadcast is not using it. */
+  bondTelemetry(): ReturnType<BondClient['telemetry']> | null {
+    return this.bond?.client.telemetry() ?? null;
+  }
+
   async removeOutput(destinationId: string): Promise<{ ok: boolean }> {
+    const bondSink = this.bond?.sinks.get(destinationId);
+    if (bondSink) {
+      for (const encoder of this.encoders.values()) encoder.fanout.removeSink(destinationId);
+      this.bond?.sinks.delete(destinationId);
+      // The session stays open: other destinations may still be riding it, and tearing it down
+      // here would end their broadcast to stop one.
+      return { ok: true };
+    }
+
     const sender = this.senders.get(destinationId);
     if (!sender) return { ok: false };
     sender.intentionalStop = true;
@@ -523,6 +643,14 @@ export class FfmpegEngine {
     this.stopMetrics();
 
     if (this.recorder) await this.stopRecording();
+
+    /*
+     * Close the Bond session before the encoders, for the same reason senders are stopped first:
+     * it has to say goodbye while there is still a working process to say it from. The relay then
+     * flushes its reorder buffer and ends the destination cleanly instead of waiting out an idle
+     * timeout with the tail of the broadcast still in a buffer nobody is draining.
+     */
+    await this.closeBondSession();
 
     // Stop senders first so they flush their RTMP connections, then the encoders.
     const senderStops = [...this.senders.values()].map(async (sender) => {
