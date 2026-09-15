@@ -150,14 +150,45 @@ export function describeRecorderSupport(report: RecorderSupport): string[] {
 export const RECORDER_TIMESLICE_MS = 1000;
 
 /** MediaRecorder options for a target format. */
-export function recorderOptions(
-  mimeType: string,
-  videoKbps: number,
-  audioKbps: number,
-): { mimeType: string; videoBitsPerSecond: number; audioBitsPerSecond: number } {
+/**
+ * How often the browser must produce a keyframe, in milliseconds.
+ *
+ * Two seconds, because three separate things all want it and one of them was broken:
+ *
+ *   PLATFORMS. Twitch requires a keyframe interval of 4 s or less and YouTube asks for 2 s. Left
+ *   to itself Chromium's MediaRecorder emits one roughly every 7.2 s — measured with ffprobe on a
+ *   real recording from this host: keyframes at 2.058, 9.383, 16.620 and 23.831 seconds.
+ *
+ *   VIEWERS. A viewer joining a stream sees nothing until the next keyframe, so a 7.2 s GOP is up
+ *   to 7.2 s of black before a new arrival sees anything at all.
+ *
+ *   RECONNECT, which is the one that was actually failing. A destination that drops is restarted
+ *   as a fresh `-c copy` sender attached to a stream already in flight, and it cannot write its
+ *   output header until it has seen a keyframe carrying the H.264 parameter sets. With a 7.2 s
+ *   gap it ran out of ffmpeg's default 5 s analyze window first and died every time with "Could
+ *   not write header (incorrect codec parameters ?)" — so "the failed destination reconnects
+ *   independently", which is on the front of this product, could never happen on desktop.
+ */
+export const KEYFRAME_INTERVAL_MS = 2000;
+
+export interface RecorderOptions {
+  mimeType: string;
+  videoBitsPerSecond: number;
+  audioBitsPerSecond: number;
+  /**
+   * Chromium 116+ honours this; older engines ignore an unknown member rather than throwing, so
+   * it is safe to pass unconditionally. When it is ignored the stream still works — it just keeps
+   * the long GOP, which is why the sender's analyze window was widened as well rather than
+   * instead. Neither fix alone is enough to rely on.
+   */
+  videoKeyFrameIntervalDuration: number;
+}
+
+export function recorderOptions(mimeType: string, videoKbps: number, audioKbps: number): RecorderOptions {
   return {
     mimeType,
     videoBitsPerSecond: Math.round(videoKbps * 1000),
     audioBitsPerSecond: Math.round(audioKbps * 1000),
+    videoKeyFrameIntervalDuration: KEYFRAME_INTERVAL_MS,
   };
 }

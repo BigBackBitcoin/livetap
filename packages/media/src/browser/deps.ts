@@ -37,6 +37,15 @@ export interface MediaRecorderOptionsLike {
   mimeType?: string;
   videoBitsPerSecond?: number;
   audioBitsPerSecond?: number;
+  /**
+   * Milliseconds between forced keyframes. Chromium 116+; ignored elsewhere.
+   *
+   * Not cosmetic: left to itself Chromium emits a keyframe about every 7.2 s, which is longer
+   * than Twitch allows, longer than a new viewer should wait for a first picture, and long
+   * enough that a reconnecting destination cannot lock onto the stream before ffmpeg gives up.
+   * See KEYFRAME_INTERVAL_MS in ../desktop/diagnostics.ts.
+   */
+  videoKeyFrameIntervalDuration?: number;
 }
 
 export interface MediaRecorderCtorLike {

@@ -6,7 +6,7 @@ import {
   RECORDER_TIMESLICE_MS,
   describeRecorderSupport,
   probeRecorderSupport,
-  recorderOptions,
+  recorderOptions,  KEYFRAME_INTERVAL_MS,
 } from './diagnostics.js';
 
 interface Globals {
@@ -161,7 +161,26 @@ describe('recorderOptions', () => {
       mimeType: 'video/webm;codecs=h264,opus',
       videoBitsPerSecond: 4_500_000,
       audioBitsPerSecond: 160_000,
+      videoKeyFrameIntervalDuration: 2000,
     });
+  });
+
+  /**
+   * Chromium left alone emits a keyframe about every 7.2 s. Measured with ffprobe on a real
+   * recording from this host: keyframes at 2.058, 9.383, 16.620, 23.831 seconds.
+   *
+   * That is longer than Twitch permits (4 s), longer than a new viewer should stare at nothing,
+   * and - the reason it was found - longer than the window a RECONNECTING destination has to lock
+   * onto the stream before ffmpeg gives up, which made "the failed destination reconnects
+   * independently" impossible on desktop.
+   */
+  it('asks for a keyframe every 2 seconds, which is what platforms and reconnect both need', () => {
+    expect(KEYFRAME_INTERVAL_MS).toBe(2000);
+    expect(recorderOptions('video/webm', 4500, 160).videoKeyFrameIntervalDuration).toBe(
+      KEYFRAME_INTERVAL_MS,
+    );
+    // Twitch's documented ceiling. A change that crosses it should fail here, not at a platform.
+    expect(KEYFRAME_INTERVAL_MS).toBeLessThanOrEqual(4000);
   });
 
   it('uses a 1-second timeslice: ~330 KB a chunk, a 1.7 ms IPC send (measured)', () => {

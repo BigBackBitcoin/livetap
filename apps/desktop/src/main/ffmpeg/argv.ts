@@ -334,6 +334,18 @@ export interface SenderArgvSpec {
  * The ingest target is re-validated with `validateIngest` from packages/core here, so an unvalidated
  * or hostile target can never reach a child process even if a caller forgets to check.
  */
+/**
+ * How long a sender may spend learning the stream before it gives up, in microseconds.
+ *
+ * 20 s, against a measured ~7.2 s keyframe interval: enough for two keyframes to go by, so a
+ * reconnect still succeeds if one is missed, and short enough that a genuinely broken stream is
+ * still reported rather than hung on.
+ */
+const LATE_JOIN_ANALYZE_US = 20_000_000;
+
+/** The other half of the same limit: ffmpeg stops at whichever bound it reaches first. */
+const LATE_JOIN_PROBE_BYTES = 50_000_000;
+
 export function buildSenderArgv(spec: SenderArgvSpec): string[] {
   const validation = validateIngest(spec.ingest);
   if (!validation.ok) {
@@ -345,7 +357,38 @@ export function buildSenderArgv(spec: SenderArgvSpec): string[] {
   // Map video+audio EXPLICITLY. `-map 0` also picks up the data/EPG streams an MPEG-TS input
   // carries, which FLV and MP4 reject with EPERM ("Operation not permitted") and the whole
   // output dies. Measured on this host — see DESKTOP_ENGINE_VERIFICATION.md.
-  argv.push('-fflags', '+nobuffer', '-f', 'mpegts', '-i', 'pipe:0', '-map', '0:v:0', '-map', '0:a:0?');
+  /*
+   * A sender must be able to join the shared TS stream LATE, and the defaults will not let it.
+   *
+   * The first senders of a broadcast start at the beginning of the stream, where the parameter
+   * sets are, so they lock on instantly. A RECONNECTING sender does not: it is a brand-new ffmpeg
+   * attached to a stream already in flight, and it cannot write the FLV header until it has seen
+   * an H.264 keyframe carrying SPS and PPS.
+   *
+   * Measured on this host: Chromium's MediaRecorder emits a keyframe every ~7.2 s (ffprobe on a
+   * real recording: 2.058, 9.383, 16.620, 23.831). ffmpeg's default analyze window is 5 s of
+   * stream time, so a sender that reconnects just after a keyframe runs out of patience BEFORE
+   * the next one arrives and dies with "Could not write header (incorrect codec parameters ?)".
+   * That is exactly what was happening, every time, to the flagship feature: a destination that
+   * dropped could never come back. The first run that watched for it found it in one go.
+   *
+   * `+nobuffer` is dropped for the same reason. It exists to cut latency by not buffering during
+   * stream discovery, which is precisely the buffering a late joiner depends on.
+   */
+  argv.push(
+    '-analyzeduration',
+    String(LATE_JOIN_ANALYZE_US),
+    '-probesize',
+    String(LATE_JOIN_PROBE_BYTES),
+    '-f',
+    'mpegts',
+    '-i',
+    'pipe:0',
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a:0?',
+  );
 
   switch (spec.ingest.protocol) {
     case 'rtmp':

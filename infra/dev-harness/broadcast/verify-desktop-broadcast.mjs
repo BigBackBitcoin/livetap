@@ -59,7 +59,7 @@ import {
   sleep,
   startMediaMtx,
 } from '../ingest/lib/harness.mjs';
-import { goLive, pressEnd } from './studio-controls.mjs';
+import { addCustomDestination, goLive, pressEnd } from './studio-controls.mjs';
 import { HELD_ENV, acquire } from './runlock.mjs';
 
 const BROADCAST_DIR = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
@@ -120,12 +120,18 @@ class MissingPiece extends Error {
   }
 }
 
-function run(command, args, { cwd = REPO_ROOT, timeoutMs = 600000, echo = false } = {}) {
+function run(command, args, { cwd = REPO_ROOT, timeoutMs = 600000, echo = false, env } = {}) {
   return new Promise((resolve) => {
     // argv array, shell: false. This harness runs under Git Bash, PowerShell
     // and plain node, and a command string would be re-parsed differently by
     // each of them.
-    const child = spawn(command, args, { cwd, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, {
+      cwd,
+      shell: false,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...(env ? { env } : {}),
+    });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
@@ -245,8 +251,24 @@ async function preflight() {
 async function stageSelftest() {
   log('');
   log('[1/4] proving the receiver is honest, with no product involved');
+  /*
+   * On its own ports, deliberately.
+   *
+   * This stage answers "is the receiver software honest", and which ports it answers on is not
+   * part of that question. Running it on the default ones meant the gate collided with any
+   * receiver already listening — including one leaked by an earlier run of the gate itself,
+   * which is exactly the situation the gate is most likely to be started in. The whole chain then
+   * failed at step one with a port message, having proven nothing about the product.
+   *
+   * Stage 2 still uses the default ports, and still reuses a receiver that is already up.
+   */
   const result = await run(process.execPath, [path.join(INGEST_DIR, 'selftest.mjs'), '--seconds=6'], {
     timeoutMs: 180000,
+    env: {
+      ...process.env,
+      LIVETAP_DEV_INGEST_RTMP_PORT: '11935',
+      LIVETAP_DEV_INGEST_API_PORT: '19997',
+    },
   });
   const verdict = lastVerdict(result.stdout);
   if (result.code === 0) {
@@ -359,22 +381,12 @@ async function stageGracePeriod() {
     await win.reload();
     await win.waitForTimeout(2500);
 
-    await win.evaluate(() => {
-      location.hash = '#/app/destinations';
+    await addCustomDestination(win, {
+      label: 'Grace period',
+      url: `${rtmpBase}/live`,
+      streamKey: 'grace',
+      aspect: '16:9',
     });
-    await win.waitForTimeout(800);
-    await win
-      .getByRole('button', { name: /Add destination|Add your first destination/i })
-      .first()
-      .click();
-    await win.waitForTimeout(400);
-    await win.locator('.lt-addrow', { hasText: 'Custom RTMP' }).first().click();
-    await win.waitForTimeout(400);
-    await win.getByLabel('Name for this destination').fill('Grace period');
-    await win.getByLabel('Server address').fill(`${rtmpBase}/live`);
-    await win.getByLabel('Stream key').fill('grace');
-    await win.getByRole('button', { name: 'Save this destination' }).click();
-    await win.waitForTimeout(1200);
     log('  ok    one Custom RTMP destination created for this stage');
 
     await win.evaluate(() => {

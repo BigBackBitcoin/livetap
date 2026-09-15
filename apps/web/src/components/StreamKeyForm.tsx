@@ -206,7 +206,14 @@ export function StreamKeyForm({
             Cancel
           </Button>
         ) : null}
-        <Button type="submit" variant="primary" loading={busy}>
+        {/*
+          `data-lt-connect` is a contract with the proof harness, the same shape as LiveBar's
+          `data-lt-stop`. The label on this button has already been "Save this destination" and is
+          now "Connect", and each time it changed the harness stopped being able to add a
+          destination and reported the product broken. A harness should ask for the control that
+          DOES a thing, not the control that currently SAYS a thing.
+        */}
+        <Button type="submit" variant="primary" loading={busy} data-lt-connect="">
           Connect
         </Button>
       </div>

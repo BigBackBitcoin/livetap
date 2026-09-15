@@ -9,6 +9,7 @@ import { COPY } from '../lib/copy.js';
 import { megabits, viewers } from '../lib/format.js';
 import { useAppStore } from '../state/store.js';
 import { DestinationErrorCard, useSteadyWhilePressed } from './NoticeCards.js';
+import { useDragOffStage } from './dragOffStage.js';
 import { broadcastReality } from './preflight.js';
 
 /**
@@ -110,9 +111,40 @@ function DestinationRow({
   const snap = steady.snapshot;
   const showStop = steady.live && (snap.state === 'LIVE' || snap.state === 'DEGRADED');
 
+  /*
+   * The signature move, wired to the real thing.
+   *
+   * On the public page you pull a live destination off the stage and the others keep going. Here
+   * the same gesture calls `stopOne`, which stops an actual broadcast to an actual platform. Only
+   * the grip starts it, and the button below does the same job for anyone who would rather press
+   * something — a gesture is the memorable way to end a broadcast, never the only way.
+   */
+  const reducedMotion = usePrefersReducedMotion();
+  const drag = useDragOffStage({
+    armed: showStop,
+    reducedMotion,
+    onDrop: () => void stopOne(snap.config.id),
+  });
+
   return (
-    <li onPointerDown={onPointerDown}>
+    <li
+      onPointerDown={onPointerDown}
+      {...drag.rowProps}
+      className={drag.dragging ? 'is-dragging' : undefined}
+    >
       <span className="lt-chipwrap">
+        {showStop ? (
+          <span
+            {...drag.gripProps}
+            className="lt-grip lt-touch"
+            role="button"
+            tabIndex={0}
+            aria-label={`Drag ${snap.config.label} off the stage to stop it, or press Delete`}
+            aria-keyshortcuts="Delete"
+          >
+            <span className="lt-grip__bars" aria-hidden="true" />
+          </span>
+        ) : null}
         <StatusChip
           state={snap.state}
           label={`${PLATFORM_PROFILES[snap.config.platform].displayName} · ${chipLabel(snap.state)}`}
@@ -235,4 +267,26 @@ export function statusText(snap: DestinationSnapshot, now?: number): string {
     case 'ENDED':
       return 'Ended';
   }
+}
+
+/**
+ * Does this person ask the OS for less motion?
+ *
+ * Read live rather than once, because the setting can change while the app is open and the thing
+ * it governs here is whether a destructive gesture exists at all.
+ */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = (): void => setReduced(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return reduced;
 }

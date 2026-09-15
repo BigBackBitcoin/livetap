@@ -77,3 +77,52 @@ export async function pressEnd(win, { timeout = 15_000 } = {}) {
 export async function isOnAir(win) {
   return (await win.locator('.lt-livebar').count()) > 0;
 }
+
+/**
+ * Add one Custom RTMP destination through the real Destinations UI.
+ *
+ * Here for the same reason `pressEnd` is: the driver used to spell this out inline, so when the
+ * submit button's label went from "Save this destination" to "Connect" the harness stopped being
+ * able to add a destination at all and reported the product broken, for the second time. The
+ * button now carries `data-lt-connect`, which is a promise about what it does rather than about
+ * what it says.
+ *
+ * The tour offer is dismissed first. It is a real part of the product and a first-time creator
+ * meets it here, but it is also a card that can sit over the controls this function needs, and a
+ * harness that trips on it is measuring the wrong thing.
+ */
+export async function addCustomDestination(win, { label, url, streamKey, aspect }) {
+  await win.evaluate(() => {
+    location.hash = '#/app/destinations';
+  });
+  await win.waitForTimeout(600);
+  await dismissTour(win);
+
+  await win.getByRole('button', { name: /Add destination|Add your first destination/i }).first().click();
+  await win.waitForTimeout(400);
+  await win.locator('.lt-addrow', { hasText: 'Custom RTMP' }).first().click();
+  await win.waitForTimeout(400);
+
+  await win.getByLabel('Name for this destination').fill(label);
+  await win.getByLabel('Server address').fill(url);
+  await win.getByLabel('Stream key').fill(streamKey);
+  await win.getByLabel('Shape').selectOption(aspect);
+
+  await win.locator('[data-lt-connect]').click();
+  await win.waitForTimeout(1200);
+}
+
+/**
+ * Answer the quick-tour offer, once, so it cannot sit over anything.
+ *
+ * Deliberately answers it the way a person can rather than writing the storage key directly: if
+ * the offer ever stops being dismissible, that is a bug this should surface rather than route
+ * around. Silent when there is no offer on screen.
+ */
+export async function dismissTour(win) {
+  const no = win.getByRole('button', { name: /^No thanks$/i });
+  if ((await no.count()) === 0) return false;
+  await no.first().click();
+  await win.waitForTimeout(200);
+  return true;
+}

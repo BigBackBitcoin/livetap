@@ -25,7 +25,12 @@
  *   node apps/desktop/e2e/broadcast.mjs --seconds=12 --keep-ingest
  */
 import { _electron as electron } from 'playwright';
-import { goLive, pressEnd } from '../../../infra/dev-harness/broadcast/studio-controls.mjs';
+import {
+  addCustomDestination,
+  dismissTour,
+  goLive,
+  pressEnd,
+} from '../../../infra/dev-harness/broadcast/studio-controls.mjs';
 import { acquire } from '../../../infra/dev-harness/broadcast/runlock.mjs';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -216,23 +221,16 @@ async function main() {
   else bad(`the preload bridge is missing (host=${host.kind}, pushChunk=${host.bridge})`);
 
   step(`[2/8] adding ${TARGETS.length} Custom RTMP destinations through the real UI, one per shape`);
+  await dismissTour(win);
   for (const target of TARGETS) {
-    await win.evaluate(() => {
-      location.hash = '#/app/destinations';
-    });
-    await win.waitForTimeout(600);
-    await win.getByRole('button', { name: /Add destination|Add your first destination/i }).first().click();
-    await win.waitForTimeout(400);
-    await win.locator('.lt-addrow', { hasText: 'Custom RTMP' }).first().click();
-    await win.waitForTimeout(400);
-    await win.getByLabel('Name for this destination').fill(target.label);
     // Split exactly the way every platform splits it, and the way the harness README documents:
     // the server address ends at the application, and the last path segment is the "stream key".
-    await win.getByLabel('Server address').fill(`${rtmpBase}/live`);
-    await win.getByLabel('Stream key').fill(target.key);
-    await win.getByLabel('Shape').selectOption(target.aspect);
-    await win.getByRole('button', { name: 'Save this destination' }).click();
-    await win.waitForTimeout(1200);
+    await addCustomDestination(win, {
+      label: target.label,
+      url: `${rtmpBase}/live`,
+      streamKey: target.key,
+      aspect: target.aspect,
+    });
   }
   const added = await win.evaluate(() => document.querySelectorAll('.lt-destlist > li').length);
   if (added === TARGETS.length) ok(`every destination was created in the app (${added} rows)`);

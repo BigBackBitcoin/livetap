@@ -29,6 +29,7 @@ import type {
 } from '@livetap/core';
 import { FormatRenderer } from '../compositor/FormatRenderer.js';
 import type { MomentCompositor } from '../compositor/MomentCompositor.js';
+import { KEYFRAME_INTERVAL_MS } from '../desktop/diagnostics.js';
 import { LocalSources } from '../sources/LocalSources.js';
 import { WhipClient, WhipError } from '../whip/WhipClient.js';
 import {
@@ -670,6 +671,9 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
         mimeType: mime === '' ? undefined : mime,
         videoBitsPerSecond: format.videoKbps * 1000,
         audioBitsPerSecond: format.audioKbps * 1000,
+        // A local recording wants frequent keyframes for the same reason a broadcast does: it is
+        // what makes the file seekable. See KEYFRAME_INTERVAL_MS.
+        videoKeyFrameIntervalDuration: KEYFRAME_INTERVAL_MS,
       });
       this.recorder = recorder;
       this.recorderMime = mime === '' ? (recorder.mimeType ?? 'video/webm') : mime;

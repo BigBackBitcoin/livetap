@@ -1594,3 +1594,63 @@ body {
   margin: 0;
   font-weight: var(--lt-weight-semibold);
 }
+
+/*
+ * The grip: the one place a live destination can be dragged off the stage.
+ *
+ * It exists only while a destination is live, because dropping something that is not broadcasting
+ * means nothing. It is the ONLY drag trigger on the row (PRODUCT rule: one region, one interaction
+ * owner) — the row also carries Retry and Stop, and a row-wide drag handler would mean a press
+ * that begins on a button and moves four pixels does something other than what the button says.
+ *
+ * `--lt-tension` is written by `useDragOffStage` as the gesture travels, 0 to 1. The row leans on
+ * it rather than on a class, so the feedback is continuous: the destination visibly resists, and
+ * lets go at 1.
+ */
+.lt-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--lt-control-sm);
+  block-size: var(--lt-control-sm);
+  border: 0;
+  border-radius: var(--lt-radius-sm);
+  background: transparent;
+  color: var(--lt-text-tertiary);
+  transition: color var(--lt-dur-1) var(--lt-ease-standard);
+}
+
+.lt-grip:hover,
+.lt-grip:focus-visible {
+  color: var(--lt-text-primary);
+}
+
+/* Two short bars: a handle, at the size the rest of the row's glyphs are drawn. */
+.lt-grip__bars {
+  inline-size: var(--lt-icon-inline);
+  block-size: var(--lt-icon-inline);
+  background:
+    linear-gradient(currentcolor, currentcolor) center/2px 100% no-repeat,
+    linear-gradient(currentcolor, currentcolor) left 4px top 0/2px 100% no-repeat;
+  opacity: 0.85;
+}
+
+.lt-chiprow > li {
+  transition: opacity var(--lt-dur-2) var(--lt-ease-standard);
+}
+
+/* While a drag is in flight the row must not animate its own position: the transform is the
+   pointer's, and a transition on it would lag the finger. */
+.lt-chiprow > li.is-dragging {
+  transition: none;
+  opacity: calc(1 - (var(--lt-tension, 0) * 0.45));
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The gesture is already disabled in `useDragOffStage`; this is belt and braces for the row. */
+  .lt-chiprow > li,
+  .lt-grip {
+    transition: none;
+  }
+}
