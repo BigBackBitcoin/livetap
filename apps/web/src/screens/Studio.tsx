@@ -95,6 +95,10 @@ export function Studio(): ReactElement {
   const goLiveRef = useRef<HTMLDivElement | null>(null);
   const [preflightOpen, setPreflightOpen] = useState(false);
 
+  const needsKey = useAppStore((s) => s.needsKey);
+  /* A new Set per render would defeat the memo it feeds, so it is memoised on the array itself. */
+  const needsKeySet = useMemo(() => new Set(needsKey), [needsKey]);
+
   const preflight = useMemo(
     () =>
       evaluatePreflight({
@@ -107,9 +111,11 @@ export function Studio(): ReactElement {
         micMuted,
         recording: production.recording,
         simulatedIds: reality.simulatedIds,
+        needsKeyIds: needsKeySet,
       }),
     [
       destinations,
+      needsKeySet,
       cameras.length,
       microphones.length,
       unsupported,

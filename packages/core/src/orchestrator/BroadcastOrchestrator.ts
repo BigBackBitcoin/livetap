@@ -64,10 +64,22 @@ interface Record_ {
  *
  * Guarantees:
  * - A destination failure never changes another destination's state.
- * - The production stays LIVE as long as at least one destination is active.
+ * - The production becomes LIVE only when a destination has actually arrived on the wire, and
+ *   stays LIVE as long as at least one destination is active.
  * - All state changes go through the destination transition table.
  * - No secrets are held in snapshots (CredentialRef and BroadcastHandle are kept in private records).
  */
+/**
+ * A production that has been asked to start and has not stopped.
+ *
+ * STARTING and LIVE differ in what they CLAIM, not in what has to be cleaned up: both hold an
+ * encoder, both own destinations, and both have to end when the last of those destinations dies.
+ * Every place that asks "is something running?" rather than "is it live?" asks this one.
+ */
+function isRunning(state: ProductionState): boolean {
+  return state === 'STARTING' || state === 'LIVE';
+}
+
 export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
   private readonly registry: AdapterRegistry;
   private readonly engine: MediaEngine;
@@ -355,8 +367,26 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
       return this.listDestinations();
     }
 
-    this.startedAt = this.now();
-    this.setProductionState('LIVE');
+    /*
+     * NOT `setProductionState('LIVE')`, and this is the invariant the whole product rests on.
+     *
+     * `engine.start()` resolving means the encoder is running. It does not mean one byte reached
+     * one destination: on desktop each sender is a separate process that is spawned and then dies
+     * asynchronously if the far end refuses it, so an engine start succeeds identically whether
+     * the ingest server is listening or was switched off an hour ago. Setting LIVE here made the
+     * headline, the elapsed timer and the live bar all say a broadcast was happening while the
+     * receiver reported zero publishers — a claim the creator acts on, tells an audience about,
+     * and cannot see through.
+     *
+     * The production is live when the FIRST destination reports `outputUp`, which every engine
+     * emits only on evidence: FfmpegEngine on bytes actually written by the sender, BrowserEngine
+     * on a WHIP session the relay accepted, MockEngine on a target that is provably unreachable
+     * and therefore honest about being a simulation. Until then this stays STARTING, which the
+     * UI already renders as "Starting your broadcast" with a Cancel — true, and cancellable.
+     *
+     * `startedAt` moves with it, so the timer counts time on the wire rather than time since a
+     * button was pressed.
+     */
     return this.listDestinations();
   }
 
@@ -395,8 +425,10 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
       }
     }
     await this.finishStop(rec);
-    // If that was the last active destination, the production ends too.
-    if (!this.listDestinations().some((s) => isActiveState(s.state)) && this.productionState === 'LIVE') {
+    // If that was the last active destination, the production ends too. STARTING counts: a
+    // production whose every destination died before any of them arrived never became live, and
+    // leaving it STARTING forever is the same lie in a quieter register.
+    if (!this.listDestinations().some((s) => isActiveState(s.state)) && isRunning(this.productionState)) {
       await this.stop();
     } else {
       this.emitProduction();
@@ -495,6 +527,11 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
     if (this.apply(rec, 'STREAM_UP')) {
       rec.snapshot = { ...rec.snapshot, error: undefined, reconnectAttempt: 0, nextRetryAt: undefined };
       this.emit('destination', rec.snapshot);
+      // The first destination to genuinely arrive is what makes the production live. See goLive().
+      if (this.productionState === 'STARTING') {
+        this.startedAt = this.now();
+        this.setProductionState('LIVE');
+      }
       this.emitProduction();
       if (!wasReconnecting) this.subscribeChat(rec, adapter);
     }
@@ -607,8 +644,8 @@ export class BroadcastOrchestrator extends TypedEmitter<OrchestratorEvents> {
     }
     this.emit('notice', { level: 'error', destinationId: rec.snapshot.config.id, error, message: error.what });
     this.emitProduction();
-    // If this failure removed the last active destination of a live production, end the production.
-    if (this.productionState === 'LIVE' && !this.listDestinations().some((s) => isActiveState(s.state))) {
+    // If this failure removed the last active destination of a running production, end it.
+    if (isRunning(this.productionState) && !this.listDestinations().some((s) => isActiveState(s.state))) {
       void this.stop();
     }
     return rec.snapshot;

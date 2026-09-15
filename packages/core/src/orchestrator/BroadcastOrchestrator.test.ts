@@ -92,6 +92,14 @@ class FakeEngine extends TypedEmitter<EngineEvents> implements MediaEngine {
   stopped = 0;
   failStart = false;
   failAddOutputFor = new Set<string>();
+  /**
+   * `start()` succeeds and no output ever reports up.
+   *
+   * This is not a contrived state: it is exactly what a desktop broadcast to an ingest server that
+   * is switched off looks like. The encoder process spawns and lives, each sender process spawns
+   * and then dies on its own socket a moment later, and `start()` has long since resolved.
+   */
+  silent = false;
 
   async capabilities(): Promise<EngineCapabilities> {
     return { camera: true, microphone: true, screen: true, window: true, systemAudio: true, rtmp: true, srt: true, whip: false, recording: true, hardwareEncoders: [], maxFormats: 3, verification: 'SIMULATED' };
@@ -104,6 +112,7 @@ class FakeEngine extends TypedEmitter<EngineEvents> implements MediaEngine {
     this.started = req;
     for (const o of req.outputs) this.outputs.set(o.destinationId, o);
     // Simulate ingest acceptance asynchronously, like a real sender would.
+    if (this.silent) return;
     queueMicrotask(() => {
       for (const o of req.outputs) this.emit('output', { type: 'outputUp', destinationId: o.destinationId });
     });
@@ -111,6 +120,7 @@ class FakeEngine extends TypedEmitter<EngineEvents> implements MediaEngine {
   async addOutput(o: EngineOutput) {
     if (this.failAddOutputFor.has(o.destinationId)) throw new Error('connect ECONNREFUSED');
     this.outputs.set(o.destinationId, o);
+    if (this.silent) return;
     queueMicrotask(() => this.emit('output', { type: 'outputUp', destinationId: o.destinationId }));
   }
   async removeOutput(id: string) {
@@ -412,5 +422,119 @@ describe('reconnect countdown exposure', () => {
     expect(after.state).toBe('LIVE');
     expect(after.nextRetryAt).toBeUndefined();
     expect(after.reconnectAttempt).toBe(0);
+  });
+});
+
+/**
+ * LIVE means bytes are on the wire. Nothing else is allowed to mean it.
+ *
+ * This is the product's load-bearing promise, written down as the directive's "most important
+ * invariant": the application must never display LIVE unless the engine proves the broadcast is
+ * actually active. It used to be violated in the one situation that matters, and violated
+ * silently — `engine.start()` resolving was taken as the whole answer, so a broadcast aimed at an
+ * ingest server that was switched off reported LIVE with a running clock while the far end had
+ * never seen a packet. The creator has no way to see through that, which is what makes it the
+ * worst defect this product can ship rather than merely a wrong label.
+ */
+describe('the production is live only when something arrived', () => {
+  let engine: FakeEngine;
+  let scheduler: FakeScheduler;
+  let orch: BroadcastOrchestrator;
+  let clock = 1_000;
+
+  beforeEach(async () => {
+    clock = 1_000;
+    engine = new FakeEngine();
+    scheduler = new FakeScheduler();
+    const registry = new AdapterRegistry();
+    registry.register(fakeAdapter('twitch').adapter);
+    registry.register(fakeAdapter('kick').adapter);
+    orch = new BroadcastOrchestrator({
+      registry,
+      engine,
+      scheduler,
+      now: () => clock,
+      random: () => 0.5,
+      settings: { ...DEFAULT_PRODUCTION_SETTINGS, reconnect: { ...DEFAULT_PRODUCTION_SETTINGS.reconnect, maxAttempts: 2 } },
+    });
+    orch.addDestination(config('d1', 'twitch'));
+    orch.addDestination(config('d2', 'kick'));
+    await orch.connect('d1');
+    await orch.connect('d2');
+  });
+
+  it('stays STARTING when the encoder runs but no destination ever arrives', async () => {
+    engine.silent = true;
+    await orch.goLive();
+    await tick();
+
+    expect(engine.started).toBeDefined();
+    expect(orch.getProduction().state).toBe('STARTING');
+    expect(orch.getProduction().liveCount).toBe(0);
+    // No clock either: an elapsed time is a claim about how long this has been broadcasting.
+    expect(orch.getProduction().startedAt).toBeUndefined();
+  });
+
+  it('becomes LIVE the moment the first destination arrives, and not before', async () => {
+    engine.silent = true;
+    await orch.goLive();
+    await tick();
+    expect(orch.getProduction().state).toBe('STARTING');
+
+    clock = 9_000;
+    engine.emit('output', { type: 'outputUp', destinationId: 'd1' });
+    await tick();
+
+    const production = orch.getProduction();
+    expect(production.state).toBe('LIVE');
+    expect(production.liveCount).toBe(1);
+    // The timer starts when the bytes did, not when the button was pressed.
+    expect(production.startedAt).toBe(9_000);
+    // The one that has not arrived is still honestly STARTING.
+    expect(orch.getDestination('d2')?.state).toBe('STARTING');
+  });
+
+  it('does not restart the clock when the second destination arrives', async () => {
+    engine.silent = true;
+    await orch.goLive();
+    await tick();
+    clock = 5_000;
+    engine.emit('output', { type: 'outputUp', destinationId: 'd1' });
+    await tick();
+    clock = 12_000;
+    engine.emit('output', { type: 'outputUp', destinationId: 'd2' });
+    await tick();
+
+    expect(orch.getProduction().startedAt).toBe(5_000);
+    expect(orch.getProduction().liveCount).toBe(2);
+  });
+
+  it('ends the production when every destination dies before any of them arrived', async () => {
+    engine.silent = true;
+    await orch.goLive();
+    await tick();
+    expect(orch.getProduction().state).toBe('STARTING');
+
+    // Both senders die on their own sockets. Reconnect runs out, and then there is nothing left.
+    for (const id of ['d1', 'd2']) {
+      engine.emit('output', { type: 'outputLost', destinationId: id, code: 'INGEST_INVALID_KEY' });
+    }
+    await tick();
+    await tick();
+
+    expect(orch.getProduction().state).not.toBe('LIVE');
+    expect(orch.getProduction().state).not.toBe('STARTING');
+    // `stop()` moves a FAILED destination to ENDED and keeps its error, so the creator can still
+    // read what went wrong and the next GO LIVE can start it again without a manual reset.
+    expect(orch.getDestination('d1')?.state).toBe('ENDED');
+    expect(orch.getDestination('d1')?.error?.code).toBe('INGEST_INVALID_KEY');
+  });
+
+  it('reaches LIVE normally when the engine does report outputs up', async () => {
+    await orch.goLive();
+    await tick();
+
+    expect(orch.getProduction().state).toBe('LIVE');
+    expect(orch.getProduction().liveCount).toBe(2);
   });
 });

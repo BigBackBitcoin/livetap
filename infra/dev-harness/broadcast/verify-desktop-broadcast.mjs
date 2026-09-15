@@ -60,6 +60,7 @@ import {
   startMediaMtx,
 } from '../ingest/lib/harness.mjs';
 import { goLive, pressEnd } from './studio-controls.mjs';
+import { HELD_ENV, acquire } from './runlock.mjs';
 
 const BROADCAST_DIR = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
 const REPO_ROOT = path.resolve(BROADCAST_DIR, '..', '..', '..');
@@ -96,6 +97,8 @@ function log(line = '') {
 }
 
 const results = [];
+/** Released in every exit path, including the error one. */
+let releaseLock = () => undefined;
 
 function record(stage, status, detail) {
   results.push({ stage, status, detail });
@@ -274,10 +277,10 @@ async function stageBroadcast(driver) {
   });
   const verdict = lastVerdict(result.stdout) || `the driver exited ${String(result.code)} without a verdict line`;
   if (result.code === 0) {
-    record('real broadcast, two shapes, failure isolation, END', 'PASS', verdict);
+    record('real broadcast, two shapes, isolation, reconnect, END', 'PASS', verdict);
     return true;
   }
-  record('real broadcast, two shapes, failure isolation, END', 'FAIL', verdict);
+  record('real broadcast, two shapes, isolation, reconnect, END', 'FAIL', verdict);
   if (result.stderr.trim()) log(indent(result.stderr));
   return false;
 }
@@ -449,9 +452,19 @@ async function receiverIsUp() {
 
 async function main() {
   log('LIVETAP alpha completion gate');
+  /*
+   * Serialise before printing anything else. Overlapping runs adopt each other's receiver and
+   * each other's Electron user-data directory, and then report the product broken; see runlock.mjs.
+   */
+  releaseLock = await acquire({
+    label: 'completion gate',
+    onWait: (holder) => log(`  waiting     another completion gate (pid ${holder.pid}) is using the receiver`),
+  });
   log(`  repo        ${REPO_ROOT}`);
   log(`  receiver    rtmp://${cfg.host}:${cfg.rtmpPort}   control API ${cfg.apiBase}`);
   log('');
+  // Children inherit this, so the studio driver the gate spawns does not wait for its own parent.
+  process.env[HELD_ENV] = '1';
 
   const driver = await preflight();
 
@@ -527,7 +540,10 @@ function finish() {
   }
 }
 
-main().catch((error) => {
+main()
+  .then(() => releaseLock())
+  .catch((error) => {
+  releaseLock();
   log('');
   if (error instanceof MissingPiece) {
     log(`MISSING  ${error.what}`);

@@ -89,6 +89,15 @@ export interface AppState {
 
   production: ProductionSnapshot;
   destinations: DestinationSnapshot[];
+  /**
+   * Destinations that exist but came back from storage without their stream key.
+   *
+   * Keys are deliberately never written to browser storage, so a restored paste-key destination
+   * is complete in every respect except the one that lets it broadcast. Nothing in its snapshot
+   * says so - to the orchestrator it is simply a destination nobody has connected yet - which is
+   * why Studio used to tell a returning creator to add a destination they already had.
+   */
+  needsKey: string[];
   moments: Moment[];
   chat: ChatMessage[];
   metrics?: EngineMetrics;
@@ -436,6 +445,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
 
       production: EMPTY_PRODUCTION,
       destinations: [],
+      needsKey: [],
       moments: defaultMoments(),
       chat: [],
       notices: [],
@@ -578,12 +588,14 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           });
         }
 
+        const awaitingKey: string[] = [];
         for (const snap of orchestrator.listDestinations()) {
           const needsKey = platformStatus(snap.config.platform).method === 'key';
           const key = await readStreamKey(snap.config.id);
           if (snap.config.mock) {
             void orchestrator.connect(snap.config.id);
           } else if (needsKey && !key) {
+            awaitingKey.push(snap.config.id);
             notice({
               level: 'info',
               destinationId: snap.config.id,
@@ -593,6 +605,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
             void orchestrator.connect(snap.config.id);
           }
         }
+        set({ needsKey: awaitingKey });
 
         try {
           await orchestrator.startPreview();
@@ -750,6 +763,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           ingest: { ...snap.config.ingest, streamKey: streamKey.trim() },
         });
         await r.orchestrator.connect(destinationId);
+        set((s) => ({ needsKey: s.needsKey.filter((id) => id !== destinationId) }));
         mirror();
       },
 
@@ -779,7 +793,10 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       async removeDestination(destinationId: string): Promise<void> {
         await runtime?.orchestrator.removeDestination(destinationId);
         await forgetStreamKey(destinationId);
-        set((s) => ({ notices: s.notices.filter((n) => n.destinationId !== destinationId) }));
+        set((s) => ({
+          notices: s.notices.filter((n) => n.destinationId !== destinationId),
+          needsKey: s.needsKey.filter((id) => id !== destinationId),
+        }));
         mirror();
         persistDestinations();
       },

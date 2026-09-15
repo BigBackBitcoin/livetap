@@ -41,6 +41,15 @@ export interface PreflightInput {
    * to the config, which is right for a caller that has no runtime to ask.
    */
   simulatedIds?: ReadonlySet<string>;
+  /**
+   * The ids of destinations that exist but came back from storage without their stream key.
+   *
+   * Stream keys are deliberately never persisted in the browser, so a paste-key destination is
+   * restored complete in every respect except the one that matters. The store knows this at
+   * boot; nothing in a `DestinationSnapshot` says it, because from the orchestrator's point of
+   * view the destination is simply not connected yet.
+   */
+  needsKeyIds?: ReadonlySet<string>;
 }
 
 /**
@@ -112,6 +121,74 @@ export function nameDestinations(list: DestinationSnapshot[]): string {
   return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
 }
 
+/**
+ * Why nothing is ready, said to the person who is actually standing here.
+ *
+ * "No destination is ready — add a destination" is the right sentence exactly once: on the first
+ * run, when there are none. On the second run it is wrong in the most discouraging way available,
+ * because stream keys are deliberately not persisted, so a creator who set up YouTube and Twitch
+ * yesterday opens the app today, sees both of them listed on the Destinations screen, and is told
+ * by Studio to go and create a third. The Destinations screen already says the true thing ("is
+ * missing something", "Paste a new key"); this is the one place that contradicted it.
+ *
+ * Order matters: the most specific cause that applies wins, because a creator acts on the first
+ * sentence they read.
+ */
+function notReadyReason(input: PreflightInput): PreflightItem {
+  const all = input.destinations;
+  const needKey = all.filter((d) => input.needsKeyIds?.has(d.config.id));
+  const enabled = all.filter((d) => d.config.enabled);
+  const connecting = enabled.filter(
+    (d) => d.state === 'AUTHENTICATING' || d.state === 'STARTING' || d.state === 'RECONNECTING',
+  );
+
+  if (needKey.length > 0) {
+    return {
+      id: 'needs-key',
+      text:
+        needKey.length === 1
+          ? `${needKey[0]?.config.label} needs its stream key again — keys are never saved in your browser.`
+          : `${needKey.length} destinations need their stream keys again — keys are never saved in your browser.`,
+      fix: { label: needKey.length === 1 ? 'Paste a new key' : 'Paste the keys', to: '/app/destinations' },
+    };
+  }
+
+  if (connecting.length > 0) {
+    return {
+      id: 'connecting',
+      text: `Still connecting to ${nameDestinations(connecting)}.`,
+    };
+  }
+
+  if (all.length > 0 && enabled.length === 0) {
+    return {
+      id: 'all-switched-off',
+      text:
+        all.length === 1
+          ? `${all[0]?.config.label} is switched off, so there is nowhere for this to go.`
+          : 'Every destination is switched off, so there is nowhere for this to go.',
+      fix: { label: 'Switch one back on', to: '/app/destinations' },
+    };
+  }
+
+  if (all.length > 0) {
+    return {
+      id: 'none-ready',
+      text:
+        all.length === 1
+          ? `${all[0]?.config.label} is not ready yet.`
+          : `None of your ${all.length} destinations is ready yet.`,
+      fix: { label: 'See what happened', to: '/app/destinations' },
+    };
+  }
+
+  return {
+    id: 'no-destination',
+    text: 'No destination is ready — that is the one thing LIVETAP cannot do for you.',
+    fix: { label: 'Add a destination', to: '/app/destinations' },
+  };
+}
+
 export function evaluatePreflight(input: PreflightInput): Preflight {
   const enabled = input.destinations.filter((d) => d.config.enabled);
   const ready = enabled.filter((d) => d.state === 'READY');
@@ -136,13 +213,7 @@ export function evaluatePreflight(input: PreflightInput): Preflight {
     return {
       level: 'red',
       headline: 'Not ready to go live',
-      items: [
-        {
-          id: 'no-destination',
-          text: 'No destination is ready — that is the one thing LIVETAP cannot do for you.',
-          fix: { label: 'Add a destination', to: '/app/destinations' },
-        },
-      ],
+      items: [notReadyReason(input)],
       readyCount: 0,
       demoCount: demos.length,
       attentionCount: failed.length,

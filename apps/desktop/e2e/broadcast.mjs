@@ -26,6 +26,7 @@
  */
 import { _electron as electron } from 'playwright';
 import { goLive, pressEnd } from '../../../infra/dev-harness/broadcast/studio-controls.mjs';
+import { acquire } from '../../../infra/dev-harness/broadcast/runlock.mjs';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -132,6 +133,12 @@ function run(command, commandArgs, options = {}) {
 }
 
 async function main() {
+  // No-op when the completion gate spawned us; it already holds it. See runlock.mjs.
+  await acquire({
+    label: 'studio broadcast driver',
+    onWait: (holder) => process.stdout.write(`  waiting     pid ${holder.pid} is using the receiver and the app
+`),
+  });
   if (!fs.existsSync(path.join(appDir, 'dist', 'main', 'index.cjs'))) {
     throw new Error('No built main process. Run: npm run build -w @livetap/desktop');
   }
@@ -270,7 +277,7 @@ async function main() {
     else bad(`the server sees ${target.pathName} as ${track?.size ?? 'no video track'}, expected ${target.expect}`);
   }
 
-  step(`[5/8] broadcasting for ${seconds}s, then proving failure isolation`);
+  step(`[5/8] broadcasting for ${seconds}s, then proving failure isolation and reconnect`);
   await win.waitForTimeout(Math.round((seconds * 1000) / 2));
   if (TARGETS.length < 2) lines.push('  note  one destination only, so failure isolation was not exercised in this run');
   if (TARGETS.length >= 2) {
@@ -285,6 +292,71 @@ async function main() {
     const stillLive = await win.evaluate(() => document.body.innerText.includes('Live'));
     if (stillLive) ok('the app still reports a live broadcast after one destination was dropped');
     else bad('the app stopped reporting a live broadcast when one destination was dropped');
+
+    /*
+     * The other half of the promise, and the half nobody had ever watched happen.
+     *
+     * Every run before this one asserted that the SURVIVOR kept climbing and then went straight to
+     * END, so "the failed destination reconnects independently" — the sentence on the front of the
+     * product — rested entirely on a unit test of the backoff arithmetic. The path it actually has
+     * to travel is long and crosses three processes: the sender dies, FfmpegEngine turns the exit
+     * into `outputLost` and posts it over IPC, BroadcastOrchestrator moves the destination to
+     * RECONNECTING and schedules a retry ~1 s out, `attemptReconnect` calls `addOutput` back
+     * across IPC, and main spawns a fresh `-c copy` sender onto a socket the server closed on
+     * purpose. Any link in that could be missing and every previous run would still have passed.
+     *
+     * MediaMTX counts bytes per CONNECTION, so the returning publisher starts from zero rather
+     * than resuming the old total. Presence is therefore not enough — a connection that opens and
+     * stalls looks identical at one sample — so this waits for a publisher, then waits for that
+     * publisher's own counter to move.
+     */
+    const reconnectDeadline = Date.now() + 25_000;
+    let republished = 0;
+    while (Date.now() < reconnectDeadline) {
+      await win.waitForTimeout(500);
+      const back = await publishers(TARGETS[1].pathName);
+      if (back.length > 0) {
+        republished = await bytesOn(TARGETS[1].pathName);
+        break;
+      }
+    }
+
+    if (republished === 0 && (await publishers(TARGETS[1].pathName)).length === 0) {
+      bad(`${TARGETS[1].pathName} never came back: no publisher reconnected within 25 s of the drop`);
+    } else {
+      ok(`${TARGETS[1].pathName} republished on its own after the drop`);
+      await win.waitForTimeout(3000);
+      const climbing = await bytesOn(TARGETS[1].pathName);
+      if (climbing > republished) {
+        ok(`the reconnected destination is carrying real bytes again (${republished} -> ${climbing})`);
+      } else {
+        bad(`${TARGETS[1].pathName} reconnected but sent nothing (${republished} -> ${climbing} bytes)`);
+      }
+
+      const track = await videoTrackOn(TARGETS[1].pathName);
+      if (track?.size === TARGETS[1].expect) {
+        ok(`the reconnected stream is still ${track.codec} ${track.size}, the shape it was before`);
+      } else {
+        bad(`the reconnected stream is ${track?.size ?? 'not carrying video'}, expected ${TARGETS[1].expect}`);
+      }
+
+      /*
+       * And the UI has to agree. A destination that is genuinely back on the wire while the app
+       * still shows it reconnecting is the same class of lie as a LIVE badge with no bytes, just
+       * pointing the other way, and it is the one the creator acts on: they end a broadcast that
+       * was working because the screen told them it was not.
+       */
+      const settled = await win
+        .waitForFunction(
+          () => !/Reconnecting|Trying again/i.test(document.body.innerText),
+          undefined,
+          { timeout: 15_000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (settled) ok('the app stopped showing the destination as reconnecting once it was back');
+      else bad('the destination is publishing again but the app still shows it reconnecting');
+    }
   }
 
   await win.waitForTimeout(Math.round((seconds * 1000) / 2));
