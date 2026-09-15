@@ -1,7 +1,11 @@
-owner=livetap-bond-integration
+owner=livetap-2b
 sessionId=local (this session)
-claimed=2026-09-15T17:31:00Z
-reason=LIVETAP Bond second-stage: plug the bonding brain into the real broadcast path
+claimed=2026-09-15T18:00:00Z
+reason=final alpha hardening: release gates, reconciliation, push
 rule=one active autonomous owner of this worktree; see docs/qa/REPOSITORY_RECONCILIATION.md
-handover=previous owner livetap-2b finished at 06941fe (13:05:32); list_sessions showed both
-         peer LIVETAP sessions isRunning=false before this claim was taken.
+history=Claimed 2026-09-15T14:52Z. Reclaimed 18:00Z after the bond-integration session
+        took it at 17:31Z on an isRunning=false reading that was wrong: this session was
+        mid-turn, running Electron broadcast gates, and had not handed over. A liveness
+        probe is not a handover signal. Handover is this file changing hands DELIBERATELY,
+        by the outgoing owner. That session has stood down and its commits were inspected
+        and retained: 9d27e96, 9c99f9c, 8da2e84.
