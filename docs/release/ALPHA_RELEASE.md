@@ -146,11 +146,25 @@ file is the one described here.
 
 ## 5. Install it and go live
 
-**Label: PLAUSIBLE, not CONFIRMED.** This section is written from the code and the packaged
-artifact, not from having done it. There is no camera, no microphone and no platform account on this
-build host, so the install-to-live path has never been walked end to end. What *is* confirmed is
-that the packaged app opens, renders this exact first screen (§2), and sees its bundled FFmpeg. The
-rest is the first thing to find out.
+**Label: PLAUSIBLE, not CONFIRMED — except for one part that is now measured.** This section is
+written from the code and the packaged artifact, not from having done it. There is no platform
+account on this build host, so the install-to-a-real-platform path has never been walked end to
+end. What *is* confirmed is that the packaged app opens, renders this exact first screen (§2), and
+sees its bundled FFmpeg.
+
+**What changed on 2026-09-15: broadcasting with NO camera and NO microphone is now proven, and it
+used to be broken.** This host has neither — `enumerateDevices()` returns three `audiooutput`
+entries and nothing else — and until `fc84167` the app produced **0 of 3 publishers** there, three
+times, on two different Moments, while telling the creator "LIVETAP is streaming silence rather
+than stopping your broadcast". Nothing was being broadcast. The cause was that a WebAudio mix with
+neither a microphone nor system audio had nothing connected to its destination, so it never
+rendered, so `MediaRecorder` never emitted a first chunk and the sender FFmpeg never wrote a
+header. Six FFmpeg processes would spawn and not one would open a TCP connection.
+
+It now exits 0 on this host with three real RTMP publishers — H.264 at 1920x1080, 1080x1920 and
+1080x1080 with AAC audio, decoded back off disk by ffprobe. So if your machine has no webcam, or
+you decline the prompts in step 3, the product works. `docs/qa/NO_CAPTURE_DEVICE_DEFECT.md` has the
+measurement.
 
 1. **Install.** Double-click the `.exe`, get past SmartScreen as in §4, choose an install location
    (or accept the default), finish. It installs for your user only — no admin password. A desktop
@@ -158,8 +172,16 @@ rest is the first thing to find out.
 2. **Open it.** First launch takes a few seconds while Electron warms up. You land on
    *Step 1 of 3 — What are you making?* Pick the one that fits (Talking, Gaming, Podcast,
    Presentation, Event, Vertical Live), or **Skip setup**.
-3. **Let it see your camera and microphone.** Windows prompts per device on first use. If you say no,
-   the app keeps working with whatever it still has and says so rather than pretending.
+3. **Let it see your camera and microphone.** Windows prompts per device on first use. If you say
+   no — or if the machine has neither, as this build host does not — the app keeps working with
+   whatever it still has and says so rather than pretending. **That sentence is now measured
+   rather than asserted**: see the note at the top of this section. Viewers get the Moment's own
+   picture (a title card, a colour, whatever the Moment composes) and real silence on the audio
+   track, and the broadcast reaches the platform either way.
+
+   One thing it still gets wrong, and it is cosmetic: on a machine that never had a camera it
+   says "Your camera disconnected… the device was unplugged, disabled, or taken by another app",
+   which is three wrong guesses about a device that was never there. The broadcast is unaffected.
 4. **Add a destination — tap the platform, not "Custom".** Go to **Destinations** →
    **Add destination** → **YouTube**. LIVETAP looks for an OAuth client for YouTube, finds none in
    this build, and opens a paste form **already pointed at YouTube**: the server address is
