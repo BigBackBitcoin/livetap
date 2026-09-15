@@ -114,6 +114,10 @@ function makeRandom(seed: number): () => number {
  * modest overload the queue overflows and packets are lost. `atCapacity` is reported whenever the
  * link is being asked for essentially everything it has, because that single flag is how the
  * classifier separates a saturated path from a failing one.
+ *
+ * `throughputBps` is GOODPUT, matching what `PathSample` documents: the bits that arrived, with
+ * loss already taken out. A real sender measures exactly this - it knows what it sent and the ACKs
+ * say what landed - and reporting anything else here makes every path look healthier than it is.
  */
 function simulateLink(profile: LinkProfile, offeredBps: number, random: () => number, at: number): PathSample {
   if (profile.down) {
@@ -135,7 +139,8 @@ function simulateLink(profile: LinkProfile, offeredBps: number, random: () => nu
   if (load <= 0.9) {
     return {
       at,
-      throughputBps: offeredBps,
+      // Goodput, per the contract on PathSample.throughputBps: what ARRIVED, not what was sent.
+      throughputBps: offeredBps * (1 - profile.baseLoss),
       rttMs: profile.baseRttMs + jitter * 0.2,
       jitterMs: jitter,
       loss: profile.baseLoss,
@@ -150,7 +155,7 @@ function simulateLink(profile: LinkProfile, offeredBps: number, random: () => nu
   const congestionLoss = load > 1.05 ? Math.min(0.4, (load - 1.05) * 0.5) : 0;
   return {
     at,
-    throughputBps: Math.min(offeredBps, capacity),
+    throughputBps: Math.min(offeredBps, capacity) * (1 - Math.min(1, profile.baseLoss + congestionLoss)),
     rttMs: rtt + jitter * 0.2,
     jitterMs: jitter * (1 + (overload - 0.9)),
     loss: Math.min(1, profile.baseLoss + congestionLoss),
@@ -210,7 +215,14 @@ export function runScenario(scenario: LabScenario): LabResult {
       const offered = share * scenario.streamBitrateBps;
       const sample = simulateLink(profile, offered, random, at);
       samples.set(path.handle, sample);
-      deliveredBps += sample.throughputBps * (1 - sample.loss);
+      /*
+       * `throughputBps` is already goodput - what arrived, not what was sent - so loss must not be
+       * applied a second time here. Getting this wrong in the other direction was a real defect:
+       * the lab reported raw throughput, the capacity estimator read it as goodput, and a path
+       * losing 12% of everything it carried looked 12% healthier than it was, all the way up into
+       * the health verdict the creator reads.
+       */
+      deliveredBps += sample.throughputBps;
 
       /*
        * Capacity, through the same estimator the production monitor uses. The lab deliberately

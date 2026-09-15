@@ -154,3 +154,46 @@ describe('usefulCeilingFor', () => {
     expect(usefulCeilingFor(100)).toBeGreaterThanOrEqual(1_000_000);
   });
 });
+
+describe('loss stops optimism', () => {
+  it('refuses to probe upward on a path that is losing packets', () => {
+    /*
+     * The defect this exists for. A 5 Mbps cellular path at 12% loss was never pushed hard enough
+     * to trip `atCapacity`, so it kept earning optimism and probed to the ceiling. The policy
+     * engine added that imaginary capacity to Wi-Fi's real capacity, concluded the stream fitted,
+     * and reported `protected` while the broadcast starved for twenty-five seconds.
+     */
+    const optimistic: CapacityEstimate = { bps: 10 * MBPS, measured: false };
+    const lossy = estimateCapacity({
+      previous: optimistic,
+      sample: sample({ throughputBps: 2.6 * MBPS, loss: 0.12, atCapacity: false }),
+      offeredBps: 3 * MBPS,
+      ceilingBps: CEILING,
+    });
+    expect(lossy.bps).toBe(2.6 * MBPS);
+    expect(lossy.measured).toBe(true);
+  });
+
+  it('still allows optimism through ordinary trace loss', () => {
+    // A little loss is normal on cellular and must not freeze the estimate at the current offer.
+    const result = estimateCapacity({
+      previous: { bps: 4 * MBPS, measured: false },
+      sample: sample({ throughputBps: 4 * MBPS, loss: 0.001 }),
+      offeredBps: 4 * MBPS,
+      ceilingBps: CEILING,
+    });
+    expect(result.bps).toBeGreaterThan(4 * MBPS);
+    expect(result.measured).toBe(false);
+  });
+
+  it('does not freeze an idle path just because it reported loss', () => {
+    // Loss with nothing offered says nothing about capacity; only loaded loss is evidence.
+    const result = estimateCapacity({
+      previous: { bps: 9 * MBPS, measured: false },
+      sample: sample({ throughputBps: 0, loss: 0.3 }),
+      offeredBps: 0,
+      ceilingBps: CEILING,
+    });
+    expect(result.bps).toBe(9 * MBPS);
+  });
+});

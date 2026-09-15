@@ -334,3 +334,106 @@ describe('the transcript', () => {
     expect(text).toContain('Wi-Fi lost');
   });
 });
+
+describe('the honesty invariant', () => {
+  /*
+   * The strongest property in this package, asserted across every scenario rather than case by
+   * case: WHILE THE STREAM IS STARVING, THE ENGINE MAY NOT CLAIM IT IS FINE.
+   *
+   * This is section 49 turned into something a machine can check. It is here because the way it
+   * was broken was not in the health logic at all - a lossy path kept earning optimistic capacity
+   * estimates, the policy engine added imaginary capacity to real capacity, and `protected` came
+   * out the other end while the broadcast starved for twenty-five seconds. A test that only
+   * examined `judgeHealth` would have passed throughout.
+   */
+  const STARVING = 0.95;
+
+  const cases: { name: string; run: () => LabResult }[] = [
+    {
+      name: 'one path goes lossy',
+      run: () =>
+        runScenario({
+          name: 'lossy',
+          paths: [wifi(5 * MBPS), fiveG(5 * MBPS)],
+          streamBitrateBps: STREAM,
+          policy: AGGRESSIVE,
+          durationMs: 45_000,
+          events: [{ atMs: 20_000, handle: '5g', change: { baseLoss: 0.12 }, note: 'loss' }],
+        }),
+    },
+    {
+      name: 'everything collapses',
+      run: () =>
+        runScenario({
+          name: 'collapse',
+          paths: [wifi(8 * MBPS), fiveG(8 * MBPS)],
+          streamBitrateBps: STREAM,
+          policy: AGGRESSIVE,
+          durationMs: 45_000,
+          events: [
+            { atMs: 20_000, handle: 'wifi', change: { capacityBps: 1 * MBPS }, note: 'collapse' },
+            { atMs: 20_000, handle: '5g', change: { capacityBps: 1 * MBPS }, note: 'collapse' },
+          ],
+        }),
+    },
+    {
+      name: 'cellular congests to a trickle',
+      run: () =>
+        runScenario({
+          name: 'congest',
+          paths: [wifi(5 * MBPS), fiveG(8 * MBPS)],
+          streamBitrateBps: STREAM,
+          policy: AGGRESSIVE,
+          durationMs: 45_000,
+          events: [{ atMs: 20_000, handle: '5g', change: { capacityBps: 0.8 * MBPS }, note: 'congest' }],
+        }),
+    },
+    {
+      name: 'wi-fi dies',
+      run: () =>
+        runScenario({
+          name: 'death',
+          paths: [wifi(20 * MBPS), fiveG(15 * MBPS)],
+          streamBitrateBps: STREAM,
+          policy: AGGRESSIVE,
+          durationMs: 45_000,
+          events: [{ atMs: 20_000, handle: 'wifi', change: { down: true }, note: 'death' }],
+        }),
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(`never reports excellent while starving: ${testCase.name}`, () => {
+      const result = testCase.run();
+      /*
+       * SUSTAINED starvation, not a single tick, and the distinction is the whole substance of the
+       * invariant.
+       *
+       * A tick's `deliveredBps` measures the allocation decided on the PREVIOUS tick, while its
+       * `decision` is the new one. So the tick immediately after a path dies legitimately shows low
+       * delivery beside a healthy verdict: the engine has already moved the stream to the surviving
+       * path, and it is describing the configuration it now has rather than the one it just
+       * abandoned. Failing that would be demanding it apologise for a hole it has already fixed.
+       *
+       * Three consecutive short ticks is different. Nothing is recovering; the engine has settled
+       * into an arrangement that does not carry the stream, and calling that `excellent` or
+       * `protected` is the failure section 49 is about.
+       */
+      const WINDOW = 3;
+      for (let i = WINDOW; i < result.ticks.length; i += 1) {
+        const recent = result.ticks.slice(i - WINDOW, i);
+        const starvingThroughout = recent.every(
+          (t) => t.deliveredBps > 0 && t.deliveredBps < STREAM * STARVING,
+        );
+        if (!starvingThroughout) continue;
+        const tick = result.ticks[i]!;
+        expect(
+          ['degraded', 'insufficient', 'offline'],
+          `at ${tick.atMs}ms the stream had been short for ${WINDOW} ticks ` +
+            `(last ${(recent.at(-1)!.deliveredBps / 1e6).toFixed(2)} of ${STREAM / 1e6} Mbps) ` +
+            `but the engine reported "${tick.decision.health}"`,
+        ).toContain(tick.decision.health);
+      }
+    });
+  }
+});

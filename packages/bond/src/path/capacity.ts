@@ -49,9 +49,18 @@ export interface CapacityInput {
   readonly ceilingBps: number;
   /** How fast to probe upward on clean delivery. 1.25 converges in a handful of samples. */
   readonly growth?: number;
+  /**
+   * Loss above which a path is treated as having found its limit rather than earning optimism.
+   *
+   * Matches the degraded threshold in the state machine on purpose: the two must not disagree
+   * about what "this path is losing packets" means, or the engine can demote a path while still
+   * raising its capacity estimate.
+   */
+  readonly lossFloor?: number;
 }
 
 const DEFAULT_GROWTH = 1.25;
+const DEFAULT_LOSS_FLOOR = 0.02;
 
 export function estimateCapacity(input: CapacityInput): CapacityEstimate {
   const { sample, offeredBps, ceilingBps } = input;
@@ -77,6 +86,25 @@ export function estimateCapacity(input: CapacityInput): CapacityEstimate {
    * a bond keeps feeding a path that is already drowning.
    */
   if (sample.atCapacity) {
+    return { bps: sample.throughputBps, measured: true };
+  }
+
+  /*
+   * Loss under load is a limit, even when the queue-delay heuristic never fired.
+   *
+   * Optimism is earned by CLEAN delivery. A path that is dropping packets has already told us it
+   * is at or past its useful capacity, and probing it upward is both wrong and actively harmful:
+   * the estimate climbs, the allocator hands it a bigger share, and more of the broadcast goes
+   * down the path that is losing it.
+   *
+   * This was a real defect, and the way it surfaced is worth recording. A 5 Mbps cellular path at
+   * 12% loss was never pushed hard enough to trip `atCapacity`, so it stayed in the branch below
+   * and probed all the way to the ceiling. The policy engine then added its imaginary capacity to
+   * Wi-Fi's real capacity, concluded the stream fitted comfortably, and reported `protected` while
+   * the broadcast starved for twenty-five seconds - the exact dishonesty section 49 forbids, and
+   * arrived at through an estimator rather than through anything in the health logic.
+   */
+  if (offeredBps > 0 && sample.loss > (input.lossFloor ?? DEFAULT_LOSS_FLOOR)) {
     return { bps: sample.throughputBps, measured: true };
   }
 
