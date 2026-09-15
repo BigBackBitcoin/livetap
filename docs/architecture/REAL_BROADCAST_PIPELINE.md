@@ -214,6 +214,40 @@ is live. The production state is derived from all of them, and a destination in
 RECONNECTING says RECONNECTING, with an attempt number and a countdown, on its
 own card.
 
+**And it does not say LIVE because the encoder started, either.** `engine.start()`
+resolving means an encoder is running; it does not mean a byte reached anything.
+On desktop each sender is a separate process that is spawned and then dies on
+its own socket if the far end refuses it, so a start succeeds identically
+whether the ingest server is listening or was switched off an hour ago. The
+production reaches LIVE on the first `outputUp`, which every engine emits only
+on evidence — FfmpegEngine on bytes the sender actually wrote — and the elapsed
+clock starts with it, so it counts time on the wire rather than time since a
+button was pressed.
+
+---
+
+## Why the keyframe interval is set, and why it is 2 seconds
+
+The renderer asks Chromium for a keyframe every 2 seconds
+(`videoKeyFrameIntervalDuration`, see `KEYFRAME_INTERVAL_MS`). Left alone
+Chromium emits one about every **7.2 seconds** — measured here with ffprobe on a
+real recording: 2.058, 9.383, 16.620, 23.831. Three separate things want it
+shorter, and one of them was broken by it:
+
+- **Platforms.** Twitch requires 4 seconds or less; YouTube asks for 2.
+- **Viewers.** A viewer sees nothing until the next keyframe, so a 7.2-second GOP
+  is up to 7.2 seconds of black for every new arrival.
+- **Reconnect.** A destination that drops is restarted as a fresh `-c copy`
+  sender attached to a stream already in flight, and it cannot write its output
+  header until it has seen a keyframe carrying the H.264 parameter sets. ffmpeg's
+  default analyze window is 5 seconds. 7.2 against 5 meant the reconnecting
+  sender was *mathematically unable* to lock on, and died every time with "Could
+  not write header (incorrect codec parameters ?)".
+
+Senders also get a 20-second analyze window and do not use `+nobuffer`, which
+exists to cut latency by not buffering during stream discovery — exactly the
+buffering a late joiner depends on. Either fix alone is a coin toss; both are in.
+
 ---
 
 ## How to see any of this for yourself
@@ -222,5 +256,11 @@ own card.
 node infra/dev-harness/ingest/selftest.mjs   # is the receiver honest, with no product involved?
 npm run ingest                               # start a real RTMP server on 127.0.0.1:1935
 npm run verify:broadcast                     # the whole desktop chain, one exit code
+npm run verify:paste                         # can somebody with NO account go live on YouTube?
 npm run verify:ingest -- --path=live/wide    # ask ffprobe what actually arrived
 ```
+
+The broadcast proof runs one destination per output shape, so a single run puts
+1920x1080, 1080x1920 **and** 1080x1080 on the wire simultaneously from one
+production, kills one of them at the TCP level, watches the survivors keep
+climbing, and waits for the dropped one to come back at the shape it left.
