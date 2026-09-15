@@ -28,7 +28,8 @@
     "lint": "eslint .",
     "e2e": "npm run e2e -w @livetap/web",
     "audit:deps": "npm audit --audit-level=high",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run test:relay && npm run build:web"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:relay && npm run build:web",
+    "verify:paste": "node infra/dev-harness/broadcast/verify-paste-key.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
