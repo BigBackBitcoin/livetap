@@ -49,6 +49,7 @@ import { createRegistry } from './registry.js';
 import type { RegistryKind } from './registry.js';
 import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
 import { revokeTokens } from './tokens.js';
+import { derivePhase, destroySession, isOnAir, type DestroyReport, type SessionPhase } from './session.js';
 import { broadcastReality } from '../components/preflight.js';
 
 export type Mode = 'simple' | 'pro';
@@ -115,6 +116,15 @@ export interface AppState {
 
   goLive: GoLiveState;
   endingAt: number | null;
+  /**
+   * The visitor has deliberately ended and forgotten this session.
+   *
+   * The ONLY phase fact that is stored. Everything before it — starting, active, live, ending —
+   * is derived by `derivePhase` from `goLive`, `endingAt` and the destination count, because a
+   * second field tracking whether a broadcast is running is a second thing that can disagree
+   * with the first. This product has been bitten twice by exactly that shape.
+   */
+  sessionEnded: boolean;
   /**
    * The creator has been told, once, that the next broadcast reaches real accounts.
    *
@@ -207,6 +217,15 @@ export interface AppState {
   demoLoseCamera(): void;
   demoCrashEncoder(): void;
 
+  /**
+   * End the guest session and forget the person: secrets, tokens, then preferences.
+   *
+   * Refuses while anything may still be on the wire and returns a report of what was actually
+   * cleared, so a caller can tell the truth rather than a reassuring sentence.
+   */
+  endSession(): Promise<DestroyReport>;
+  /** The phase, derived. Never stored except for the terminal end. */
+  sessionPhase(): SessionPhase;
   resetEverything(): void;
 }
 
@@ -549,6 +568,8 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       aspect: boot.settings.aspect,
 
       goLive: 'idle',
+
+      sessionEnded: false,
       endingAt: null,
       realBroadcastAck: boot.realBroadcastAck,
       pendingConfirm: false,
@@ -1259,6 +1280,60 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           code: 'ENCODER_FAILED',
           technical: 'demo: scripted encoder crash',
         });
+      },
+
+      sessionPhase(): SessionPhase {
+        const s = get();
+        return derivePhase({
+          goLive: s.goLive,
+          endingAt: s.endingAt,
+          destinationCount: s.destinations.length,
+          ended: s.sessionEnded,
+        });
+      },
+
+      async endSession(): Promise<DestroyReport> {
+        const state = get();
+        /*
+         * Refused while on air. `isOnAir` covers `live` AND `ending`, because END starts a grace
+         * period during which the broadcast is still up and can be undone — clearing a stream key
+         * in that window would leave a publisher on the wire with no way to address it.
+         */
+        if (isOnAir(state.sessionPhase())) {
+          return {
+            streamKeysForgotten: 0,
+            platformsSignedOut: [],
+            storageRemaining: [],
+            clean: false,
+          };
+        }
+
+        const report = await destroySession({
+          destinationIds: state.destinations.map((d) => d.config.id),
+          platforms: [...new Set(state.destinations.map((d) => d.config.platform))],
+        });
+
+        /*
+         * Wipe the in-memory store too. `destroySession` clears what survives a reload; this
+         * clears what survives a route change, which is the part the person still looking at the
+         * screen can see. Destinations go last so the report above could name them.
+         */
+        set({
+          sessionEnded: true,
+          destinations: [],
+          intent: null,
+          onboardingDone: false,
+          realBroadcastAck: false,
+          pendingConfirm: false,
+          mode: 'simple',
+          quality: DEFAULT_SETTINGS.quality,
+          recordEveryStream: DEFAULT_SETTINGS.recordEveryStream,
+          aspect: DEFAULT_SETTINGS.aspect,
+          notices: [],
+          recordings: [],
+          chat: [],
+        });
+        return report;
       },
 
       resetEverything(): void {
