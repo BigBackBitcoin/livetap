@@ -8,7 +8,7 @@ Run everything: `npm test`. The Bond package alone: `npx vitest run --root packa
 
 ---
 
-## Tier 1 — built and passing (149 tests)
+## Tier 1 — built and passing (186 tests)
 
 Pure logic, no network, deterministic.
 
@@ -22,6 +22,8 @@ Pure logic, no network, deterministic.
 | Ordered reconstruction | `transport/reassemble.test.ts` | 21 |
 | Byte-fair scheduling | `transport/schedule.test.ts` | 14 |
 | Scenarios 1–15 + invariant | `lab/scenarios.test.ts` | 20 |
+| Handshake, AEAD, nonces, replay | `wire/secure.test.ts` | 25 |
+| Real sockets, client to relay | `net/loopback.test.ts` | 12 |
 
 ### The tests that matter most
 
@@ -77,40 +79,64 @@ Benchmarks regenerate from these runs:
 node packages/bond/scripts/bench.mjs
 ```
 
+## Tier 2b — proven over real sockets, end to end
+
+`infra/dev-harness/bond/verify-bond-chain.mjs`. Every link is the production one: a real ffmpeg
+encode, a real `BondSink`, a real UDP socket, a real X25519 handshake and ChaCha20-Poly1305
+records, the real relay running the same tested `Reassembler`, a real `ffmpeg -c copy` to RTMP, a
+real MediaMTX, and `ffprobe` decoding what landed on disk.
+
+```bash
+node infra/dev-harness/bond/verify-bond-chain.mjs --seconds=14
+node infra/dev-harness/bond/verify-bond-chain.mjs --seconds=14 --paths=2 --kill-path-at=6
+```
+
+**Single path — PASS, and it is exact.** 4566 chunks scheduled, 4566 reconstructed, zero lost,
+14.63 s of a 14 s broadcast recorded, 4,962,464 bytes, H.264 1280x720 + AAC 48 kHz stereo decoded
+off disk.
+
+**Two paths, one killed mid-broadcast — the broadcast survives, and the media cost is NOT yet
+acceptable.** The failure is detected, traffic moves to the survivor, the stream continues to the
+destination. But roughly 230 chunks of 4557 are lost with the dying socket, and a hole in MPEG-TS
+costs a downstream `-c copy` consumer far more than the hole itself: 6.26 s of 14 s reached the
+recording.
+
+This is stated as a measured number rather than hidden behind a relaxed threshold. **Closing it
+needs FEC or acknowledgement-driven selective retransmission, and neither is built.** What exists
+today is retransmission triggered by path death, bounded to the freshest 48 chunks - a deliberate
+limit, because re-sending the whole backlog was measured and made things WORSE: recovery rose to
+134 chunks while reconstruction fell from 4447 to 4315, since the burst delayed live media on the
+one path still working.
+
 ## Tier 3 — not tested, because it does not exist yet
 
 Stated plainly so nothing above reads as broader than it is.
 
-- **The wire protocol.** No code speaks it. Designed in `LIVETAP_BOND_PROTOCOL.md`.
-- **The relay.** No server exists. Designed in `LIVETAP_RELAY_ARCHITECTURE.md`.
 - **Android native path binding.** Mechanism confirmed against primary sources; not written.
 - **iOS anything.** LIVETAP has no iOS build.
-- **Any real network.** No measurement in this package has involved a radio, a carrier, or a
-  physical interface.
+- **FEC, and acknowledgement-driven selective retransmission.** The gap measured in Tier 2b.
+- **Encoder coupling.** `encoderCeilingBps` is computed and still goes nowhere.
+- **Network UX.** No Simple-mode or Pro-mode surface exists.
+- **Any real network.** No measurement anywhere in this package has involved a radio, a carrier, or
+  a second physical interface. Loopback exercises every line of the code; it proves nothing about a
+  phone holding Wi-Fi and cellular at once.
 
 ## Tests owed when the transport is built
 
 Written with the implementation, not after.
 
-**Crypto** (from `LIVETAP_BOND_SECURITY.md` §8):
-1. Nonce uniqueness across simulated path churn, including recovery and rekey.
-2. Replay window: a captured datagram replayed on the same path and on a different one.
-3. Forged `PATH_HELLO` from an unknown key allocates no session state.
-4. A tampered cleartext header fails AEAD.
-5. Expired and wrong-session tokens are refused.
-6. Secret-log test extended to the session token, handshake payload and session key.
-7. A relay under an unauthenticated flood keeps serving an authenticated session.
+**Crypto — DONE** (`wire/secure.test.ts`): nonce uniqueness across path churn including recovery and
+counter exhaustion; replay on the same path and across paths; a forged reply refused; a tampered
+cleartext header failing the tag; expired, wrong-broker and edited tokens refused; a junk HELLO
+allocating nothing.
 
-**Transport:**
-8. Reassembly under real packet reordering on a loopback socket.
-9. MTU behaviour: a datagram that would fragment is rejected at the sender.
-10. Path add and remove mid-broadcast with no gap in the reconstructed stream.
-11. A relay restart mid-broadcast: what the creator sees, and how fast.
-
-**Integration:**
-12. The existing desktop broadcast gate, unchanged, with Bond present but `single` — proving
-    section 58's rule that one path behaves exactly as it does today.
-13. The same gate with two loopback paths and one killed mid-broadcast.
+**Still owed:**
+1. Secret-log test extended to the session token, handshake payload and session key.
+2. A relay under an unauthenticated flood while still serving an authenticated session.
+3. MTU behaviour: a datagram that would fragment is rejected at the sender.
+4. A relay restart mid-broadcast: what the creator sees, and how fast.
+5. The existing desktop broadcast gate, unchanged, with Bond present but `single` — proving the
+   brief's §58 rule that one path behaves exactly as it does today.
 
 ## The real-device test, when hardware allows
 

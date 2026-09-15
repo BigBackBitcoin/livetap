@@ -50,6 +50,66 @@ const DATA_PREFIX = SEQ_BYTES + FLAG_BYTES;
 const FLAG_DUPLICATE = 0b0000_0001;
 const FLAG_RANDOM_ACCESS = 0b0000_0010;
 
+/**
+ * Unacknowledged datagrams before a path is declared dead. A BACKSTOP, not the main mechanism.
+ *
+ * Chosen from measurement rather than taste. A healthy loopback path was observed peaking at 43
+ * outstanding datagrams - event-loop batching, not latency - so the first attempt at this, a limit
+ * of 48, sat directly on top of the healthy distribution and killed a perfectly good path. 512 is
+ * an order of magnitude clear of anything observed and still reacts faster than the wall clock it
+ * replaced; the relative test below is what actually does the work.
+ */
+const UNACKED_LIMIT = Number(process.env.LIVETAP_BOND_UNACKED_LIMIT ?? 512);
+
+/**
+ * How far behind the best path a path may fall before traffic is steered away from it.
+ *
+ * Relative, with an absolute floor, and both halves matter. Relative because "400 outstanding" means
+ * nothing on its own - it is alarming next to a path sitting at 5 and unremarkable next to one at
+ * 380. The floor because when every path is healthy their counts differ by small amounts for
+ * entirely innocent reasons, and a purely relative test would thrash between them.
+ *
+ * This is the SRTLA idea - pick by window over in-flight - reached from the same constraint: a link
+ * that has stopped delivering should stop receiving traffic within a few packets, gradually and
+ * without a threshold to get wrong.
+ */
+const DIVERT_RATIO = 4;
+const DIVERT_FLOOR = 32;
+
+/** Chunks kept for possible retransmission. About 0.7 MB, roughly two seconds at 4 Mbps. */
+const HISTORY_CHUNKS = 512;
+/**
+ * The most chunks to re-send when a path dies. Deliberately small.
+ *
+ * These are the newest chunks the dead path swallowed - the ones a decoder still has a use for.
+ * Everything older is already late, and sending it competes with live media on the one path that
+ * is still working.
+ */
+const RETRANSMIT_MAX = 48;
+
+
+/**
+ * Await something, but never forever.
+ *
+ * `close()` waits for the goodbye datagram to leave and then for the socket to close, and both of
+ * those are callbacks from a socket that may be in any state - a dead interface, a handle the OS
+ * has already reclaimed, a stub in a test harness. Without a bound, ANY of those makes ending a
+ * broadcast hang indefinitely, which is the one operation a creator is entitled to have work every
+ * single time. Half a second is far longer than a loopback or a live socket needs and short enough
+ * that a wedged one is simply abandoned.
+ */
+async function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    promise,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+      timer.unref?.();
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+}
+
 /** One local address Bond may send from. */
 export interface BondPathSpec {
   /** Local address to bind. Empty means "let the OS choose", which is the single-path case. */
@@ -110,6 +170,18 @@ interface LivePath {
   lastAckAt: number;
   failures: number;
   offeredBps: number;
+  /**
+   * Datagrams sent on this path since its last acknowledgement.
+   *
+   * This is how a dead path is noticed, and it is measured in PACKETS rather than in seconds on
+   * purpose. The relay acknowledges every DATA datagram it accepts, so under normal conditions this
+   * sits in single figures whatever the bitrate; if it climbs, the path is not delivering, and it
+   * climbs at exactly the rate the path is being used. A wall clock cannot do that: a three-second
+   * timeout costs a path carrying half the stream three seconds of its share, while the same
+   * timeout on a barely-used path is far too eager.
+   */
+  sentSinceAck: number;
+  peakUnacked: number;
 }
 
 /**
@@ -139,6 +211,15 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
   private lastPaceAt = 0;
   private paceTimer: ReturnType<typeof setInterval> | null = null;
   private droppedForPace = 0;
+  /**
+   * The recently sent chunks, so a path's death does not take its in-flight media with it.
+   *
+   * Bounded ring, about 0.7 MB. This is selective retransmission in its smallest honest form: the
+   * chunks at risk when a path dies are exactly the ones sent on it and not yet acknowledged, and
+   * this is the only place they still exist.
+   */
+  private history: { seq: number; body: Buffer; pathId: number; at: number }[] = [];
+  private retransmitted = 0;
 
   constructor(options: BondClientOptions) {
     super();
@@ -269,7 +350,9 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
     body.writeUInt8((randomAccess ? FLAG_RANDOM_ACCESS : 0), SEQ_BYTES);
     payload.copy(body, DATA_PREFIX);
 
-    for (const [index, handle] of assignment.paths.entries()) {
+    const chosen = this.divert(assignment.paths);
+
+    for (const [index, handle] of chosen.entries()) {
       const path = this.paths.get(Number(handle));
       if (!path) continue;
       if (index > 0) body.writeUInt8(body.readUInt8(SEQ_BYTES) | FLAG_DUPLICATE, SEQ_BYTES);
@@ -284,6 +367,7 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
           sessionId: this.sessionId,
         });
         const sealed = channel.sealRecord(header, path.id, counter, body);
+        this.remember(seq, body, path.id);
         this.enqueue(Buffer.concat([header, sealed]), path);
       } catch (error) {
         // Counter exhaustion, or a socket that died between the check and the send. Neither is a
@@ -292,6 +376,29 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
         this.emit('error', error instanceof Error ? error : new Error(String(error)));
       }
     }
+  }
+
+  /**
+   * Steer a chunk away from a path that has stopped acknowledging.
+   *
+   * Runs per chunk, so the response is immediate rather than waiting for the next policy tick. A
+   * path falling behind loses traffic gradually as its backlog grows, and recovers it the moment
+   * acknowledgements resume - which is the behaviour a cliff-edge threshold cannot produce.
+   */
+  private divert(handles: readonly string[]): string[] {
+    if (handles.length === 0) return [];
+    const carrying = [...this.paths.values()].filter((p) => p.state !== 'FAILED');
+    if (carrying.length < 2) return [...handles];
+
+    const best = carrying.reduce((min, p) => Math.min(min, p.sentSinceAck), Infinity);
+    const healthiest = carrying.reduce((a, b) => (a.sentSinceAck <= b.sentSinceAck ? a : b));
+
+    return handles.map((handle) => {
+      const path = this.paths.get(Number(handle));
+      if (!path) return handle;
+      const behind = path.sentSinceAck > DIVERT_FLOOR && path.sentSinceAck > best * DIVERT_RATIO;
+      return behind ? String(healthiest.id) : handle;
+    });
   }
 
   /** Current view of every path, in the shape the policy engine consumes. */
@@ -338,10 +445,12 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
         throughputBps: path.deliveredBytes * 8,
         rttMs: path.rttMs,
         loss: path.loss,
+        peakUnacked: path.peakUnacked,
         share: decision?.active.find((a) => a.handle === String(path.id))?.share ?? 0,
         standby: decision?.active.find((a) => a.handle === String(path.id))?.standby ?? false,
       })),
       droppedForPace: this.droppedForPace,
+      retransmitted: this.retransmitted,
       scheduler: this.scheduler.stats(),
     };
   }
@@ -360,6 +469,7 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
     for (const pending of this.outbox) this.transmit(pending.datagram, pending.path);
     this.outbox = [];
     await new Promise((resolve) => setTimeout(resolve, 50));
+    // Close every socket even if saying goodbye goes wrong on one of them: see `withTimeout`.
 
     const channel = this.channel;
     for (const path of this.paths.values()) {
@@ -383,19 +493,22 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
            * in a reorder buffer nobody is draining. Ending a stream is the one operation a creator
            * is entitled to have work every single time.
            */
-          await new Promise<void>((resolve) => {
-            path.socket.send(
-              Buffer.concat([header, sealed]),
-              this.options.relayPort,
-              this.options.relayHost,
-              () => resolve(),
-            );
-          });
+          await withTimeout(
+            new Promise<void>((resolve) => {
+              path.socket.send(
+                Buffer.concat([header, sealed]),
+                this.options.relayPort,
+                this.options.relayHost,
+                () => resolve(),
+              );
+            }),
+            500,
+          );
         }
       } catch {
         // A path that cannot say goodbye is a path that is already gone. Not worth reporting.
       }
-      await new Promise<void>((resolve) => path.socket.close(() => resolve()));
+      await withTimeout(new Promise<void>((resolve) => path.socket.close(() => resolve())), 500);
     }
     this.paths.clear();
   }
@@ -429,6 +542,8 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
       lastAckAt: this.now(),
       failures: 0,
       offeredBps: 0,
+      sentSinceAck: 0,
+      peakUnacked: 0,
     };
     this.paths.set(id, path);
     socket.on('error', () => this.notePathTrouble(path));
@@ -461,6 +576,7 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
       path.deliveredBytes = delivered;
       path.loss = delivered + lost > 0 ? lost / (delivered + lost) : 0;
       path.lastAckAt = now;
+      path.sentSinceAck = 0;
       if (path.state === 'TESTING' || path.state === 'RECOVERING' || path.state === 'DISCOVERING') {
         path.state = 'HEALTHY';
         this.emit('pathUp', { pathId: path.id, label: path.spec.label });
@@ -468,11 +584,74 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
     });
   }
 
+  /** Keep a chunk for long enough to re-send it if the path it went down dies. */
+  private remember(seq: number, body: Buffer, pathId: number): void {
+    this.history.push({ seq, body, pathId, at: this.now() });
+    if (this.history.length > HISTORY_CHUNKS) this.history.splice(0, this.history.length - HISTORY_CHUNKS);
+  }
+
+  /**
+   * Re-send what was in flight on a path that has just died.
+   *
+   * Measured, and this is why it exists: killing one of two paths mid-broadcast lost 122 of 4557
+   * chunks - the ones already handed to a socket that stopped delivering - and those 2.7% cost far
+   * more than 2.7% of the stream, because an `-c copy` consumer has to resynchronise around a hole
+   * in MPEG-TS and discards good data on either side of it while it does.
+   *
+   * Re-sending is safe by construction: the reassembler is ordered by sequence number and already
+   * treats a second copy as a duplicate, which is a case it is explicitly tested for. A chunk that
+   * arrived anyway costs one wasted datagram; a chunk that did not is recovered.
+   */
+  private retransmitFor(deadPathId: number): void {
+    const channel = this.channel;
+    if (!channel) return;
+    const survivor = [...this.paths.values()].find((p) => p.id !== deadPathId && p.state !== 'FAILED');
+    if (!survivor) return;
+
+    /*
+     * EVERYTHING still in the ring for that path, not a time window.
+     *
+     * A time window was the obvious first attempt and it recovered 13 chunks out of 122. The reason
+     * is the order events happen in: `divert` stops feeding a stalling path within a few hundred
+     * milliseconds, but the path is not DECLARED dead until its acknowledgements have been absent
+     * for a while longer - so by then the at-risk chunks are already older than any window short
+     * enough to be safe. The ring is bounded at 512 entries, so "all of them" is bounded too, and
+     * a chunk that did arrive costs one duplicate the reassembler is built to discard.
+     *
+     * But only the FRESHEST of them, and that limit was also measured. Re-sending the whole ring
+     * recovered 134 chunks and made things worse: reconstruction fell from 4447 to 4315, because
+     * the burst filled the outbox ahead of live media and pushed the surviving path's own backlog
+     * from 23 to 134. For live video a late chunk is as useless as a lost one, so spending the
+     * surviving path's capacity on old media in order to delay new media is a bad trade however
+     * good the recovery statistics look.
+     */
+    const atRisk = this.history.filter((entry) => entry.pathId === deadPathId).slice(-RETRANSMIT_MAX);
+    for (const entry of atRisk) {
+      try {
+        const counter = channel.nextCounter(survivor.id);
+        const header = encodeHeader({
+          version: BOND_VERSION,
+          type: FrameType.DATA,
+          pathId: survivor.id,
+          counter,
+          sessionId: this.sessionId,
+        });
+        const sealed = channel.sealRecord(header, survivor.id, counter, entry.body);
+        this.enqueue(Buffer.concat([header, sealed]), survivor);
+        this.retransmitted += 1;
+      } catch {
+        // A survivor that cannot take it is a survivor about to be declared dead too. Stop.
+        break;
+      }
+    }
+  }
+
   private notePathTrouble(path: LivePath): void {
     if (path.state === 'FAILED') return;
     path.state = 'FAILED';
     path.failures += 1;
     path.capacity = { bps: 0, measured: true };
+    this.retransmitFor(path.id);
     this.emit('pathLost', { pathId: path.id, label: path.spec.label });
     this.reconsider();
   }
@@ -560,6 +739,26 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
 
   private transmit(datagram: Buffer, path: LivePath): void {
     path.sentBytes += datagram.length;
+    path.sentSinceAck += 1;
+    path.peakUnacked = Math.max(path.peakUnacked, path.sentSinceAck);
+
+    /*
+     * Notice a dead path in packets, not seconds.
+     *
+     * Measured before this existed: killing one of two paths mid-broadcast lost 463 of 4566 chunks,
+     * because the only detector was a three-second wall clock and the scheduler went on handing a
+     * silently-dead socket half the stream for all three of those seconds. The relay acknowledges
+     * every DATA datagram it accepts, so `sentSinceAck` normally sits in single figures at any
+     * bitrate - and when a path stops delivering it climbs at exactly the rate that path is being
+     * used, which makes the reaction proportional instead of arbitrary.
+     *
+     * This is the mechanism SRTLA uses for the same reason, arrived at from the same constraint.
+     */
+    if (path.sentSinceAck > UNACKED_LIMIT) {
+      this.notePathTrouble(path);
+      return;
+    }
+
     path.socket.send(datagram, this.options.relayPort, this.options.relayHost, (error) => {
       if (error) this.notePathTrouble(path);
     });
@@ -582,7 +781,17 @@ export class BondClient extends TypedEmitter<BondClientEvents> {
 
     for (const path of this.paths.values()) {
       // A path that has stopped acknowledging is a path that has stopped carrying.
-      if (path.state === 'HEALTHY' && now - path.lastAckAt > 3000) {
+      /*
+       * Wall-clock backstop, tightened when the path is visibly behind.
+       *
+       * A path with a large unacknowledged backlog has already had traffic steered away from it by
+       * `divert`, so it will never trip the packet limit - it stops being sent anything. Waiting the
+       * full idle timeout to declare it dead delays the retransmission of what it swallowed, and
+       * that media is the whole reason failover is worth doing.
+       */
+      const clearlyBehind = path.sentSinceAck > DIVERT_FLOOR;
+      const patience = clearlyBehind ? 750 : 2000;
+      if (path.state === 'HEALTHY' && now - path.lastAckAt > patience) {
         this.notePathTrouble(path);
         continue;
       }
@@ -646,6 +855,8 @@ export interface BondPathTelemetry {
   readonly throughputBps: number;
   readonly rttMs: number;
   readonly loss: number;
+  /** Highest number of datagrams outstanding at once. Tunes UNACKED_LIMIT from data. */
+  readonly peakUnacked: number;
   readonly share: number;
   readonly standby: boolean;
 }
@@ -660,6 +871,8 @@ export interface BondClientTelemetry {
   readonly encoderCeilingBps: number;
   /** Datagrams the sender dropped because its queue overflowed. Real loss, reported as such. */
   readonly droppedForPace: number;
+  /** Chunks re-sent on a surviving path after another path died. */
+  readonly retransmitted: number;
   readonly paths: readonly BondPathTelemetry[];
   readonly scheduler: ReturnType<BondScheduler['stats']>;
 }
