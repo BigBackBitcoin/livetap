@@ -79,6 +79,50 @@ export {
   type SchedulerStats,
 } from './transport/schedule.js';
 
+/*
+ * The network layer. Node-only: it uses `node:dgram`, so it runs in the Electron main process and
+ * in the relay, and must never be pulled into the web bundle. A browser cannot bind a socket to an
+ * interface, so there is nothing here it could use.
+ */
+export {
+  BondClient,
+  discoverDesktopPaths,
+  type BondClientOptions,
+  type BondClientTelemetry,
+  type BondPathSpec,
+  type BondPathTelemetry,
+} from './net/BondClient.js';
+
+export {
+  BondRelay,
+  type BondRelayOptions,
+  type RelaySessionStats,
+} from './net/BondRelay.js';
+
+export {
+  BOND_VERSION,
+  CHUNK_PAYLOAD_BYTES,
+  // Renamed on the package surface: `FrameType` already means "key | inter | audio" here, and a
+  // datagram type and a media frame class are different enough that sharing a name would be a bug
+  // waiting to be written.
+  FrameType as WireFrameType,
+  MAX_DATAGRAM_BYTES,
+  TS_PACKET_SIZE,
+  hasRandomAccessPoint,
+} from './wire/frame.js';
+
+export {
+  SecureChannel,
+  exportPublicKey,
+  generateStaticKeyPair,
+  importPublicKey,
+  newSessionId,
+  signToken,
+  verifyToken,
+  type SessionToken,
+  type StaticKeyPair,
+} from './wire/secure.js';
+
 export {
   formatResult,
   runScenario,

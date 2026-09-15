@@ -1,5 +1,7 @@
-owner=livetap-2b
+owner=livetap-bond-integration
 sessionId=local (this session)
-claimed=2026-09-15T14:52:55Z
-reason=final alpha hardening: release gates, reconciliation, push
+claimed=2026-09-15T17:31:00Z
+reason=LIVETAP Bond second-stage: plug the bonding brain into the real broadcast path
 rule=one active autonomous owner of this worktree; see docs/qa/REPOSITORY_RECONCILIATION.md
+handover=previous owner livetap-2b finished at 06941fe (13:05:32); list_sessions showed both
+         peer LIVETAP sessions isRunning=false before this claim was taken.

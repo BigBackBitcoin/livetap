@@ -37,6 +37,17 @@ export interface BondChunk {
   readonly timestampUs: number;
   readonly frameType: FrameType;
   readonly bytes: number;
+  /**
+   * The media itself, when there is any.
+   *
+   * Optional because the reassembler's logic is about ORDER and does not care what it is ordering -
+   * every test above drives it with envelopes alone. The relay puts the real payload here so that
+   * one tested implementation serves both, rather than the production path quietly growing a second
+   * reassembler that nothing has ever tried to break.
+   *
+   * `Uint8Array` rather than `Buffer`: this module must stay usable in a browser bundle.
+   */
+  readonly payload?: Uint8Array;
 }
 
 export interface ReassembleOptions {
