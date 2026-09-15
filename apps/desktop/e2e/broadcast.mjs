@@ -3,9 +3,9 @@
  * The one test that decides whether LIVETAP is real.
  *
  * It launches the BUILT desktop app under Playwright with Chromium's fake capture device, drives
- * the actual product UI (no test hooks, no injected engine, no store surgery), adds two Custom RTMP
- * destinations pointing at the local MediaMTX receiver, taps GO LIVE, and then asks the receiver
- * what arrived. Every link in the chain is the production one:
+ * the actual product UI (no test hooks, no injected engine, no store surgery), adds one Custom RTMP
+ * destination per output shape pointing at the local MediaMTX receiver, taps GO LIVE, and then asks
+ * the receiver what arrived. Every link in the chain is the production one:
  *
  *   navigator.mediaDevices.getUserMedia   real API, synthetic photons
  *   FormatRenderer                        real canvases, one per aspect ratio
@@ -42,10 +42,23 @@ const seconds = Number(readArg('--seconds') ?? 12);
 const apiBase = process.env.LIVETAP_DEV_INGEST_API ?? 'http://127.0.0.1:9997';
 const rtmpBase = process.env.LIVETAP_DEV_INGEST_RTMP ?? 'rtmp://127.0.0.1:1935';
 
-/** Two destinations, deliberately different shapes: this is what proves per-format composition. */
+/**
+ * One destination per shape the product offers, because a shape nobody has watched arrive is a
+ * shape the product only claims.
+ *
+ * `expect` is the resolution the SERVER must parse out of the stream's own SPS. That is the whole
+ * point: 9:16 has to be a composition built at 1080x1920, not a 16:9 picture in a narrow box, and
+ * 1:1 has to be built at 1080x1080, not a wide picture with the sides cut off by CSS. Nothing but
+ * the dimensions on the wire can tell those apart, which is why they are asserted here rather than
+ * in a screenshot.
+ *
+ * Three simultaneous encoders is also the heaviest thing this product ever asks of a machine, so
+ * this run is the honest answer to "can one laptop do it" as well.
+ */
 const ALL_TARGETS = [
   { key: 'wide', pathName: 'live/wide', aspect: '16:9', label: 'Local wide', expect: '1920x1080' },
   { key: 'tall', pathName: 'live/tall', aspect: '9:16', label: 'Local vertical', expect: '1080x1920' },
+  { key: 'square', pathName: 'live/square', aspect: '1:1', label: 'Local square', expect: '1080x1080' },
 ];
 
 /**
@@ -202,7 +215,7 @@ async function main() {
   if (host.bridge && host.kind === 'desktop') ok('the renderer can reach the main-process engine bridge');
   else bad(`the preload bridge is missing (host=${host.kind}, pushChunk=${host.bridge})`);
 
-  step('[2/8] adding two Custom RTMP destinations through the real UI');
+  step(`[2/8] adding ${TARGETS.length} Custom RTMP destinations through the real UI, one per shape`);
   for (const target of TARGETS) {
     await win.evaluate(() => {
       location.hash = '#/app/destinations';
@@ -222,7 +235,7 @@ async function main() {
     await win.waitForTimeout(1200);
   }
   const added = await win.evaluate(() => document.querySelectorAll('.lt-destlist > li').length);
-  if (added === TARGETS.length) ok(`both destinations were created in the app (${added} rows)`);
+  if (added === TARGETS.length) ok(`every destination was created in the app (${added} rows)`);
   else bad(`expected ${TARGETS.length} destinations, the app shows ${added}`);
 
   step('[3/8] tapping GO LIVE');

@@ -183,7 +183,7 @@ const RECORDING_OFF: RecordingSettings = {
   source: 'program',
 };
 
-function moment(overrides: { micMuted?: boolean; mirror?: boolean } = {}): Moment {
+function moment(overrides: { micMuted?: boolean; mirror?: boolean; facing?: 'user' | 'environment' } = {}): Moment {
   return {
     id: 'm1',
     name: 'Vertical',
@@ -198,6 +198,7 @@ function moment(overrides: { micMuted?: boolean; mirror?: boolean } = {}): Momen
         opacity: 1,
         z: 0,
         mirror: overrides.mirror ?? true,
+        ...(overrides.facing ? { facing: overrides.facing } : {}),
         deviceId: 'default',
       },
     ],
@@ -329,7 +330,27 @@ describe('MobileEngine', () => {
     expect(plugin.calls.map((c) => c.method)).toContain('startPreview');
   });
 
-  it('switches camera when the Moment flips to a non-mirrored camera layer', async () => {
+  it('switches camera when the Moment says the camera faces the other way', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await primed(plugin);
+
+    await engine.setMoment(moment({ facing: 'environment' }));
+
+    expect(plugin.calls.filter((c) => c.method === 'switchCamera')).toHaveLength(1);
+  });
+
+  it('keeps the front camera when the Moment is un-mirrored but still faces the creator', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await primed(plugin);
+
+    // The shipped Moments are exactly this shape now: not mirrored, still a selfie shot. Reading
+    // the flip instead of the facing would point the phone at the wall.
+    await engine.setMoment(moment({ mirror: false, facing: 'user' }));
+
+    expect(plugin.calls.filter((c) => c.method === 'switchCamera')).toHaveLength(0);
+  });
+
+  it('falls back to the mirror flag for a Moment saved before facing existed', async () => {
     const plugin = new FakeLiveStream();
     const engine = await primed(plugin);
 

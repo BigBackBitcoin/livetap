@@ -868,7 +868,10 @@ function buildLayer(args: BuildLayerArgs): LayerResult {
 
   switch (content.kind) {
     case 'camera': {
-      const layer: CameraLayer = { ...base, kind: 'camera', deviceId: content.deviceId, fit: 'cover', mirror: geometry.mirror };
+      // `facing` is not in an OBS scene - OBS has no concept of a lens - so an imported camera is
+      // assumed to be the one pointing at the creator. Stating it stops a phone inferring the lens
+      // from `mirror`, which for an OBS scene means only that the creator flipped the source.
+      const layer: CameraLayer = { ...base, kind: 'camera', deviceId: content.deviceId, fit: 'cover', mirror: geometry.mirror, facing: 'user' };
       return { ok: true, layer };
     }
     case 'screen':

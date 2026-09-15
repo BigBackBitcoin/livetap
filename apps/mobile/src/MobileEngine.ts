@@ -28,6 +28,7 @@ import { TypedEmitter } from '@livetap/core';
 import { installVaultBridge } from '@livetap/capacitor-live-stream';
 import type {
   AspectRatio,
+  CameraLayer,
   EngineCapabilities,
   EngineEvents,
   EngineOutput,
@@ -537,9 +538,20 @@ export class MobileEngine implements MediaEngine {
 
 /** A Moment's first visible camera layer decides which physical camera the phone uses. */
 function cameraFromMoment(moment: Moment): LiveStreamCamera | undefined {
-  const cam = moment.layers.find((l) => l.kind === 'camera' && l.visible);
+  const cam = moment.layers.find((l): l is CameraLayer => l.kind === 'camera' && l.visible);
   if (!cam) return undefined;
-  // `mirror` is how LIVETAP marks a selfie framing; on a phone that maps to the front camera.
+  /*
+   * `facing` is the question being asked, and it is asked directly now.
+   *
+   * This used to read `mirror`, because a selfie shot happens to want both the front lens and a
+   * mirrored self-view. Conflating them meant the phone's lens was chosen by a render transform,
+   * so un-mirroring the broadcast - which had to happen, it was sending every sign and t-shirt
+   * out backwards - would silently have pointed every phone at its rear camera.
+   *
+   * `mirror` is still consulted, but only as a fallback for a Moment saved before `facing`
+   * existed, where it is the only evidence of what the creator meant.
+   */
+  if (cam.facing) return cam.facing === 'environment' ? 'back' : 'front';
   return cam.mirror === false ? 'back' : 'front';
 }
 

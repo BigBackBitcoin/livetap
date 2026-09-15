@@ -39,7 +39,19 @@ export interface LayerBase {
   radius?: number;
   /** Object-fit behaviour for media layers. */
   fit?: 'cover' | 'contain' | 'fill';
-  /** Mirror horizontally (selfie cams). */
+  /**
+   * Flip this layer horizontally in the composition.
+   *
+   * This is a RENDER transform and it changes what viewers see, so it defaults to false and
+   * `defaults.ts` never turns it on. It exists for OBS scene import, where a negative X scale is
+   * a thing a creator deliberately did, and for anyone who wants it on purpose.
+   *
+   * It used to default to true on camera layers, which meant every LIVETAP broadcast went out
+   * mirrored: a t-shirt, a book cover, a whiteboard or a product label all reached the audience
+   * backwards. It survived because the only camera anyone had tested with was Chromium's green
+   * test pattern, where a flip is invisible unless you look at the frame counter. Mirroring is a
+   * thing a SELF-VIEW wants, never a thing an audience wants, and the two had been conflated.
+   */
   mirror?: boolean;
 }
 
@@ -47,6 +59,15 @@ export interface CameraLayer extends LayerBase {
   kind: 'camera';
   /** Device id, or 'default'. */
   deviceId: string;
+  /**
+   * Which lens, on a device that has more than one. `user` is the selfie camera.
+   *
+   * Separate from `mirror` on purpose, because they are different questions that happen to have
+   * the same answer on a phone. `mirror` asks "flip the pixels"; this asks "which way is the
+   * camera pointing". Android used to answer the second by reading the first, so making the
+   * broadcast un-mirrored would silently have switched every phone to its rear camera.
+   */
+  facing?: 'user' | 'environment';
 }
 
 export interface ScreenLayer extends LayerBase {

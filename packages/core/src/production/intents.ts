@@ -269,7 +269,10 @@ function applyIntentToLayer(layer: Layer, intent: IntentProfile, momentId: strin
     };
   }
   if (layer.kind === 'camera' && momentId === 'main-camera' && intent.id === 'vertical') {
-    return { ...layer, fit: 'cover', mirror: true };
+    // `cover` so a vertical production fills the frame instead of letterboxing a wide sensor.
+    // Deliberately no `mirror`: see types/moment.ts. A vertical stream is the one most likely to
+    // be someone holding something up to the lens.
+    return { ...layer, fit: 'cover' };
   }
   return layer;
 }

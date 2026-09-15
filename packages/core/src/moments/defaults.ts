@@ -24,7 +24,13 @@ function camera(id: string, placement: Layer['placement'], extra: Partial<Layer>
     opacity: 1,
     z: 10,
     fit: 'cover',
-    mirror: true,
+    /*
+     * Not mirrored. See the note on `mirror` in types/moment.ts: this is the composition that
+     * gets encoded and sent, so flipping it flips what the audience reads. `facing: 'user'` is
+     * what actually carries "this is a selfie shot" to a device with two lenses.
+     */
+    mirror: false,
+    facing: 'user',
     deviceId: 'default',
     ...extra,
   } as Layer;
