@@ -540,6 +540,107 @@ test.describe('the landing page, with a frame dropped', () => {
         `an invisible band was still taking input five seconds after the scroll that hid it: ${stuck.afterASecondAndAHalf.join('; ')}`,
       ).toEqual([]);
     });
+
+    /**
+     * The other half of that guard, and the half that broke the moment it shipped.
+     *
+     * A guard has two ends and only one of them was being tested. The closed end — zero area
+     * when the band paints nothing — is what the test above measures. The OPEN end was written
+     * as `inset(0)`, which is not "no clip": it means "clip to the border box", and that is a
+     * real change to any band whose children are supposed to paint outside it.
+     *
+     * `.ltp-band--rail` is exactly that band. It declares `overflow: visible` on purpose — the
+     * six looks ride in from beyond the right edge and the engine travels the lane by the width
+     * of that overflow — and `inset(0)` cut the lane off at the band's edge. The Moments mirror,
+     * a control the product promises answers at its own chapter, stopped being clickable at
+     * `act-moments` on a phone. `audit-closure.spec.ts` caught it; the cause was the guard, not
+     * the rail.
+     *
+     * So both ends are pinned here, on the band with the most to lose from either, and they are
+     * pinned by HIT-TESTING rather than by reading the declared clip back as a string — because
+     * the string `inset(0)` is exactly what a string assertion would have accepted.
+     */
+    test('the band guard clips nothing while it is open, and to nothing when it is not', async ({
+      page,
+    }) => {
+      await page.goto('/');
+      await page.waitForSelector('html.sc-ready');
+
+      /*
+       * Asked of the RULE, not of whichever band the page happens to be showing: two bands of
+       * known size at known places, each with a child that deliberately overflows it, one open
+       * and one dark.
+       *
+       * Two bands rather than one band twice: setting `--ltp-vis` on an element and reading its
+       * `clip-path` back in the same task returns the PREVIOUS clip in Chromium, while the
+       * custom property itself already reads as the new value. The page never does that — there
+       * `--ltp-vis` is a function of `--sc-p`, which is written on an ancestor — but a test that
+       * did would be measuring the engine's recalc order instead of this rule.
+       */
+      const seen = await page.evaluate(() => {
+        const ask = (vis: string, x: number): { inside: string; outside: string } => {
+          const host = document.createElement('div');
+          host.style.cssText =
+            `position:fixed; inset-block-start:200px; inset-inline-start:${x}px;` +
+            'inline-size:200px; block-size:100px; z-index:2147483000;';
+
+          const band = document.createElement('div');
+          band.className = 'ltp-band ltp-band--rail is-here';
+          /*
+           * `overflow` is pinned so the only thing that can clip the child is the guard: under
+           * reduced motion the real rail is a native sideways scroller, which clips for its own
+           * reasons, and this test is not about that one.
+           */
+          band.style.cssText =
+            'position:absolute; inset:0; inline-size:200px; block-size:100px; min-block-size:0;' +
+            `overflow:visible; --ltp-vis:${vis};`;
+
+          /* The lane the rail is built to let out of its own box, in miniature. */
+          const over = document.createElement('div');
+          over.style.cssText =
+            'position:absolute; inset-block-start:0; inset-inline-start:100%;' +
+            'inline-size:60px; block-size:60px; background:#f0f;';
+
+          band.append(over);
+          host.append(band);
+          document.body.append(host);
+
+          const name = (el: Element | null): string =>
+            el === band ? 'the band' : el === over ? 'the overflowing child' : 'something else';
+
+          /* The middle of the band, then 30px past its right edge, which is inside the child. */
+          const answer = {
+            inside: name(document.elementFromPoint(x + 100, 250)),
+            outside: name(document.elementFromPoint(x + 230, 230)),
+          };
+          host.remove();
+          return answer;
+        };
+
+        return { open: ask('1', 200), shut: ask('0', 600) };
+      });
+
+      /* Open, the guard is not allowed to be there at all. */
+      expect(
+        seen.open.inside,
+        'a band that is painting did not answer the pointer over its own middle',
+      ).toBe('the band');
+      expect(
+        seen.open.outside,
+        'the open end of the band guard clipped a child that overflows the band on purpose — ' +
+          'that is what made the Moments mirror unclickable at its own chapter',
+      ).toBe('the overflowing child');
+
+      /* Dark, it is absolute, and it reaches the overflow too. */
+      expect(
+        seen.shut.inside,
+        'a band painting nothing still answered the pointer over its own middle',
+      ).toBe('something else');
+      expect(
+        seen.shut.outside,
+        'a band painting nothing still answered the pointer through an overflowing child',
+      ).toBe('something else');
+    });
 });
 
 /* ========================================== a defect found here, and whose it is to fix */

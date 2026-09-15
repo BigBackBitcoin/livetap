@@ -162,8 +162,16 @@
    * a `requestAnimationFrame` the page does not control, and a 350 ms task on the main thread
    * left `opacity: 0; visibility: visible; pointer-events: auto` over the destination column
    * until the next scroll — which, for a reader who has stopped scrolling, is never.
+   *
+   * The OPEN end of this switch is a rectangle far LARGER than the band, not `inset(0)`, and
+   * that is not a detail. `inset(0)` means "clip to the border box", which is a real change to
+   * every band whose children are meant to paint outside it — `.ltp-band--rail` says
+   * `overflow: visible` for exactly that reason, because the six looks ride in from beyond the
+   * right edge and the engine travels the lane by the width of that overflow. Clipping it to the
+   * box cut the lane off at the band's edge, and the Moments mirror stopped being clickable at
+   * its own chapter. A guard may close; it may not alter the thing it guards while it is open.
    */
-  clip-path: inset(calc((1 - var(--ltp-touchable)) * 50%));
+  clip-path: inset(calc(var(--ltp-touchable) * -100vmax + (1 - var(--ltp-touchable)) * 50%));
 }
 
 .ltp-band.is-here {
