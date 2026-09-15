@@ -1304,6 +1304,12 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
             streamKeysForgotten: 0,
             platformsSignedOut: [],
             storageRemaining: [],
+            /*
+             * Not "storage is unreadable" — we refused to act and therefore never looked. Both
+             * report the same thing to a caller: nothing here was observed, so nothing may be
+             * claimed. `clean: false` is the only honest answer to a request that was declined.
+             */
+            storageReadable: false,
             clean: false,
           };
         }
