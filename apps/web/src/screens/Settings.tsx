@@ -13,8 +13,6 @@ import { ProSettings } from './pro/ProSettings.js';
  * that can be half-applied.
  */
 export function Settings(): ReactElement {
-  const mode = useAppStore((s) => s.mode);
-  const setMode = useAppStore((s) => s.setMode);
   const quality = useAppStore((s) => s.quality);
   const setQuality = useAppStore((s) => s.setQuality);
   const recordEveryStream = useAppStore((s) => s.recordEveryStream);
@@ -29,16 +27,13 @@ export function Settings(): ReactElement {
         <h1>Settings</h1>
       </header>
 
-      <Card>
-        <Toggle pressed={mode === 'pro'} onPressedChange={(next) => setMode(next ? 'pro' : 'simple')}>
-          Pro mode
-        </Toggle>
-        <p className="lt-screen__note">
-          Adds the controls LIVETAP normally decides for you, the arrangement of each Moment, and
-          diagnostics. Nothing is hidden — everything you can see now stays exactly where it is.
-        </p>
-      </Card>
-
+      {/*
+        Pro mode's switch lives in the shell, on every route, and is on screen right now in the
+        nav beside this card. A second switch here was a second authoritative control for one
+        piece of state: flip either and the other moves, which is the shape of control the
+        interaction-ownership rule exists to forbid. The 29-word explanation went with it - what
+        Pro mode does is visible the instant it is switched on.
+      */}
       <Card title="Quality">
         <Segmented
           label="Quality"
@@ -54,8 +49,8 @@ export function Settings(): ReactElement {
         />
         <p className="lt-screen__note">
           {live
-            ? 'Locked while you are live. LIVETAP is adjusting quality automatically.'
-            : 'Auto measures your connection and your computer and keeps adjusting while you stream.'}
+            ? 'Locked while live.'
+            : 'Auto adjusts while you stream.'}
         </p>
       </Card>
 
@@ -64,9 +59,7 @@ export function Settings(): ReactElement {
           Record every stream
         </Toggle>
         <p className="lt-screen__note">
-          A copy is kept while you stream, and it keeps going even if a platform drops. In the
-          browser it is saved when the stream ends, and you download it from Recordings. For long
-          streams, use the desktop app.
+          Kept while you stream, even if a platform drops. Download it from Recordings.
         </p>
       </Card>
 
@@ -83,8 +76,8 @@ export function Settings(): ReactElement {
         />
         <p className="lt-screen__note">
           {preference === 'system'
-            ? 'Following your computer’s appearance setting. LIVETAP does this until you choose, and a computer that does not ask for light gets the dark palette.'
-            : `You chose ${preference}. LIVETAP keeps it on every screen until you change it back to System.`}
+            ? 'Following your computer.'
+            : `Set to ${preference}.`}
         </p>
       </Card>
 

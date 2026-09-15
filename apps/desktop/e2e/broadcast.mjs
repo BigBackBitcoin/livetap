@@ -25,6 +25,7 @@
  *   node apps/desktop/e2e/broadcast.mjs --seconds=12 --keep-ingest
  */
 import { _electron as electron } from 'playwright';
+import { goLive, pressEnd } from '../../../infra/dev-harness/broadcast/studio-controls.mjs';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -176,6 +177,13 @@ async function main() {
     localStorage.setItem('livetap.intent', '"talking"');
     localStorage.setItem('livetap.mode', '"simple"');
     localStorage.removeItem('livetap.destinations');
+    /*
+     * And the acknowledgement, so EVERY run crosses the real-broadcast confirmation rather than
+     * only the first one ever performed on this machine. `confirmRealBroadcast` persists this,
+     * which meant the gate quietly stopped exercising its most safety-critical interstitial the
+     * moment it had passed once.
+     */
+    localStorage.removeItem('livetap.realBroadcastAck');
   });
   await win.reload();
   await win.waitForTimeout(2500);
@@ -215,7 +223,8 @@ async function main() {
     location.hash = '#/app';
   });
   await win.waitForTimeout(1500);
-  await win.locator('.lt-golive').click();
+  const tap = await goLive(win);
+  if (tap.confirmed) ok(`the app asked before touching real accounts, and named ${tap.destinations} of them`);
   // The countdown runs in the button itself; nothing reaches a server until it ends.
   await win.waitForTimeout(5000);
 
@@ -281,7 +290,9 @@ async function main() {
   await win.waitForTimeout(Math.round((seconds * 1000) / 2));
 
   step('[6/8] pressing END and waiting out the grace period');
-  await win.locator('.lt-golive').click();
+  // Not `.lt-golive`: Studio unmounts the whole go-live section while live, on purpose, so that
+  // the only control able to stop a broadcast is the one that survives a route change.
+  await pressEnd(win);
   await win.waitForTimeout(9000);
   const remaining = await Promise.all(TARGETS.map((t) => publishers(t.pathName)));
   const publisherCount = remaining.reduce((n, list) => n + list.length, 0);

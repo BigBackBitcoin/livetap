@@ -139,6 +139,117 @@
   --lt-row-gap: var(--lt-space-3);
   --lt-section-gap: var(--lt-space-8);
   --lt-icon-size: 24px;
+
+  /* ---------------------------------------------------------------- */
+  /* Type roles                                                        */
+  /* ---------------------------------------------------------------- */
+  /*
+   * Nine named roles, and every piece of text in the product is one of them.
+   *
+   * The raw scale above (--lt-text-28 and friends) says how big; it does not say what for, so
+   * two surfaces showing the same KIND of text kept picking different sizes and drifting apart.
+   * A role bundles size, line-height, weight and tracking into one decision made once.
+   *
+   * Three weights, deliberately. 400 reads, 500 labels, 600 commands. A fourth weight is a
+   * distinction a reader has to learn, and it buys nothing that size and colour do not.
+   *
+   * Sizes do not inflate to signal "premium": DISPLAY is 48px because that is the largest thing
+   * a page needs, not because bigger reads as more expensive. Precision is what reads as
+   * expensive, which is why tracking tightens as size grows - optical compensation, so 48px and
+   * 14px look like the same typeface rather than two.
+   */
+  --lt-w-regular: 400;
+  --lt-w-medium: 500;
+  --lt-w-strong: 600;
+}
+
+/*
+ * Roles as classes, because a role is four declarations and a custom property carries one value.
+ * `--lt-type-*-size` is exported alongside for the cases that genuinely need to compute from a
+ * size (an icon matched to its label, a canvas drawing its own text).
+ */
+:root {
+  --lt-type-display-size: var(--lt-text-48);
+  --lt-type-hero-size: var(--lt-text-36);
+  --lt-type-h1-size: var(--lt-text-28);
+  --lt-type-h2-size: var(--lt-text-22);
+  --lt-type-body-size: var(--lt-text-16);
+  --lt-type-ui-size: var(--lt-text-14);
+  --lt-type-meta-size: var(--lt-text-13);
+  --lt-type-status-size: var(--lt-text-12);
+  --lt-type-button-size: var(--lt-text-14);
+}
+
+.lt-type-display {
+  font-size: var(--lt-text-48);
+  line-height: var(--lt-leading-48);
+  letter-spacing: var(--lt-tracking-48);
+  font-weight: var(--lt-w-strong);
+}
+
+.lt-type-hero {
+  font-size: var(--lt-text-36);
+  line-height: var(--lt-leading-36);
+  letter-spacing: var(--lt-tracking-36);
+  font-weight: var(--lt-w-strong);
+}
+
+.lt-type-h1 {
+  font-size: var(--lt-text-28);
+  line-height: var(--lt-leading-28);
+  letter-spacing: var(--lt-tracking-28);
+  font-weight: var(--lt-w-strong);
+}
+
+.lt-type-h2 {
+  font-size: var(--lt-text-22);
+  line-height: var(--lt-leading-22);
+  letter-spacing: var(--lt-tracking-22);
+  font-weight: var(--lt-w-strong);
+}
+
+.lt-type-body {
+  font-size: var(--lt-text-16);
+  line-height: var(--lt-leading-16);
+  letter-spacing: var(--lt-tracking-16);
+  font-weight: var(--lt-w-regular);
+}
+
+/* Controls, labels, and anything the hand is aimed at rather than the eye reading. */
+.lt-type-ui {
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  letter-spacing: var(--lt-tracking-14);
+  font-weight: var(--lt-w-medium);
+}
+
+.lt-type-meta {
+  font-size: var(--lt-text-13);
+  line-height: var(--lt-leading-13);
+  letter-spacing: var(--lt-tracking-13);
+  font-weight: var(--lt-w-regular);
+}
+
+/*
+ * The one role that shouts, and the only place uppercase is allowed: READY, LIVE, RECONNECTING,
+ * OFFLINE. Small, wide-tracked and strong reads as a machine state rather than as a sentence,
+ * which is exactly the distinction a creator needs to make at a glance mid-broadcast. Uppercase
+ * anywhere else is decoration, and it costs legibility.
+ */
+.lt-type-status {
+  font-size: var(--lt-text-12);
+  line-height: var(--lt-leading-12);
+  letter-spacing: 0.06em;
+  font-weight: var(--lt-w-strong);
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.lt-type-button {
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  letter-spacing: 0.01em;
+  font-weight: var(--lt-w-strong);
 }
 
 /* Pro density: smaller, denser. Never below the touch floor on coarse pointers. */

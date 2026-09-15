@@ -26,7 +26,7 @@ import { broadcastReality } from './preflight.js';
  * status sentence always render), and **chips never reorder** — not by state, not by health,
  * least of all while live, so a destination that fails stays where muscle memory left it.
  */
-export function DestinationList(): ReactElement {
+export function DestinationList(): ReactElement | null {
   const destinations = useAppStore((s) => s.destinations);
   const live = useAppStore((s) => s.production.state === 'LIVE' || s.production.state === 'STOPPING');
   const adapterKind = useAppStore((s) => s.adapterKind);
@@ -51,13 +51,19 @@ export function DestinationList(): ReactElement {
   const reconnecting = enabled.some((d) => d.state === 'RECONNECTING');
   const now = useSecondTick(reconnecting);
 
-  if (enabled.length === 0) {
-    return (
-      <p className="lt-dock__none">
-        No destinations are switched on, so there is nowhere for this stream to go.
-      </p>
-    );
-  }
+  /*
+   * An empty list renders as nothing, not as a sentence explaining that it is empty.
+   *
+   * This used to say "No destinations are switched on, so there is nowhere for this stream to
+   * go." - which was true, and was also the third of FIVE simultaneous statements of that one
+   * fact on Studio: this line, `NoDestinationsPrompt` below GO LIVE, the pre-flight headline,
+   * the pre-flight item, and the GO LIVE subtitle. Fifty words for one condition the creator
+   * could see at a glance from an empty dock and a GO LIVE they cannot press.
+   *
+   * `NoDestinationsPrompt` owns this message now, because it is the one that sits next to the
+   * control that fixes it.
+   */
+  if (enabled.length === 0) return null;
 
   return (
     <ul className="lt-chiprow" aria-label="Where this stream is going">
@@ -141,11 +147,16 @@ function DestinationRow({
 export function NoDestinationsPrompt(): ReactElement | null {
   const destinations = useAppStore((s) => s.destinations);
   if (destinations.some((d) => d.config.enabled)) return null;
+  /*
+   * One short line and one obvious control. The line that was here explained what a destination
+   * is for ("LIVETAP needs one place to send your stream"), which is a thing the button already
+   * says and the Destinations screen explains properly to anyone who wants it.
+   */
   return (
     <div className="lt-chiprow lt-chiprow--empty">
-      <p>No destinations yet — LIVETAP needs one place to send your stream.</p>
-      <Link className="lt-textlink" to="/app/destinations">
-        {COPY.addDestination}
+      <p>Nowhere to send this yet</p>
+      <Link className="lt-btn lt-btn--primary lt-btn--md lt-touch" to="/app/destinations">
+        <span className="lt-btn__label">{COPY.addDestination}</span>
       </Link>
     </div>
   );

@@ -150,6 +150,16 @@ export function Studio(): ReactElement {
   const collapsible = !live && rowLevel === 'amber' && preflight.items.length > 0;
 
   /*
+   * `NoDestinationsPrompt` is already on screen saying this, right above, next to the control
+   * that fixes it. Repeating it as a pre-flight item was the fourth of five simultaneous
+   * statements of one condition. The headline ("Not ready to go live") still carries the state
+   * and still announces through `aria-live`, so nothing is lost to a screen reader: what is
+   * dropped is the second copy of the same sentence and the second copy of the same link.
+   */
+  const promptOwnsIt =
+    !live && !destinations.some((d) => d.config.enabled) && preflight.items.every((i) => i.id === 'no-destination');
+
+  /*
    * The END grace and the Escape that cancels it both used to live here, in effects owned by this
    * screen. Unmounting Studio cancelled the scheduled stop while `goLive` stayed `'live'`, so
    * pressing END and then tapping Destinations left the broadcast running with no way to stop it
@@ -279,7 +289,7 @@ export function Studio(): ReactElement {
             ) : (
               <span className="lt-preflight__headline">{rowHeadline}</span>
             )}
-            {!live && preflight.items.length > 0 && (!collapsible || preflightOpen) ? (
+            {!live && !promptOwnsIt && preflight.items.length > 0 && (!collapsible || preflightOpen) ? (
               <ul className="lt-preflight__items">
                 {preflight.items.map((item) => (
                   <li key={item.id}>

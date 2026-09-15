@@ -974,11 +974,6 @@ body {
   min-inline-size: 0;
 }
 
-.lt-dock__none {
-  margin: 0;
-  color: var(--lt-text-secondary);
-  font-size: var(--lt-text-14);
-}
 
 /*
  * A card's footer link ("Stop trying", PRODUCT_SPEC §4.1). It is the one secondary affordance

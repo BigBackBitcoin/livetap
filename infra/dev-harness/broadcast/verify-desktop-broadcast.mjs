@@ -59,6 +59,7 @@ import {
   sleep,
   startMediaMtx,
 } from '../ingest/lib/harness.mjs';
+import { goLive, pressEnd } from './studio-controls.mjs';
 
 const BROADCAST_DIR = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
 const REPO_ROOT = path.resolve(BROADCAST_DIR, '..', '..', '..');
@@ -294,13 +295,15 @@ async function stageBroadcast(driver) {
  * exactly what a creator does before closing a laptop, so a stop a route
  * change can cancel is a broadcast that never ends.
  *
+ * It drives the studio through `studio-controls.mjs`, which is the same module the studio driver
+ * uses: these two scripts press the same two controls, and the last time they each owned a private
+ * copy of the selectors both went on clicking a button that the product had correctly removed.
+ *
  * It has to create its own destination rather than reuse the ones stage 3
  * left behind: stream keys are deliberately not persisted (see the restore
  * block in the web app's store), so a destination restored from a previous
  * session comes back needing its key and cannot go live. The few selectors
- * below are the same ones the studio driver uses and must be kept in step with
- * it; everything else about the studio is that driver's business, not this
- * script's.
+ * everything else about the studio is that driver's business, not this script's.
  */
 async function stageGracePeriod() {
   log('');
@@ -342,6 +345,13 @@ async function stageGracePeriod() {
       localStorage.setItem('livetap.intent', '"talking"');
       localStorage.setItem('livetap.mode', '"simple"');
       localStorage.removeItem('livetap.destinations');
+      /*
+       * And the acknowledgement, so EVERY run crosses the real-broadcast confirmation rather than
+       * only the first one ever performed on this machine. `confirmRealBroadcast` persists this,
+       * which meant the gate quietly stopped exercising its most safety-critical interstitial the
+       * moment it had passed once.
+       */
+      localStorage.removeItem('livetap.realBroadcastAck');
     });
     await win.reload();
     await win.waitForTimeout(2500);
@@ -368,7 +378,8 @@ async function stageGracePeriod() {
       location.hash = '#/app';
     });
     await win.waitForTimeout(1500);
-    await win.locator('.lt-golive').click();
+    const tap = await goLive(win);
+    if (tap.confirmed) log(`  ok    the app asked before touching real accounts (${tap.destinations})`);
 
     // The countdown runs inside the button, and only then do publishers appear.
     const liveBy = Date.now() + 40000;
@@ -386,7 +397,7 @@ async function stageGracePeriod() {
     log(`  ok    ${count} publisher(s) connected`);
 
     await win.waitForTimeout(3000);
-    await win.locator('.lt-golive').click();
+    await pressEnd(win);
     // Leave immediately. This is the move that used to cancel the stop.
     await win.evaluate(() => {
       location.hash = '#/app/destinations';
