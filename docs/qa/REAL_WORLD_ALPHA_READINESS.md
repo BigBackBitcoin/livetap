@@ -181,3 +181,34 @@ found, before its silence is trusted.
 3. **A Mac.** Every macOS and iOS claim in this repository is unverified.
 4. **Code-signing identities.** The installer is unsigned and Windows SmartScreen
    will say so; `docs/release/ALPHA_RELEASE.md` says which button to press.
+
+---
+
+## Dependency advisories at the cut, and why none was actioned
+
+`git push` on 2026-09-15 raised three GitHub advisories. `npm audit` reports four:
+
+| Package | Severity | Where it lives |
+|---|---|---|
+| `@vitest/mocker` (via `vitest`, `@vitest/coverage-v8`) | moderate x3 | test runner |
+| `esbuild` (via `tsup`) | low | build tool |
+
+**Neither reaches a shipped artifact, and that was checked rather than assumed:**
+
+```
+every package.json "dependencies" (root, apps/*, packages/*) grepped for
+vitest|esbuild|tsup                                          → no matches
+the Windows packaging log grepped for vitest                 → 0 lines
+```
+
+Both are `devDependencies`. The esbuild advisory is scoped to "running the
+development server on Windows", which is not a thing any user of this product
+does.
+
+**Deliberately not fixed at the cut.** `npm audit fix` for the vitest chain
+installs `vitest@5`, a major version, and 1733 unit tests across 97 files are the
+evidence this release rests on. Swapping the instrument that produced the
+evidence, in the same change that publishes the evidence, is not a safe trade for
+a moderate advisory in a package that never ships.
+
+It is the correct first task after the cut, not during it.
