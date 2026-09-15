@@ -258,6 +258,40 @@ if (mergedManifestPath) {
   // Comments survive the merge, and this repo's manifests explain themselves at length. Strip them
   // or a check for the absence of something finds the note saying why it is absent.
   const manifest = readFileSync(mergedManifestPath, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+
+  /*
+   * Package id, version and SDK range, straight off the artifact rather than out of build.gradle.
+   * build.gradle is the SOURCE of these values; this is the CHECK that what Gradle actually wrote
+   * into the merged manifest still matches what this repo tells the owner and Play to expect
+   * (apps/mobile/android/app/build.gradle defaultConfig, apps/mobile/android/variables.gradle).
+   * minSdk 26 is a floor RootEncoder's Camera2/MediaCodec path and notification channels need;
+   * targetSdk 36 is Play's requirement for new apps and updates from 2026-08-31.
+   */
+  const packageMatch = manifest.match(/<manifest[^>]*\spackage="([^"]+)"/);
+  check('manifest package id is app.livetap.mobile', packageMatch?.[1] === 'app.livetap.mobile', packageMatch?.[1]);
+
+  const versionCodeMatch = manifest.match(/android:versionCode="(\d+)"/);
+  check('manifest declares a numeric versionCode', Boolean(versionCodeMatch), 'no android:versionCode attribute found');
+
+  const versionNameMatch = manifest.match(/android:versionName="([^"]+)"/);
+  check(
+    'manifest declares a non-empty versionName',
+    Boolean(versionNameMatch?.[1]),
+    'no android:versionName attribute found',
+  );
+
+  const usesSdkMatch = manifest.match(/<uses-sdk[^/]*android:minSdkVersion="(\d+)"[^/]*android:targetSdkVersion="(\d+)"/);
+  check(
+    'minSdkVersion is 26 (RootEncoder Camera2/MediaCodec floor)',
+    usesSdkMatch?.[1] === '26',
+    usesSdkMatch?.[1] ?? 'no <uses-sdk android:minSdkVersion=...> found',
+  );
+  check(
+    'targetSdkVersion is 36 (Play requirement for new apps/updates from 2026-08-31)',
+    usesSdkMatch?.[2] === '36',
+    usesSdkMatch?.[2] ?? 'no <uses-sdk android:targetSdkVersion=...> found',
+  );
+
   const REQUIRED_PERMISSIONS = [
     'android.permission.CAMERA',
     'android.permission.RECORD_AUDIO',

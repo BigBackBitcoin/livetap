@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { Badge, Button, Card, Sheet, StatusChip, Toggle } from '@livetap/ui';
-import { PLATFORM_PROFILES } from '@livetap/adapters';
-import { isActiveState, type AccountSummary, type PlatformId } from '@livetap/core';
+import { PLATFORM_PROFILES, pasteLimitsLine } from '@livetap/adapters';
+import { isActiveState, type AccountSummary, type DestinationSnapshot, type PlatformId } from '@livetap/core';
 import { chipLabel, statusText } from '../components/DestinationChips.js';
 import { DestinationErrorCard, NoticeCards } from '../components/NoticeCards.js';
 import { StreamKeyForm } from '../components/StreamKeyForm.js';
@@ -40,7 +40,15 @@ export function Destinations(): ReactElement {
   const live = useAppStore((s) => s.production.state === 'LIVE');
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [keyFlow, setKeyFlow] = useState(false);
+  /** The platform whose paste form is open, or null. `custom` means the generic one. */
+  const [keyFlow, setKeyFlow] = useState<PlatformId | null>(null);
+  /**
+   * Why the paste form opened, when the creator did not ask for it.
+   *
+   * They tapped a row that said "Connect account", so something has to say why they are being
+   * asked for a key instead. One sentence, above the form, and only on that path.
+   */
+  const [pasteBecause, setPasteBecause] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
@@ -69,12 +77,18 @@ export function Destinations(): ReactElement {
       // 'redirected' means this page is on its way to the platform; there is nothing left to do
       // here and anything rendered now would be torn down mid-navigation.
       if (outcome.kind === 'redirected') return;
+      /*
+       * No sign-in for this platform in this build — which is every build until somebody
+       * registers a client, and was a dead end: a card that said "you can still paste a key"
+       * and gave the creator nowhere to paste it. The platform publishes an address and a key
+       * on the creator's own page, so the honest answer is to open the form that takes them,
+       * already pointed at the right platform.
+       */
       if (outcome.kind === 'unavailable') {
-        setSignInNote({
-          what: `LIVETAP cannot sign you in to ${PLATFORM_PROFILES[platform].displayName} yet.`,
-          why: outcome.reason,
-          youCan: 'You can still add it as a destination you paste a stream key into.',
-        });
+        const name = PLATFORM_PROFILES[platform].displayName;
+        setPasteBecause(`LIVETAP cannot sign you in to ${name} in this copy. Paste a key from ${name} instead — it goes live for real.`);
+        setKeyFlow(platform);
+        setSheetOpen(true);
         return;
       }
       if (outcome.kind === 'denied') {
@@ -107,9 +121,17 @@ export function Destinations(): ReactElement {
           <h1>Destinations</h1>
           <p>LIVETAP streams to all the destinations you switch on, at once.</p>
         </div>
-        <Button variant="primary" onClick={() => setSheetOpen(true)}>
-          {`+ ${COPY.addDestination}`}
-        </Button>
+        {/*
+          The header's Add button steps aside for the empty state, which has its own, larger, and
+          is the thing a first-time creator is looking at. Both on screen at once was two primary
+          buttons for one action, eighteen inches apart, on a screen whose entire job right now is
+          to make that one action obvious.
+        */}
+        {destinations.length > 0 ? (
+          <Button variant="primary" onClick={() => setSheetOpen(true)}>
+            {`+ ${COPY.addDestination}`}
+          </Button>
+        ) : null}
       </header>
 
       <NoticeCards />
@@ -126,9 +148,10 @@ export function Destinations(): ReactElement {
 
       {destinations.length === 0 ? (
         <Card title="No destinations yet">
+          {/* What a destination IS. What happens next is written on the button underneath. */}
           <p>
-            A destination is one place your stream goes — a YouTube channel, a Twitch channel,
-            anything that accepts a stream. Connect one and LIVETAP does the rest.
+            One place your stream goes — a YouTube channel, a Twitch channel, anything that
+            accepts a stream.
           </p>
           <Button variant="primary" onClick={() => setSheetOpen(true)}>
             Add your first destination
@@ -175,6 +198,9 @@ export function Destinations(): ReactElement {
                   <p className="lt-destcard__meta">
                     {`${snap.config.aspectRatio} · up to ${profile.recommended.maxHeight}p${profile.recommended.maxFps}`}
                   </p>
+                  {isPastedDestination(snap) ? (
+                    <p className="lt-destcard__meta">{pasteLimitsLine(profile)}</p>
+                  ) : null}
                   {active ? (
                     <p className="lt-destcard__meta">
                       This destination is part of the stream that is running now. Stop it from
@@ -283,19 +309,32 @@ export function Destinations(): ReactElement {
         open={sheetOpen}
         onClose={() => {
           setSheetOpen(false);
-          setKeyFlow(false);
+          setKeyFlow(null);
+          setPasteBecause(null);
         }}
         title={COPY.addDestination}
       >
-        <p>
-          LIVETAP can stream to all of these at once. How you connect depends on what each platform
-          allows.
-        </p>
+        {keyFlow ? null : (
+          <p>
+            LIVETAP can stream to all of these at once. How you connect depends on what each
+            platform allows.
+          </p>
+        )}
+
+        {keyFlow && pasteBecause ? <p>{pasteBecause}</p> : null}
 
         {keyFlow ? (
           <StreamKeyForm
+            /*
+             * `custom` is the generic destination, not a platform: it has no address to
+             * pre-fill and no name the creator would recognise, so the form asks for both.
+             */
+            platform={keyFlow === 'custom' ? undefined : keyFlow}
             busy={busy}
-            onCancel={() => setKeyFlow(false)}
+            onCancel={() => {
+              setKeyFlow(null);
+              setPasteBecause(null);
+            }}
             onSubmit={async (value) => {
               setBusy(true);
               await addCustom({
@@ -303,9 +342,18 @@ export function Destinations(): ReactElement {
                 url: value.url,
                 streamKey: value.streamKey,
                 aspect: value.aspect,
+                /*
+                 * The destination is the platform they tapped, not "Custom RTMP". Pasting a key is
+                 * how it got configured; it is not what it is. Without this the card reads
+                 * "Custom RTMP · YouTube" and carries the generic honesty line, so the one thing a
+                 * YouTube creator has to be told - that YouTube will not publish until they press
+                 * Go live in Studio - is replaced by a shrug about the far end.
+                 */
+                platform: keyFlow,
               });
               setBusy(false);
-              setKeyFlow(false);
+              setKeyFlow(null);
+              setPasteBecause(null);
               setSheetOpen(false);
             }}
           />
@@ -318,7 +366,10 @@ export function Destinations(): ReactElement {
                     key={id}
                     id={id}
                     demo={false}
-                    onPasteKey={() => setKeyFlow(true)}
+                    onPasteKey={() => {
+                      setPasteBecause(null);
+                      setKeyFlow(id);
+                    }}
                     onConnect={() => {
                       setSheetOpen(false);
                       void connect(id);
@@ -354,7 +405,10 @@ export function Destinations(): ReactElement {
                       key={id}
                       id={id}
                       demo
-                      onPasteKey={() => setKeyFlow(true)}
+                      onPasteKey={() => {
+                      setPasteBecause(null);
+                      setKeyFlow(id);
+                    }}
                       onConnect={() => {
                         setSheetOpen(false);
                         void connect(id);
@@ -367,10 +421,12 @@ export function Destinations(): ReactElement {
           </>
         )}
 
-        <p className="lt-screen__note">
-          Some platforms require your account to meet their own rules before you can go live.
-          LIVETAP checks what it can and tells you before you try.
-        </p>
+        {keyFlow ? null : (
+          <p className="lt-screen__note">
+            Some platforms require your account to meet their own rules before you can go live.
+            LIVETAP checks what it can and tells you before you try.
+          </p>
+        )}
       </Sheet>
     </div>
   );
@@ -411,6 +467,22 @@ export function AccountLine({
       ) : null}
     </div>
   );
+}
+
+/**
+ * True when this destination is one the creator pasted an address and a key into.
+ *
+ * It is REAL — real bytes, real wire — so it must never be labelled demo. But nobody signed in,
+ * so there is no control plane behind it: LIVETAP cannot set the title, cannot read the
+ * platform's own view of the stream, and cannot repeat a rejection only the platform's API would
+ * explain. `pasteLimitsLine` says which of those apply, and this is the test for when to say it.
+ *
+ * Derived from the destination rather than from a flag, because there is no flag that could be
+ * trusted: a pasted destination is exactly one with an ingest the creator supplied and no
+ * account behind it.
+ */
+export function isPastedDestination(snap: DestinationSnapshot): boolean {
+  return !snap.config.mock && snap.config.ingest !== undefined && snap.account === undefined;
 }
 
 /**

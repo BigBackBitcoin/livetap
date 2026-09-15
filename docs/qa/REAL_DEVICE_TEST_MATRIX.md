@@ -2,7 +2,9 @@
 
 Written 2026-09-14 on the build host: a headless Windows Server 2022 VM, four
 vCPU, no GPU, no camera, no microphone, no nested virtualisation, no macOS and
-no physical phone.
+no physical phone. Android section rebuilt and re-verified 2026-09-15 against
+the current tree (see that section for the fresh SHA-256 and the emulator
+feasibility check).
 
 Four surfaces down the side, ten capabilities across. Every cell says what was
 actually run, on what, and when. Where the answer is "nothing was run", the
@@ -92,32 +94,179 @@ GitHub runner can build.
 
 ## Android (Capacitor + native RootEncoder plugin)
 
-A debug APK builds on this host. **Nothing in it has ever been executed**:
-there is no emulator image under `tools/android-sdk`, and this VM has no nested
-virtualisation, so no emulator can ever start here. Everything below that is
-not EXTERNALLY BLOCKED was verified by inspecting the built APK
-(`apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`, 10,160,804
-bytes, built 2026-09-14 12:36, 552 entries).
+**Rebuilt and re-verified 2026-09-15**, from a clean invocation of
+`bash apps/mobile/scripts/build-android.sh` against the real media engine and
+real adapters (`VITE_LIVETAP_MOCK_MODE=false`, confirmed on the artifact, not
+the build log — see "demo mode is compiled out" below). Built from git
+`HEAD` `3ec7f8f` with an uncommitted, actively-changing working tree (five
+other workstreams were mid-edit in `apps/web`, `packages/ui`,
+`packages/adapters` and `apps/desktop` at build time; none of those paths are
+in this app's dependency graph except `apps/web`, which is what was actually
+built into the bundle below). Re-run the same command to reproduce.
+
+- **APK:** `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+- **SHA-256:** `0674ed32c4f1c331e0643f6986d5c6fa8c0a97b674009a7756b19e54e8526743`
+- **Size:** 10,151,907 bytes (9.68 MiB)
+- **Package id:** `app.livetap.mobile`
+- **Version:** versionName `1.0`, versionCode `1`
+- **SDK range:** minSdkVersion 26 (Android 8.0), targetSdkVersion 36 (Android 16), compileSdk 36
+- **Signing:** debug-signed only — `CN=Android Debug, O=Android, C=US`, cert SHA-256
+  `39c76531aaa4332addb64352e4f90b46bb7b9ba61b6cac8bc4983471927d44d2` (via
+  `apksigner verify --print-certs`). This is the Android SDK's auto-generated
+  debug key, fine for sideloading, **not valid for Play** (BLOCKERS.md B-005).
+
+**Nothing in it has ever been executed.** There is no emulator image under
+`tools/android-sdk` (no `system-images` directory), and an emulator cannot be
+installed to any effect on this host: `Get-WindowsOptionalFeature -Online
+-FeatureName HypervisorPlatform` reports `Disabled`, and `systeminfo` reports
+"a hypervisor has been detected" for this VM itself, i.e. this is already a
+guest and nested virtualisation is not exposed to it — matching BLOCKERS.md
+B-005b's `VMMonitorModeExtensions=False`. Enabling Windows Hypervisor Platform
+would also be a system-settings change, which is out of scope here regardless.
+Everything below that is not EXTERNALLY BLOCKED was verified by
+`node apps/mobile/scripts/verify-apk.mjs`, which reads the APK as a zip and the
+Gradle-merged manifest as text — **47/47 checks passed**, including four added
+in this pass (package id, versionCode, versionName, minSdk/targetSdk against
+the artifact rather than against `build.gradle`'s own claim about itself).
 
 | Capability | Status | What was checked |
 |---|---|---|
-| Camera | **EXTERNALLY BLOCKED** | `android.permission.CAMERA` and `FOREGROUND_SERVICE_CAMERA` are declared in the built manifest; `GenericStream` and `LiveStreamPlugin` are present in the dex. Whether a camera opens is owner hardware |
-| Microphone | **EXTERNALLY BLOCKED** | `RECORD_AUDIO` and `FOREGROUND_SERVICE_MICROPHONE` declared |
-| Screen share | **EXTERNALLY BLOCKED** | `FOREGROUND_SERVICE_MEDIA_PROJECTION` declared |
-| Format | **UNVERIFIED** | `MobileEngine` refuses an aspect mismatch in unit tests. No native encode has run |
-| Moments | **UNVERIFIED** | |
+| Camera | **EXTERNALLY BLOCKED** | `android.permission.CAMERA` and `FOREGROUND_SERVICE_CAMERA` are declared in the built manifest; `GenericStream`, `Camera2Source` and `LiveStreamPlugin` are present in the dex. Whether a camera opens is owner hardware |
+| Microphone | **EXTERNALLY BLOCKED** | `RECORD_AUDIO`, `FOREGROUND_SERVICE_MICROPHONE` declared; `MicrophoneSource` is in the dex |
+| Screen share | **EXTERNALLY BLOCKED** | `FOREGROUND_SERVICE_MEDIA_PROJECTION` declared; the native code marks this post-MVP (`LiveForegroundService.kt`) — not wired to any UI control |
+| Format | **UNVERIFIED** | `MobileEngine` refuses an aspect mismatch in its own 26 unit tests (all pass, 2026-09-15). No native encode has run |
+| Moments | **UNVERIFIED** | `MobileEngine.setMoment` updates camera/mute only, by design (a phone has no layer compositor) |
 | Authentication | **EXTERNALLY BLOCKED** | `SecureStorePlugin` is present in the dex, so tokens have somewhere real to live. No OAuth has run on a device, and there is no client id to run it with |
-| Broadcast | **EXTERNALLY BLOCKED** | one of the 39 bundled JavaScript assets references the plugin, so the web layer can reach the native one. Whether RTMP leaves a phone is owner hardware |
+| **Broadcast (does the phone get the real engine?)** | **ASSERTED ON THE ARTIFACT — yes, confirmed; running it is EXTERNALLY BLOCKED** | See "The engine-wiring question" below. This is not a guess: `loadMobileEngine()`'s dynamic `import('@livetap/mobile')` is resolved and inlined by Rollup at build time (confirmed by grep on the shipped chunk, not by reading the source), so there is no code path where it silently falls back to the browser engine on a real device. Whether bytes actually leave a phone over RTMP is owner hardware |
 | Reconnect | **UNVERIFIED** | |
-| Stop | **UNVERIFIED** | `LiveForegroundService` is in the dex |
+| Stop | **UNVERIFIED** | `LiveForegroundService` is in the dex; `ACTION_STOP` tears down the encoder before `stopSelf()` (source-read, not executed) |
 | Recording | **UNVERIFIED** | |
-| Diagnosability | **ASSERTED ON THE ARTIFACT** | `assets/capacitor.config.json` has `webContentsDebuggingEnabled: true`, so a sideloaded alpha with a white screen can be inspected over adb rather than being undiagnosable |
+| Diagnosability | **ASSERTED ON THE ARTIFACT** | `assets/capacitor.config.json` has `webContentsDebuggingEnabled: true`, so a sideloaded alpha with a white screen can be inspected over `chrome://inspect` rather than being undiagnosable |
 | `POST_NOTIFICATIONS` | **ASSERTED ON THE ARTIFACT** | declared, which is what Android 13+ needs for the foreground-service notification |
 
-**What the owner has to do to move this column:** enable USB debugging on an
-Android 13 or newer phone, `adb install` the APK, grant camera and microphone
-when asked, and report what happened. That is the whole list. No Play Console,
-no signing certificate, no account.
+### The engine-wiring question, answered plainly
+
+`apps/web/src/state/engine.ts` (owned by the integrator, read only here) picks
+the mobile engine like this: on a Capacitor host it calls `loadMobileEngine()`,
+which does `await import('@livetap/mobile')` inside a `try { … } catch {
+return null }`. A silently-failing import here would mean the phone shows a
+camera preview through the browser engine, never calls RootEncoder, and never
+sends a byte — while looking identical in the UI to a real broadcast. That is
+the failure mode this whole task exists to rule out.
+
+**It does not happen, and here is the artifact evidence, not the source
+reading:**
+
+1. Building `@livetap/web` with Rollup emits a diagnostic tracing the exact
+   graph: `apps/web/src/state/engine.ts` → `apps/mobile/src/MobileEngine.ts` →
+   `packages/capacitor-live-stream/src/index.ts`. That graph only exists if the
+   dynamic import target is real and resolvable at build time.
+2. Because `@livetap/mobile` is a workspace package Rollup can see statically,
+   it **inlined** the module rather than code-splitting it into a lazily-fetched
+   chunk. Grepping the staged bundle confirms this: `registerPlugin`, the
+   literal string `'LiveStream'`, `LivetapSecureStore`, and every
+   `LiveStreamPlugin` method name (`startPreview`, `startStream`, `setMute`,
+   `switchCamera`, …) all live in `assets/index-eDm-JTpb.js` — no file named
+   `@livetap/mobile` appears anywhere in the shipped JavaScript because there
+   is nothing left to fetch; it is already there. That means there is no
+   network-style failure mode (a missing chunk, a 404) that `loadMobileEngine`
+   could be catching on a real device — the only way it returns `null` now is
+   if `mod.MobileEngine` were literally absent from the bundle, and it is not.
+3. `index-eDm-JTpb.js` is not orphaned: `store--k7hPjFv.js` imports it, and
+   `store` is in `app-8DI9ueJD.js`'s own dependency map (`__vite__mapDeps`)
+   alongside `AppBoot`, meaning it loads on app start, not behind a route the
+   user might never hit.
+4. On the native side, `verify-apk.mjs` confirms the other half of the
+   handshake: `app.livetap.capacitor.livestream.LiveStreamPlugin` is
+   registered in `assets/capacitor.plugins.json` (what Capacitor's bridge reads
+   at boot to resolve `registerPlugin('LiveStream', …)` to the native class
+   instead of the web stub), and `LiveStreamPlugin.class`,
+   `GenericStream.class`, `Camera2Source.class` and `MicrophoneSource.class`
+   are all present in the dex.
+
+So: JS calls the real plugin name, the native class that name resolves to is
+shipped and registered, and the classes that class depends on to touch the
+camera, the microphone and an RTMP socket are shipped too. Every link in that
+chain is CONFIRMED present in this artifact. What is **not** confirmed, because
+nothing here can run it, is that `Camera2Source` actually opens a real sensor
+and `GenericStream` actually completes a TLS handshake to a real ingest
+server — that is exactly B-005b, the owner's phone.
+
+### What the owner has to do to move this column
+
+Enable USB debugging on an Android 13+ phone, `adb install -r app-debug.apk`,
+grant camera and microphone when asked, and report what happened. That is the
+whole list. No Play Console, no signing certificate, no account.
+
+### Sideloading the APK — exact steps
+
+**"Install from unknown sources" on a modern Android (13/14/15/16):** there is
+no longer a single global toggle. The permission is granted per source app.
+When the owner opens the APK file (from Files, a downloads notification, or a
+file sent to the phone), Android shows a per-app prompt: **"Install unknown
+apps"** → **Allow from this source**, scoped to whichever app opened the file
+(Chrome, Files, Gmail, etc.). This appears once per source app, not once per
+device, so a second APK from the same source will not prompt again.
+
+**The ordered test, exactly as the owner should run it:**
+
+1. Copy `app-debug.apk` to the phone (USB transfer, a cloud drive link, or
+   `adb push`/`adb install` directly — `adb install -r app-debug.apk` is the
+   simplest single command and skips the file-manager step entirely).
+2. Open the file. Allow the "install unknown apps" prompt for whichever app
+   is opening it. Tap **Install**.
+3. Open **LIVETAP** from the app drawer.
+4. The app requests camera, then microphone, on first use — allow both.
+   Denying either leaves `capabilities()` reporting them false and no preview
+   will start; there is no separate settings toggle inside the app to retry
+   short of Android's own App Info → Permissions screen.
+5. Add a destination: paste an RTMP/RTMPS ingest URL and stream key copied
+   from a platform's own studio/creator dashboard (no OAuth login is required
+   for this path — see BLOCKERS.md B-006 and `docs/OWNER_ACTIONS.md`).
+6. Confirm the camera preview is live behind the UI before going live.
+7. Tap **GO LIVE**. A persistent notification ("LIVETAP is live") should
+   appear immediately — this is the Android 14+ foreground-service
+   requirement, not a bug; see "Where Android differs from desktop" below.
+8. Verify on the platform side: open the platform's own live dashboard (or
+   its public viewer page) and confirm video and audio are actually arriving,
+   not just that LIVETAP's UI says LIVE.
+9. Tap **Stop**. Confirm the foreground notification disappears and the
+   platform's dashboard shows the stream ended within a few seconds.
+
+Report which of these nine steps failed, and the on-screen or logcat text at
+that point (`adb logcat` while the app is foregrounded, or
+`chrome://inspect` on a desktop Chrome plugged into the same phone over USB —
+available specifically because this is a debug build with
+`webContentsDebuggingEnabled: true`).
+
+### Where Android differs from desktop — do not assume parity
+
+- **Background streaming survives; desktop's does not need to fight for it.**
+  Android aggressively kills background work, so LIVETAP's Android build runs
+  the encoder inside `LiveForegroundService`, a `camera|microphone` foreground
+  service. This is why step 7 above must show a notification — its absence
+  would mean the stream is one app-switch away from being silently killed by
+  the OS, not evidence of a quieter implementation.
+- **The foreground-service notification is not optional chrome.** It is the
+  owner's only handle on a broadcast once they leave the app (there is no
+  desktop-style always-visible window), and Android 14+ throws at
+  `startForeground()` if the declared service type does not match the held
+  permissions — `verify-apk.mjs` asserts the manifest carries
+  `camera|microphone` on this service for exactly that reason.
+- **Revoking camera or microphone mid-stream does not behave like unplugging
+  a desktop webcam.** The native plugin has an `onCameraDisconnected` path and
+  emits a `deviceLost` event (`recoverable` flag included) rather than
+  crashing, per its source — this has not been exercised on a device, so
+  treat the graceful-recovery claim as UNVERIFIED, not PASS.
+- **`POST_NOTIFICATIONS` is advisory, not a gate.** On Android 13+ it is a
+  real runtime permission; below 13 it does not exist. Denying it costs the
+  owner the notification (their handle on the broadcast) but the plugin
+  contract does not block `startStream` on it — do not expect GO LIVE itself
+  to be refused.
+- **Screen share is declared but not wired.** The manifest carries
+  `FOREGROUND_SERVICE_MEDIA_PROJECTION` and the service has a
+  `mediaProjection` branch, but nothing in the UI calls it. Do not test it;
+  there is nothing to test yet.
 
 ---
 
@@ -144,7 +293,7 @@ Nothing about iOS in this repository is a measurement.
 | Format | PASS 16:9 + 9:16, UNVERIFIED 1:1 | BLOCKED | UNVERIFIED | BLOCKED |
 | Moments | UNVERIFIED | BLOCKED | UNVERIFIED | BLOCKED |
 | Authentication | BLOCKED (no client id) | BLOCKED | BLOCKED | BLOCKED |
-| Broadcast | PASS | BLOCKED | BLOCKED | BLOCKED |
+| Broadcast | PASS | BLOCKED | wiring ASSERTED ON ARTIFACT, running BLOCKED | BLOCKED |
 | Reconnect | PASS | BLOCKED | UNVERIFIED | BLOCKED |
 | Stop | PARTIAL | BLOCKED | UNVERIFIED | BLOCKED |
 | Recording | PASS | BLOCKED | UNVERIFIED | BLOCKED |

@@ -130,7 +130,21 @@ async function main(): Promise<void> {
   // applying anything; on an unsigned build the check fails closed and is logged, never applied.
   if (app.isPackaged) {
     try {
-      const { autoUpdater } = await import('electron-updater');
+      /*
+       * `electron-updater` is CommonJS, and this main process is bundled to CJS by tsup, so the
+       * dynamic import lands on the module's `default` rather than its named exports and
+       * `{ autoUpdater }` destructures to undefined. The packaged app logged
+       * `TypeError: Cannot set properties of undefined (setting 'autoDownload')` on every start,
+       * caught by the handler below and therefore silent - which meant the update check had
+       * never once run and nothing said so. Both shapes are accepted rather than guessing which
+       * the bundler will produce next time.
+       */
+      const mod = (await import('electron-updater')) as unknown as {
+        autoUpdater?: typeof import('electron-updater').autoUpdater;
+        default?: { autoUpdater?: typeof import('electron-updater').autoUpdater };
+      };
+      const autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater;
+      if (!autoUpdater) throw new Error('electron-updater exported no autoUpdater');
       autoUpdater.autoDownload = false;
       autoUpdater.allowDowngrade = false;
       autoUpdater.allowPrerelease = false;

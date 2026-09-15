@@ -5,9 +5,12 @@
 # The exact environment variables electron-builder expects are documented in
 # docs/release/DESKTOP_RELEASE.md. Unsigned builds are produced and are usable for internal testing.
 #
-# FFmpeg is NOT bundled in this repository (GPL binaries, ~80 MB each). The `extraResources` entries
-# below place them where ffmpegPath.ts looks; see docs/architecture/DESKTOP_ARCHITECTURE.md for the
-# licensing decision and docs/release/DESKTOP_RELEASE.md for where to drop the binaries.
+# FFmpeg is not COMMITTED to this repository (GPL binaries, ~220 MB each in the gyan.dev full
+# build), but it IS bundled in the installer: `node tools/acquire-ffmpeg.mjs` puts the binaries in
+# `resources/ffmpeg/<platform>/` and the `prepackage` step runs it, so packaging either ships a
+# working ffmpeg or fails saying what is missing. The `extraResources` entries below place them
+# where ffmpegPath.ts looks; see docs/architecture/DESKTOP_ARCHITECTURE.md for the licensing
+# decision and docs/release/DESKTOP_RELEASE.md for the build command.
 
 appId: app.livetap.desktop
 productName: LIVETAP
@@ -16,8 +19,10 @@ copyright: Copyright (c) 2026 LIVETAP
 # electron-builder downloads the platform binaries for one exact Electron release, so it refuses a
 # semver range. In an npm workspace `electron` is hoisted to the repo root, which electron-builder
 # does not look in, so the version is stated here instead. Keep this in step with the `electron`
-# devDependency in package.json when bumping.
-electronVersion: 38.8.6
+# devDependency in package.json when bumping: this file said 38.8.6 for three days after the
+# devDependency moved to ^44.3.0, which meant the installer shipped an Electron nobody had tested
+# the app against and which carries the advisories the bump was made to escape.
+electronVersion: 44.3.0
 
 directories:
   output: release
@@ -40,11 +45,17 @@ files:
 # Where to put the binaries before packaging:
 #   Windows  →  apps/desktop/resources/ffmpeg/win/ffmpeg.exe   (+ ffprobe.exe)
 #   macOS    →  apps/desktop/resources/ffmpeg/mac/ffmpeg       (+ ffprobe)
+#
+# The filter excludes this repo's own README.md notes (they explain how to POPULATE the directory
+# and mean nothing inside an installed app) but deliberately KEEPS FFMPEG-LICENSE.txt,
+# FFMPEG-BUILD-README.txt and BUILD_INFO.txt: GPLv3 s4 requires the licence text to accompany every
+# copy conveyed, and the installed app is a copy conveyed.
 extraResources:
   - from: resources/ffmpeg
     to: ffmpeg
     filter:
       - '**/*'
+      - '!**/README.md'
 
 asar: true
 # Nothing in the app needs to be unpacked today (FFmpeg is an extraResource, not an asar member),

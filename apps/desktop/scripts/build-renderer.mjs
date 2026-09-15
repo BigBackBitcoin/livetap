@@ -19,8 +19,8 @@
  * repo does not need.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -58,4 +58,36 @@ if (result.status !== 0) {
   console.error(`[renderer] vite exited ${result.status}`);
   process.exit(result.status ?? 1);
 }
+/*
+ * Stamp what this build IS, next to the bundle it produced.
+ *
+ * `scripts/verify-installer.mjs` has to answer "is the renderer inside this installer the real
+ * build or the demo?" from the artifact alone. The only other evidence is the constant Vite folded
+ * into the minified chunk (`"false"!=="false"`), and that is a fact about a minifier's output: it
+ * is true today, it is checked, and it could quietly stop being greppable after any toolchain bump
+ * without anything failing. So this file states the answer directly, in a form that cannot drift,
+ * and the verifier checks BOTH. Disagreement between them is itself a failure.
+ *
+ * It is written after Vite, not before, so it can never describe a build that did not happen.
+ */
+const outDir = resolve(root, 'apps', 'desktop', 'dist', 'renderer');
+writeFileSync(
+  join(outDir, 'build-mode.json'),
+  `${JSON.stringify(
+    {
+      mockMode: demo,
+      viteEnv: { VITE_LIVETAP_MOCK_MODE: demo ? 'true' : 'false' },
+      builtAt: new Date().toISOString(),
+      builtBy: 'apps/desktop/scripts/build-renderer.mjs',
+      note: demo
+        ? 'DEMO build: every adapter and the engine are simulated. Do not ship this.'
+        : 'REAL build: mock mode is compiled out.',
+    },
+    null,
+    2,
+  )}\n`,
+  'utf8',
+);
+
 console.log(`[renderer] built with mock mode ${demo ? 'ON (demo build)' : 'OFF (real build)'}`);
+console.log(`[renderer] wrote ${join(outDir, 'build-mode.json')}`);

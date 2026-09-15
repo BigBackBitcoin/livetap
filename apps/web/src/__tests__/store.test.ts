@@ -149,6 +149,40 @@ describe('app store', () => {
     expect(raw).not.toContain('super-secret-key-1234');
   });
 
+  it('a key pasted after tapping a platform makes a destination of THAT platform', async () => {
+    const { store } = build();
+    await store.getState().init();
+    const snap = await store.getState().addCustomDestination({
+      label: 'YouTube',
+      url: 'rtmp://a.rtmp.youtube.com/live2',
+      streamKey: 'pasted-key-0001',
+      aspect: '16:9',
+      platform: 'youtube',
+    });
+
+    /*
+     * Pasting a key is HOW a destination was configured, not WHAT it is. Landing as `custom` cost
+     * the creator the one sentence that matters on YouTube - that YouTube does not publish when
+     * video arrives and they still have to press Go live in Studio - and replaced it with a
+     * generic line about the far end.
+     */
+    expect(snap?.config.platform).toBe('youtube');
+    expect(snap?.config.label).toBe('YouTube');
+  });
+
+  it('is still a generic RTMP destination when no platform was tapped', async () => {
+    const { store } = build();
+    await store.getState().init();
+    const snap = await store.getState().addCustomDestination({
+      label: 'My server',
+      url: 'rtmp://live.example.com/app',
+      streamKey: 'pasted-key-0002',
+      aspect: '16:9',
+    });
+
+    expect(snap?.config.platform).toBe('custom');
+  });
+
   it('never writes a stream key to any browser storage', async () => {
     const { store } = build();
     await store.getState().init();

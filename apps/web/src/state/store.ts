@@ -143,6 +143,17 @@ export interface AppState {
     url: string;
     streamKey: string;
     aspect: AspectRatio;
+    /**
+     * Which platform the creator was actually setting up, when they got here by tapping one.
+     *
+     * Pasting a key is HOW a destination is configured, not WHAT it is. A key pasted after
+     * tapping YouTube makes a YouTube destination: it carries YouTube's name wherever it is named,
+     * YouTube's own aspect ratios and bitrate ceiling, and YouTube's own honesty line - which for
+     * YouTube is the load-bearing one, because YouTube does not publish when video arrives and
+     * the creator still has to press Go live in Studio. Omitted, this is a generic RTMP
+     * destination, which is what the Custom RTMP row means.
+     */
+    platform?: PlatformId;
   }): Promise<DestinationSnapshot | undefined>;
   replaceStreamKey(id: string, streamKey: string): Promise<void>;
   reconnect(id: string): Promise<void>;
@@ -726,17 +737,18 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       async addCustomDestination(input): Promise<DestinationSnapshot | undefined> {
         const r = runtime;
         if (!r) return undefined;
-        const destinationId = uid('custom');
+        const platform: PlatformId = input.platform ?? 'custom';
+        const destinationId = uid(platform);
         await saveStreamKey(destinationId, input.streamKey);
         const config: DestinationConfig = {
           id: destinationId,
-          platform: 'custom',
+          platform,
           /*
            * The form requires a name now (PRODUCT_REVIEW P2-15), so this is a guard against a
            * caller that is not the form, not a silent default: a destination named after a
            * fallback the user never typed is a destination they cannot recognise later.
            */
-          label: input.label.trim() || PLATFORM_PROFILES.custom.displayName,
+          label: input.label.trim() || PLATFORM_PROFILES[platform].displayName,
           aspectRatio: input.aspect,
           enabled: true,
           mock: false,

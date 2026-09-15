@@ -20,7 +20,15 @@ apps/mobile/android/.gradle/
 apps/mobile/android/app/build/
 .turbo/
 *.tsbuildinfo
-tools/
+# Local toolchains downloaded by tools/acquire-android-toolchain.sh (android-sdk, jdk21, node22,
+# mediamtx) — gigabytes of third-party binaries. The directory is ignored by contents rather than
+# by name so the few real source files in it can be re-included below.
+tools/*
+# The acquisition scripts themselves ARE source, and are the only reason the rest of tools/ can be
+# thrown away. `tools/acquire-android-toolchain.sh` had never been committed at all, which made
+# BLOCKERS.md B-005a tell the reader to run a command that does not exist in a fresh clone.
+!tools/*.sh
+!tools/*.mjs
 scrollcraft/builds/*/lab/
 scrollcraft/builds/*/out/
 .claude/
@@ -41,3 +49,13 @@ apps/mobile/www/
 
 # Visual-inspection screenshots written by apps/web/scripts/look.mjs.
 lab/
+
+# The bundled FFmpeg binaries. They are third-party GPL builds of ~220 MB each, put in place
+# reproducibly by `node tools/acquire-ffmpeg.mjs`, so they are a build input rather than source.
+# What IS committed is the evidence of which build shipped: resources/ffmpeg/BUILD_INFO.txt and
+# the licence texts the GPL requires to travel with the binary.
+apps/desktop/resources/ffmpeg/win/*.exe
+apps/desktop/resources/ffmpeg/mac/ffmpeg
+apps/desktop/resources/ffmpeg/mac/ffprobe
+apps/desktop/resources/ffmpeg/linux/ffmpeg
+apps/desktop/resources/ffmpeg/linux/ffprobe

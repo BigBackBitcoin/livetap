@@ -15,12 +15,42 @@ is a credential away, not a code change away.
 
 ```bash
 npm install                                   # once, from the repo root
+export PATH="$PWD/tools/node22/node:$PATH"    # THIS HOST ONLY - see the Node note at the bottom
 
-npm run build:renderer -w @livetap/desktop    # React app → apps/desktop/dist/renderer
-npm run build:main     -w @livetap/desktop    # main + preload → dist/main, dist/preload
+npm run build:renderer -w @livetap/desktop    # React app → apps/desktop/dist/renderer, mock mode OFF
 npm run package:win    -w @livetap/desktop    # → apps/desktop/release/LIVETAP-<v>-win-x64.exe
 npm run package:mac    -w @livetap/desktop    # → LIVETAP-<v>-mac-arm64.dmg and -x64.dmg
+
+node apps/desktop/scripts/verify-installer.mjs   # assert what the artifact actually contains
+node apps/desktop/scripts/smoke-installed.mjs    # launch the packaged app and read it back
 ```
+
+`package:win` already runs `build:main` and then `prepackage`, so those are not separate steps.
+`prepackage` (`scripts/ensure-renderer.mjs`) does two things in order: it runs
+`tools/acquire-ffmpeg.mjs` to put FFmpeg in place, and then makes sure a renderer exists. It is the
+single hook every packaging path shares, which is why the FFmpeg step lives there rather than in a
+second npm script that one of the three `package*` targets could forget.
+
+The renderer step is separate and must come **first**, because `ensure-renderer.mjs` deliberately
+never overwrites an existing renderer — if you skip it you package whatever is already in
+`dist/renderer`, which on a fresh checkout is the placeholder page.
+
+### Verifying the result
+
+`scripts/verify-installer.mjs` is the desktop counterpart of `apps/mobile/scripts/verify-apk.mjs`.
+It asserts on the produced artifact rather than describing it: the installer's size and SHA-256; that
+`resources/ffmpeg/win/ffmpeg.exe` and `ffprobe.exe` are present, **start**, carry `libx264` and speak
+`rtmp`/`rtmps`; that `app.asar` holds `dist/main/`, `dist/preload/` and a real `dist/renderer/`
+bundle rather than the placeholder; and that the renderer is the REAL build, checked two independent
+ways that must agree (`dist/renderer/build-mode.json`, written by `build-renderer.mjs` after Vite
+exits, and the `return"false"!=="false"` constant Vite folded into the shipped chunk).
+
+`scripts/smoke-installed.mjs` launches `release/win-unpacked/LIVETAP.exe` itself and reads back
+`isPackaged`, the window contents, and the `ffmpeg resolved { path, source }` line out of the app's
+own log — which must say `source: 'bundled'`. It runs against a throwaway `--user-data-dir`, both so
+it cannot touch a real profile and because main takes a single-instance lock keyed on that directory:
+any other LIVETAP running on the host would otherwise make the packaged launch quit before it opened
+a window.
 
 If `dist/renderer` is missing, the `prepackage` step (`scripts/ensure-renderer.mjs`) copies
 `packaging/renderer-placeholder.html` into place, so packaging still succeeds and ships a page that
@@ -33,33 +63,56 @@ Packaging inputs that must be committed live in `apps/desktop/packaging/`
 conventional `build/`, because the repo-wide `.gitignore` ignores every directory named `build/` and
 these are source files, not artefacts.
 
-### Drop the FFmpeg binaries first
+### FFmpeg: bundled, but not committed
 
-They are **not** committed (~80 MB each, GPL). Before packaging:
+The binaries are **not** in git (222 MB each for the gyan.dev full build, and GPL). They are put in
+place by:
 
+```bash
+node tools/acquire-ffmpeg.mjs           # --force to re-copy over what is already there
 ```
-apps/desktop/resources/ffmpeg/win/ffmpeg.exe      (+ ffprobe.exe, optional)
-apps/desktop/resources/ffmpeg/mac/ffmpeg          (+ ffprobe, optional)
-```
 
-`electron-builder.yml` copies that tree to `resources/ffmpeg/` inside the app, which is where
-`src/main/ffmpeg/ffmpegPath.ts` looks. Each directory has a README repeating this.
+which resolves `ffmpeg`/`ffprobe` on PATH to the real executable behind any shim (on this host the
+WinGet entry is a 151-byte reparse point; copying that verbatim would produce an installer
+containing a link to a directory the user does not have), copies both into
+`apps/desktop/resources/ffmpeg/<platform>/`, then **runs each copy** and asserts it identifies itself
+correctly. Nothing is downloaded: if no usable binary is found it prints the exact download URL and
+the exact destination path and exits non-zero, which propagates up through `prepackage` and stops the
+packaging run.
 
-Use a **GPL** build; never `--enable-nonfree`, which cannot be redistributed at all. Ship FFmpeg's
-licence and the written source offer — the exact `THIRD_PARTY_NOTICES.md` text is in
-`docs/architecture/DESKTOP_ARCHITECTURE.md` §5.
+It also copies the build's `LICENSE` and `README.txt` next to the binaries as `FFMPEG-LICENSE.txt`
+and `FFMPEG-BUILD-README.txt`, and writes `resources/ffmpeg/BUILD_INFO.txt` with the version line,
+the full configure line and the SHA-256 of each binary. Those three files ARE committed: they are
+the record of what shipped, and the licence text has to travel with the binary (GPLv3 §4).
+`electron-builder.yml` copies the whole tree to `resources/ffmpeg/` inside the app, filtering out
+only this repo's own `README.md` notes.
+
+Use a **GPL** build; never `--enable-nonfree`, which cannot be redistributed at all. An LGPL build is
+not a substitute: `src/main/ffmpeg/argv.ts` names `libx264`, which is GPL, and on a machine with no
+working hardware encoder it is the only path to a transcode. The written source offer, the exact
+build string and the component list are in `THIRD_PARTY_NOTICES.md`.
 
 A build with no binary present still runs: main logs an error and `capabilities()` reports
 `verification: 'UNAVAILABLE'` rather than falling through to whatever `ffmpeg` is on the user's PATH.
+That is why `prepackage` treats a missing FFmpeg as a hard failure — an installer that opens a window
+and cannot broadcast is worse than no installer.
 
 ---
 
-## 2. Packaging result on this host — PASS (unsigned)
+## 2. Packaging result on this host — PASS (unsigned, FFmpeg bundled)
+
+**2026-09-15.** The first build that contains FFmpeg, and therefore the first installer that can
+broadcast. Full artifact record, hashes and owner instructions: `docs/release/ALPHA_RELEASE.md`.
 
 ```
+$ export PATH="$PWD/tools/node22/node:$PATH"          # v22.23.2
 $ npm run package:win -w @livetap/desktop
-  • electron-builder  version=26.12.1 os=10.0.20348
-  • packaging       platform=win32 arch=x64 electron=38.8.6 appOutDir=release\win-unpacked
+  [acquire-ffmpeg] VERIFIED ffmpeg: ffmpeg version 9.0.1-full_build-www.gyan.dev …
+  [acquire-ffmpeg] VERIFIED ffprobe: ffprobe version 9.0.1-full_build-www.gyan.dev …
+  renderer present: ...apps\desktop\dist\renderer\app.html
+endererpp.html
+  • electron-builder  version=26.15.3 os=10.0.20348
+  • packaging       platform=win32 arch=x64 electron=44.3.0 appOutDir=release\win-unpacked
   • default Electron icon is used  reason=application icon is not set
   • building        target=nsis file=release\LIVETAP-0.1.0-win-x64.exe oneClick=false perMachine=false
   • building block map  blockMapFile=release\LIVETAP-0.1.0-win-x64.exe.blockmap
@@ -68,14 +121,33 @@ EXIT=0
 
 | Artifact | Size |
 |---|---|
-| `LIVETAP-0.1.0-win-x64.exe` (NSIS installer) | 95,901,044 B |
-| `LIVETAP-0.1.0-win-x64.exe.blockmap` | 102,054 B |
-| `latest.yml` (electron-updater feed) | 346 B |
+| `LIVETAP-0.1.0-win-x64.exe` (NSIS installer) | 230,661,718 B |
+| `LIVETAP-0.1.0-win-x64.exe.blockmap` | 240,302 B |
+| `latest.yml` (electron-updater feed) | 347 B |
+| `release/win-unpacked/` on disk | ~794 MB |
 
-The packaged app was launched and stayed running; see `docs/qa/DESKTOP_ENGINE_VERIFICATION.md` (h).
+SHA-256 of the installer: `52952ee8ecbe79c6ece1fe4732bd7021f3df806c3ae950bfab493a402643f65a`.
+
+Verified afterwards, both exit 0:
+
+```
+$ node apps/desktop/scripts/verify-installer.mjs      → 30/30 checks PASS
+$ node apps/desktop/scripts/smoke-installed.mjs       → window opened, shell rendered,
+                                                        ffmpeg source: "bundled"
+```
+
+`Get-AuthenticodeSignature` on the installer, `LIVETAP.exe` and the bundled `ffmpeg.exe` reports
+`NotSigned` for all three — expected, see §3.
 
 macOS packaging is **UNVERIFIED** — no macOS machine. `npm run package:mac` on a Mac is expected to
-work from the same config, but has not been executed.
+work from the same config, but has not been executed, and `resources/ffmpeg/mac/` is empty:
+`tools/acquire-ffmpeg.mjs` must be run on the Mac to populate it (it refuses to claim a binary works
+when it cannot execute it).
+
+### Earlier result, for comparison
+
+The 2026-09-12 build was 95,901,044 B on Electron 38.8.6 with an empty `resources/ffmpeg/`. It
+opened a window and could not broadcast. The size difference is FFmpeg.
 
 ### Three blockers hit on the way, and their fixes
 
@@ -90,10 +162,15 @@ Recorded so the next person does not rediscover them.
 2. **Schema changes in electron-builder 26.** `win.publisherName` moved to
    `win.signtoolOptions.publisherName`, and top-level `notarize` moved under `mac`. Both now sit in
    the right place (the Windows one commented out until a certificate exists).
-3. **`electronVersion` must be explicit.** electron-builder refuses the `^38.2.0` range because it
+3. **`electronVersion` must be explicit.** electron-builder refuses a semver range because it
    downloads binaries for one exact release, and in an npm workspace `electron` is hoisted to the
-   repo root where electron-builder does not look. **Fix: `electronVersion: 38.8.6` in
+   repo root where electron-builder does not look. **Fix: `electronVersion` in
    `electron-builder.yml` — keep it in step with the `electron` devDependency when bumping.**
+   It said `38.8.6` for three days after the devDependency moved to `^44.3.0`, so every build in
+   that window packaged an Electron that nobody had run the app against, and that still carried the
+   advisories the bump was made to escape. Corrected to `44.3.0` on 2026-09-15. Nothing warns about
+   this: the two numbers live in different files and electron-builder happily downloads whichever it
+   is told.
 
 ---
 
@@ -240,14 +317,18 @@ signature does not match the running app; Windows `NsisUpdater` verifies the pub
 
 1. Bump `version` in `apps/desktop/package.json`.
 2. Confirm `electronVersion` in `electron-builder.yml` matches the installed Electron.
-3. Drop the FFmpeg binaries (§1) and refresh `THIRD_PARTY_NOTICES.md` with the exact version.
+3. `node tools/acquire-ffmpeg.mjs --force` on each target platform, then refresh the build
+   string and hashes in `THIRD_PARTY_NOTICES.md` from the regenerated
+   `apps/desktop/resources/ffmpeg/BUILD_INFO.txt`.
 4. `npx vitest run --project desktop` — 275 tests, must be green.
 5. `node apps/desktop/dist/verify/verify-engine.cjs` — 9/9 steps, must exit 0.
 6. `npm run package:win` and `npm run package:mac` with the signing variables exported.
-7. `codesign -dv --verbose=4` the mac app **and** the nested ffmpeg; `signtool verify /pa` the exe.
-8. Install from the artifact on a clean machine; confirm `livetap://` opens the app and
+7. `node apps/desktop/scripts/verify-installer.mjs` (must be all-PASS) and
+   `node apps/desktop/scripts/smoke-installed.mjs` (must report `source: 'bundled'`).
+8. `codesign -dv --verbose=4` the mac app **and** the nested ffmpeg; `signtool verify /pa` the exe.
+9. Install from the artifact on a clean machine; confirm `livetap://` opens the app and
    `%APPDATA%\LIVETAP` / `~/Library/Application Support/LIVETAP` is created.
-9. Publish, then verify a previous version actually updates to it.
+10. Publish, then verify a previous version actually updates to it.
 
 ## 7. Outstanding
 
@@ -259,7 +340,44 @@ signature does not match the running app; Windows `NsisUpdater` verifies the pub
 | Auto-update wiring in main | NOT STARTED — depends on signing and on the UI |
 | App icon | NOT STARTED — default Electron icon in use |
 | `publish.owner` / `publish.repo` | placeholders |
-| `electron-builder` pinned to `~26.12.0` | revisit when the host moves to Node ≥ 22.12 |
+| `electron-builder` on `^26.15.3` | needs Node ≥ 20.19; host Node is 20.11, so packaging runs with `tools/node22` first on PATH |
+| FFmpeg for macOS | `resources/ffmpeg/mac/` is empty — run `tools/acquire-ffmpeg.mjs` on a Mac |
+| `electron-updater` fails to initialise in the packaged build | non-fatal, caught and logged as `electron-updater unavailable { error: "TypeError: Cannot set properties of undefined (setting 'autoDownload')" }`. Nothing depends on it because the update check is not wired into the UI, but it must be fixed before auto-update ships. |
+
+## 8. BLOCKERS.md B-002 (FFmpeg GPLv3 source offer) — what is now done, what is left
+
+Recorded here rather than in `BLOCKERS.md` because this stream does not own that file. **The
+integrator should close or downgrade B-002 using this section.**
+
+**Done, as of 2026-09-15 — no longer a blocker for the owner's own alpha:**
+
+- The exact build is pinned and recorded mechanically, not by hand: `ffmpeg 9.0.1-full_build-www.gyan.dev`,
+  with the full `./configure` line and the SHA-256 of both binaries written to
+  `apps/desktop/resources/ffmpeg/BUILD_INFO.txt` by `tools/acquire-ffmpeg.mjs` on every packaging run.
+- The GPLv3 text **ships inside the installer** at `resources/ffmpeg/win/FFMPEG-LICENSE.txt`, and
+  `scripts/verify-installer.mjs` fails the build if it is missing (GPLv3 §4).
+- A **written offer** with a real, verifiable URL is in `THIRD_PARTY_NOTICES.md`: the corresponding
+  source is the upstream commit the build was compiled from,
+  https://github.com/FFmpeg/FFmpeg/commit/bf1b838f2a, published by the build's distributor in the
+  `README.txt` that ships alongside the binary; requests go to
+  https://github.com/BigBackBitcoin/livetap/issues.
+- The LGPL question is answered rather than dodged: `src/main/ffmpeg/argv.ts` names `libx264`, which
+  is GPL, and on this host every hardware encoder probed UNAVAILABLE. An LGPL build would be a
+  functional regression, so the GPL build ships and the obligations are met.
+
+**Left, and genuinely an owner decision:**
+
+1. Whether to host a source **mirror** of our own (e.g. a `livetap-ffmpeg-builds` repo with the
+   tagged source and build config) rather than relying on the upstream commit and the distributor
+   remaining reachable. GPLv3 §6(b)/(d) permits either; a mirror is the durable choice.
+2. **Who answers** a source request, and within what time. The offer currently names the public issue
+   tracker, which is real but unstaffed by policy.
+3. Confirm MIT vs Apache-2.0 for LIVETAP itself (ADR-013 / HANDOFF), which is independent of FFmpeg.
+
+None of these block the owner installing the alpha on their own machine: GPLv3 §6 attaches to
+*conveying* the object code, and nothing has been conveyed to a third party.
+
+---
 
 ## Addendum 2026-09-11 — Electron 44.3.0 / electron-builder 26.15.3
 

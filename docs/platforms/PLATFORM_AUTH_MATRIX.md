@@ -1,6 +1,6 @@
 # Platform authentication matrix — the four levels
 
-Written 2026-09-14. Sources: `docs/research/PLATFORM_CAPABILITY_MATRIX.md` and
+Written 2026-09-14; the level-3 paste path rewritten 2026-09-15. Sources: `docs/research/PLATFORM_CAPABILITY_MATRIX.md` and
 the three platform research files behind it. No new research here; this
 document is the classification and the setup procedure, per platform.
 
@@ -19,7 +19,7 @@ tapping the platform's name, before LIVETAP can broadcast there?**
 |---|---|---|---|
 | **1** | Taps the platform, signs in once, done. | Registers an app. No review, no queue. | **Twitch** |
 | **2** | Taps the platform, signs in once, done. | Registers an app **and** clears a platform review, or adds themselves to a test/role list to use it alone. | **YouTube**, **Facebook** |
-| **3** | Signs in for what the API does allow, then pastes a key and sometimes presses a button in the platform's own tab. | Registers an app (Kick only), or nothing at all. | **Kick**, **Instagram**, **TikTok**, **X** |
+| **3** | Copies an ingest address and a stream key off their own studio page, pastes both, and sometimes presses a button in the platform's own tab. | **Nothing.** | **Every platform except LinkedIn** — permanently for **Kick**, **Instagram**, **TikTok** and **X**, and as the fallback for **YouTube**, **Twitch** and **Facebook** until their client is registered |
 | **4** | Nothing works. The platform is shown as unavailable and says why. | Nothing they can do. | **LinkedIn** |
 
 Custom RTMP, RTMPS, SRT and WHIP sit outside the levels. There is no account,
@@ -33,6 +33,84 @@ the creator ever sees a stream key: at level 2 they never do, at level 3 they
 must. The line between 3 and 4 is whether a paste path exists at all. LinkedIn
 is alone at level 4 because it is the only platform that never shows a member a
 stream key, so there is nothing to fall back to.
+
+---
+
+## The level is per build, not per platform — and today every build is at level 3
+
+This document used to read as though a platform's level were a property of the
+platform. It is not. It is a property of **this build**: whether an OAuth client
+for that platform has been registered and configured, which is a fact about the
+deployment and nothing else.
+
+Until somebody registers a client, **the level-1/2 column is unreachable and
+every platform except LinkedIn is at level 3** — because every one of them
+prints an ingest address and a stream key on the creator's own studio page,
+which takes about thirty seconds to copy and needs no app, no review and no
+console work by anybody.
+
+That is not a degraded mode. A destination created by pasting a key is real: it
+puts real bytes on a real wire and it must never be labelled demo or mock. It is
+simply the path where the *creator* holds the key instead of LIVETAP.
+
+| | Level 1 / 2 — the API path | Level 3 — the paste path |
+|---|---|---|
+| Needs an OAuth client registered | yes | **no** |
+| Creator sees a stream key | never | every time |
+| LIVETAP sets the title | yes | **no** |
+| LIVETAP reads the platform's own health / viewers | yes | **no** |
+| LIVETAP starts and stops the broadcast | yes, where the platform has the call | only by starting and stopping the video |
+| LIVETAP can explain a platform-side rejection | yes | **no** |
+| Available in the owner's build right now | no | **yes** |
+
+`apps/web/src/state/registry.ts` implements exactly this: it registers a
+platform's own API adapter when a client is configured, and otherwise registers
+the real custom-RTMP adapter **wearing that platform's own profile**, so the
+aspect ratios, the bitrate ceiling and the eligibility notes stay the platform's
+own. A platform whose client IS configured is never downgraded to paste.
+
+### What LIVETAP pre-fills, and what it refuses to guess
+
+| Platform | Server address LIVETAP pre-fills | Source |
+|---|---|---|
+| YouTube | `rtmp://a.rtmp.youtube.com/live2` | YouTube's published primary ingest; `b.rtmp` is a simultaneous second ingest, not a spare, so it is not offered |
+| Facebook | `rtmps://live-api-s.facebook.com:443/rtmp/` | Facebook's RTMPS ingest; port 443 by design, so it survives firewalls that block 1935 |
+| Twitch | fetched at paste time from `GET https://ingest.twitch.tv/ingests`, `url_template_secure` | the ingest host is regional; there is no single correct value to hard-code |
+| Kick, TikTok, Instagram, X | **nothing** | per-channel or per-session hosts. An empty field with a placeholder asks a question the creator can answer off the page already open in front of them; a wrong default fails at go-live for a reason nobody can see |
+
+Every pre-filled address stays editable, and is labelled as a default. The
+creator's own studio page is the authority, always. Twitch's lookup is
+unauthenticated and needs no client id; when it cannot be read, the field is
+left empty rather than filled with the secondary-sourced host the official docs
+never name.
+
+Where a platform prints ONE joined address ending in the key, LIVETAP splits it
+into the two fields and says on screen that it did. The split is conservative: a
+real ingest URL has exactly one path segment (`/live2`, `/app`, `/rtmp`), so a
+second, long enough segment can only be a key.
+
+### What the creator loses by pasting, per platform
+
+One line of this appears on the destination itself, derived from the platform's
+own profile rather than written out per platform, so it cannot drift from what
+the adapters do.
+
+| Platform | Who publishes the broadcast | Title | Platform-side health / viewers | Rejection reason |
+|---|---|---|---|---|
+| Twitch | Twitch, the moment video arrives | creator, on Twitch | not visible to LIVETAP | not visible to LIVETAP |
+| Kick | Kick, the moment video arrives | creator, on Kick | not visible to LIVETAP | not visible to LIVETAP |
+| Facebook | Facebook, the moment video arrives | creator, in Live producer | not visible to LIVETAP | not visible to LIVETAP |
+| YouTube | **creator presses Go live in YouTube Studio** | creator, in Studio | not visible to LIVETAP | not visible to LIVETAP |
+| Instagram | **creator presses Go live in Live Producer** | creator, in Live Producer | not visible to LIVETAP | not visible to LIVETAP |
+| TikTok | **creator presses Go LIVE** | creator, in TikTok | not visible to LIVETAP | not visible to LIVETAP |
+| X | **creator starts the broadcast in Live Studio** | creator, in the Studio | not visible to LIVETAP | not visible to LIVETAP |
+
+In every row, what LIVETAP still does is the thing that matters: it produces the
+picture once and pushes it to all of them at the same time.
+
+**LinkedIn is not in that table and never will be.** It is the one platform that
+never shows a member a stream key, so there is no paste path to fall back to.
+It stays unavailable, and says why.
 
 ---
 
@@ -332,14 +410,18 @@ Whitespace and shell metacharacters are refused in both the URL and the key.
 
 ## One table, every platform
 
-| Platform | Level | Owner registration | Review | PKCE | Client secret needed | Creator sees a stream key | A human must press a button on the platform |
-|---|---|---|---|---|---|---|---|
-| Twitch | 1 | yes, instant | none | no (device code) | no | no | no |
-| YouTube | 2 | yes | two queues, or Testing for yourself | yes, S256 | issued, obfuscated | no | no |
-| Facebook | 2 | yes | App Review + Business Verification, or a role on the app | OIDC only | yes, server side | no | no |
-| Kick | 3 | yes, instant | none | yes, mandatory | yes, server side | sometimes | no |
-| Instagram | 3 | none | n/a | n/a | n/a | **yes, every session** | **yes** |
-| TikTok | 3 | none for live | n/a | n/a | n/a | **yes, every session** | **yes** |
-| X | 3 | none | n/a | n/a | n/a | yes, reusable | **yes** |
-| LinkedIn | 4 | not available | partner programme + background check | per-app request only | yes | never | n/a |
-| Custom | — | none | none | n/a | n/a | yes, the one they already had | depends on the far end |
+"Level" below is the level the platform reaches **once the owner has registered
+its client**. The last column is what is true of a build with nothing configured,
+which is every build today.
+
+| Platform | Level, once registered | Owner registration | Review | PKCE | Client secret needed | Creator sees a stream key | A human must press a button on the platform | Paste path with nothing registered |
+|---|---|---|---|---|---|---|---|---|
+| Twitch | 1 | yes, instant | none | no (device code) | no | no | no | **yes** |
+| YouTube | 2 | yes | two queues, or Testing for yourself | yes, S256 | issued, obfuscated | no | no | **yes** |
+| Facebook | 2 | yes | App Review + Business Verification, or a role on the app | OIDC only | yes, server side | no | no | **yes** |
+| Kick | 3 | yes, instant | none | yes, mandatory | yes, server side | sometimes | no | **yes** |
+| Instagram | 3 | none | n/a | n/a | n/a | **yes, every session** | **yes** | **yes** |
+| TikTok | 3 | none for live | n/a | n/a | n/a | **yes, every session** | **yes** | **yes** |
+| X | 3 | none | n/a | n/a | n/a | yes, reusable | **yes** | **yes** |
+| LinkedIn | 4 | not available | partner programme + background check | per-app request only | yes | never | n/a | **no — no key exists to paste** |
+| Custom | — | none | none | n/a | n/a | yes, the one they already had | depends on the far end | **yes** |
