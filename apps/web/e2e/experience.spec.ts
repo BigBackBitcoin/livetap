@@ -263,7 +263,7 @@ test.describe('one production, every shape', () => {
 
     /* No platform here asks for a square, and the surface says so rather than faking one. */
     await expect(page.locator('[data-lt-statedetail]')).toContainText(
-      'No destination here asks for it',
+      'No destination here asks for square',
     );
   });
 
