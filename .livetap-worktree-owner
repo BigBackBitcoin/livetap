@@ -1,0 +1,5 @@
+owner=livetap-2b
+sessionId=local (this session)
+claimed=2026-09-15T14:52:55Z
+reason=final alpha hardening: release gates, reconciliation, push
+rule=one active autonomous owner of this worktree; see docs/qa/REPOSITORY_RECONCILIATION.md
