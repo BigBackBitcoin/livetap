@@ -58,7 +58,6 @@ export function Studio(): ReactElement {
   const startCountdown = useAppStore((s) => s.startCountdown);
   const cancelCountdown = useAppStore((s) => s.cancelCountdown);
   const confirmRealBroadcast = useAppStore((s) => s.confirmRealBroadcast);
-  const commitGoLive = useAppStore((s) => s.commitGoLive);
   const cancelStart = useAppStore((s) => s.cancelStart);
   const setAspect = useAppStore((s) => s.setAspect);
   const setMoment = useAppStore((s) => s.setMoment);
@@ -186,6 +185,29 @@ export function Studio(): ReactElement {
     button?.focus({ preventScroll: true });
     // Deliberately empty: this is a first-mount-only effect, not a reaction to `goLive`.
   }, []);
+
+  /*
+   * An armed countdown does not survive this screen.
+   *
+   * The clock lives in the store now, so leaving Studio no longer STOPS it — which is worse than
+   * it sounds: before, navigating away froze the button's own interval while `goLive` stayed
+   * 'countdown', and coming back remounted the button, started a fresh countdown, and went live
+   * with nobody pressing anything. Armed, invisible, uncancellable.
+   *
+   * A countdown is the last chance to change your mind, so leaving is treated as changing it. The
+   * other option the rule allows is to keep it and show it somewhere else, and there is nowhere
+   * honest: the live bar is for a broadcast that is HAPPENING, and a countdown in it would be a
+   * second place to press stop for something that has not started.
+   *
+   * `releaseCountdown` says so in a notice rather than dropping it silently, which is the part
+   * that decides whether the creator trusts the button next time.
+   */
+  useEffect(
+    () => () => {
+      useAppStore.getState().releaseCountdown();
+    },
+    [],
+  );
 
   // The tab title moved to `LiveBar` with everything else that has to survive a route change.
 
@@ -368,7 +390,12 @@ export function Studio(): ReactElement {
                 }
                 onGoLive={startCountdown}
                 onCancel={cancelCountdown}
-                onCountdownComplete={() => void commitGoLive()}
+                /*
+                  Nothing. The store owns the clock now (`armCountdown`), because a countdown that
+                  only exists while this screen is mounted is one a tap on the nav can leave armed,
+                  invisible and uncancellable — and which then goes live by itself when the creator
+                  comes back. The button still draws the number; it no longer decides.
+                */
                 onCancelStart={() => void cancelStart()}
                 demo={allMock}
                 className={allMock ? 'lt-golive--demo' : undefined}

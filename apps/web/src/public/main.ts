@@ -2285,6 +2285,27 @@ function watchActs(): void {
   addEventListener('resize', schedule, { passive: true });
   apply();
 
+  /*
+   * A dead-man's switch for the half CSS cannot reach.
+   *
+   * `.ltp-band` is clipped to zero area whenever it is painting nothing, derived in CSS from the
+   * same `--sc-p` expression as its opacity, so pointer, wheel and hit-testing are safe whatever
+   * happens to this file's frames. What that clip does NOT do is take a band's children out of
+   * the tab order: a stale `is-here` still says `visibility: visible`, and a keyboard can still
+   * walk into a panel nobody can see.
+   *
+   * `syncBandHits` runs only from the scroll listener's rAF and the one settle frame after it.
+   * Hold the main thread across both — a 350 ms task, or the frame rate this page reports with a
+   * camera live — and the class never catches up, because nothing calls it again until the next
+   * scroll, which for a reader who has stopped scrolling is never. That is exactly how this bug
+   * came back a third time.
+   *
+   * Four times a second, forever, costs nothing measurable and means the class converges within
+   * 250 ms of the truth no matter how many frames were lost. It is a reconciliation loop, not a
+   * render loop: it reads computed opacity and toggles a class, and does neither if they agree.
+   */
+  setInterval(syncBandHits, 250);
+
   $$('[data-lt-rest]').forEach((rest) =>
     onScroll({
       target: rest,

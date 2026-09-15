@@ -134,6 +134,36 @@
   overflow: hidden;
   pointer-events: none;
   visibility: hidden;
+
+  /*
+   * How much of this band is being painted, as a number, 0 to 1.
+   *
+   * 1 for a band whose opacity the ENGINE writes inline, because the engine writes
+   * `pointerEvents` in the same statement as `opacity` and the two cannot drift. A band whose
+   * opacity is a CSS function of `--sc-p` overrides this with THE SAME EXPRESSION, so that the
+   * two are one expression used twice rather than two that have to be kept in step.
+   */
+  --ltp-vis: 1;
+
+  /*
+   * THE GUARD THAT CANNOT GO STALE.
+   *
+   * A near-step: 1 while the band is painting anything at all, 0 the instant it is not.
+   * `* 1000` makes the ramp 0.001 wide, so this is a switch rather than a fade.
+   */
+  --ltp-touchable: clamp(0, calc(var(--ltp-vis) * 1000), 1);
+
+  /*
+   * Clipped to zero area when it is painting nothing. A zero-area clip removes the element from
+   * hit-testing and from the wheel, and it is a pure function of `--sc-p` — the same custom
+   * property the opacity above comes from — so there is no sampler, no frame and no class
+   * between the two. This is what makes the invariant hold when the main thread is starved,
+   * which is how the bug came back for a third time: `is-here` is maintained by JavaScript from
+   * a `requestAnimationFrame` the page does not control, and a 350 ms task on the main thread
+   * left `opacity: 0; visibility: visible; pointer-events: auto` over the destination column
+   * until the next scroll — which, for a reader who has stopped scrolling, is never.
+   */
+  clip-path: inset(calc((1 - var(--ltp-touchable)) * 50%));
 }
 
 .ltp-band.is-here {
@@ -174,11 +204,15 @@
  */
 .ltp-band--tall {
   /* The panel is the ground the harness measures against, so the cue sits on the inner block
-     and the panel itself follows the act's progress. */
-  opacity: min(
+     and the panel itself follows the act's progress.
+
+     Declared once, as `--ltp-vis`, and used for the opacity AND for the hit-testing guard on
+     `.ltp-band`. Writing it twice is what let them disagree. */
+  --ltp-vis: min(
     clamp(0, calc((var(--sc-p, 0) - 0.02) * 16), 1),
     clamp(0, calc((0.96 - var(--sc-p, 0)) * 16), 1)
   );
+  opacity: var(--ltp-vis);
   inset-block-end: auto;
   block-size: auto;
   min-block-size: var(--ltp-band);

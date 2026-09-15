@@ -216,12 +216,24 @@ test.describe('the start of a broadcast, under abuse', () => {
    *     the countdown should be visible and cancellable everywhere rather than cancelled on
    *     leaving, this line is the other half of the change and this team will make it.
    *
-   * `test.fail()`: this is the reproduction, standing, so the fix has something to turn green.
+   * FIXED 2026-09-15, and the diagnosis above was right about where: the countdown was a
+   * half-owned thing. The flag lived in the store and outlived the screen; the clock lived in the
+   * button and did not.
+   *
+   * The store owns both now. `armCountdown()` sets the flag AND holds the timer that ends it, the
+   * same way `requestEnd()` has always owned the END grace — an action with consequences cannot
+   * be owned by a screen, because a screen can be unmounted by a tap on the nav.
+   *
+   * Of the two endings the rule permits, this takes CANCEL rather than carry-it-with-you. A
+   * countdown is the last chance to change your mind, so leaving is treated as changing it; and
+   * there is nowhere honest to show it instead, because the live bar is for a broadcast that is
+   * HAPPENING and a countdown in it would be a second place to press stop for something that has
+   * not started. `releaseCountdown()` says so in a notice rather than dropping it in silence,
+   * which is the part that decides whether the creator trusts the button next time.
    */
   test('leaving Studio mid-countdown never leaves an armed broadcast with no control', async ({
     page,
   }) => {
-    test.fail();
     await studio(page);
     await page.getByRole('button', { name: 'Go live', exact: true }).click();
     await expect(page.locator('.lt-golive--countdown')).toBeVisible();

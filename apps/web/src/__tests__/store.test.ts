@@ -437,3 +437,89 @@ describe('boot cost', () => {
     expect(reads.length).toBeLessThanOrEqual(5);
   });
 });
+
+/**
+ * A live action never survives a route change invisibly.
+ *
+ * The countdown used to live entirely inside `GoLiveButton`, a component that only exists while
+ * Studio is mounted. Navigating away mid-countdown stopped the clock while leaving `goLive` at
+ * `'countdown'` in the store — and the live bar does not draw a countdown, so the state was armed,
+ * invisible and uncancellable. Coming back remounted the button, which started a FRESH countdown
+ * and then went live, with nobody having pressed anything.
+ *
+ * The END grace had already learned this (`graceTimer`): an action with consequences cannot be
+ * owned by a screen, because a screen can be unmounted by a tap on the nav.
+ */
+describe('an armed countdown', () => {
+  it('is owned by the store, not by whatever is drawing it', async () => {
+    const { store } = build();
+    await store.getState().init();
+    await store.getState().connectPlatform('youtube');
+
+    store.getState().startCountdown();
+    expect(store.getState().goLive).toBe('countdown');
+
+    // Nothing in the UI is mounted here at all, and it still completes on its own.
+    await vi.waitFor(() => expect(store.getState().production.state).toBe('LIVE'), { timeout: 12_000 });
+  }, 20_000);
+
+  it('is released, out loud, when the screen holding it goes away', async () => {
+    const { store } = build();
+    await store.getState().init();
+    await store.getState().connectPlatform('youtube');
+
+    store.getState().startCountdown();
+    expect(store.getState().goLive).toBe('countdown');
+
+    store.getState().releaseCountdown();
+
+    expect(store.getState().goLive).toBe('idle');
+    expect(store.getState().notices.some((n) => /counting down/i.test(n.message))).toBe(true);
+  });
+
+  it('does not go live after being released, however long anyone waits', async () => {
+    const { store } = build();
+    await store.getState().init();
+    await store.getState().connectPlatform('youtube');
+
+    store.getState().startCountdown();
+    store.getState().releaseCountdown();
+
+    await new Promise((r) => setTimeout(r, 6_000));
+
+    expect(store.getState().goLive).toBe('idle');
+    expect(store.getState().production.state).not.toBe('LIVE');
+  }, 20_000);
+
+  it('does not survive a reload: nothing about it is persisted', async () => {
+    const { store } = build();
+    await store.getState().init();
+    await store.getState().connectPlatform('youtube');
+    store.getState().startCountdown();
+
+    const everything = Object.keys(localStorage)
+      .map((key) => `${key}=${localStorage.getItem(key) ?? ''}`)
+      .join('\n');
+    expect(everything).not.toMatch(/countdown/i);
+
+    // A fresh store is what a reload produces.
+    const { store: reloaded } = build();
+    await reloaded.getState().init();
+    expect(reloaded.getState().goLive).toBe('idle');
+
+    store.getState().releaseCountdown();
+  });
+
+  it('cancelling it stops the clock as well as the label', async () => {
+    const { store } = build();
+    await store.getState().init();
+    await store.getState().connectPlatform('youtube');
+
+    store.getState().startCountdown();
+    store.getState().cancelCountdown();
+    expect(store.getState().goLive).toBe('idle');
+
+    await new Promise((r) => setTimeout(r, 6_000));
+    expect(store.getState().production.state).not.toBe('LIVE');
+  }, 20_000);
+});

@@ -180,6 +180,14 @@ export interface AppState {
 
   startCountdown(): void;
   cancelCountdown(): void;
+  /**
+   * Studio has left the screen while a countdown was armed.
+   *
+   * Separate from `cancelCountdown` so the two reasons read differently in the code and so this
+   * one can say out loud what happened: a countdown that survives a route change invisibly, and
+   * then goes live by itself when the creator wanders back, is the worst shape this control has.
+   */
+  releaseCountdown(): void;
   /** Acknowledge the real-broadcast warning and begin the countdown. */
   confirmRealBroadcast(): void;
   commitGoLive(): Promise<void>;
@@ -224,6 +232,19 @@ interface Runtime {
    * the broadcast keeps running with no way to stop it from where they now are.
    */
   graceTimer: ReturnType<typeof setTimeout> | null;
+  /**
+   * The GO LIVE countdown, owned here rather than by the button that draws it.
+   *
+   * It used to live entirely inside `GoLiveButton`, a component that only exists while Studio is
+   * mounted. Navigating away mid-countdown therefore stopped the clock while leaving `goLive` at
+   * `'countdown'` in the store — and `LiveBar` does not show a countdown, so the state was armed,
+   * invisible and uncancellable. Coming back to Studio remounted the button, which started a
+   * FRESH countdown and then went live, with nobody having pressed anything.
+   *
+   * The END grace already learned this lesson (`graceTimer` above): an action with consequences
+   * cannot be owned by a screen, because a screen can be unmounted by a tap on the nav.
+   */
+  countdownTimer: ReturnType<typeof setTimeout> | null;
   /** Releases the GO LIVE button if a platform call hangs. Never touches the broadcast. */
   startTimer: ReturnType<typeof setTimeout> | null;
   /**
@@ -424,6 +445,33 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       if (runtime) runtime.graceTimer = null;
     };
 
+    const clearCountdown = (): void => {
+      if (runtime?.countdownTimer) clearTimeout(runtime.countdownTimer);
+      if (runtime) runtime.countdownTimer = null;
+    };
+
+    /**
+     * Start the countdown, and own the clock that ends it.
+     *
+     * The length matches what `GoLiveButton` draws, because the button is the only thing that
+     * SHOWS the number - five seconds when real accounts are on the line, three when nothing
+     * leaves the machine. The button no longer decides when it is over.
+     */
+    const armCountdown = (): void => {
+      const r = runtime;
+      if (!r) return;
+      clearCountdown();
+      const s = get();
+      const reality = broadcastReality(s.destinations, s.adapterKind, s.engineHost);
+      const seconds = reality.real.length > 0 ? REAL_COUNTDOWN_SECONDS : DEMO_COUNTDOWN_SECONDS;
+      set({ goLive: 'countdown', pendingConfirm: false });
+      r.countdownTimer = setTimeout(() => {
+        if (runtime) runtime.countdownTimer = null;
+        if (get().goLive !== 'countdown') return;
+        void get().commitGoLive();
+      }, seconds * 1000);
+    };
+
     const clearStartTimer = (): void => {
       if (runtime?.startTimer) clearTimeout(runtime.startTimer);
       if (runtime) runtime.startTimer = null;
@@ -539,6 +587,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           offs: [],
           recordingId: null,
           graceTimer: null,
+          countdownTimer: null,
           startTimer: null,
           starting: null,
         };
@@ -960,24 +1009,50 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           set({ pendingConfirm: true });
           return;
         }
-        set({ goLive: 'countdown', pendingConfirm: false });
+        armCountdown();
       },
 
       cancelCountdown(): void {
         const state = get();
         if (state.goLive !== 'countdown' && !state.pendingConfirm) return;
+        clearCountdown();
         set({ goLive: 'idle', pendingConfirm: false });
+      },
+
+      /**
+       * Studio is no longer on screen, and it was holding an armed countdown.
+       *
+       * Called from Studio's own unmount. A countdown is the last chance to change your mind, so
+       * leaving the screen is treated as changing your mind - the alternative the directive allows
+       * is to keep it and make it visible elsewhere, and there is nowhere honest to put it: the
+       * live bar is for a broadcast that is HAPPENING, and a countdown in it would be a second
+       * place to press stop for something that has not started.
+       *
+       * It says so out loud. Silently dropping an armed action is how the creator learns not to
+       * trust the button.
+       */
+      releaseCountdown(): void {
+        const state = get();
+        if (state.goLive !== 'countdown' && !state.pendingConfirm) return;
+        clearCountdown();
+        set({ goLive: 'idle', pendingConfirm: false });
+        notice({
+          level: 'info',
+          message: 'Your broadcast was not started — you left the studio while it was counting down.',
+        });
       },
 
       confirmRealBroadcast(): void {
         if (!get().pendingConfirm) return;
         persist.write(persist.KEYS.realBroadcastAck, true);
-        set({ realBroadcastAck: true, pendingConfirm: false, goLive: 'countdown' });
+        set({ realBroadcastAck: true, pendingConfirm: false });
+        armCountdown();
       },
 
       async commitGoLive(): Promise<void> {
         const r = runtime;
         if (!r) return;
+        clearCountdown();
         set({ goLive: 'starting', pendingConfirm: false });
         clearStartTimer();
         r.startTimer = setTimeout(() => {

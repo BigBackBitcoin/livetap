@@ -473,12 +473,26 @@ test.describe('the landing page, with a frame dropped', () => {
      *     interactive state from the rendered opacity in the same pass that renders it, or keep
      *     re-checking until the two agree, rather than sampling twice and hoping.
      *
-     * `test.fail()`: the reproduction stands so the fix has something to turn green.
+     * FIXED 2026-09-15, and the fix is not a better sampler — it is to stop sampling.
+     *
+     * Measured first: the stuck band had NO inline styles at all. Its `opacity: 0` came from CSS
+     * and its `pointer-events: auto` came from the stale class alone. So:
+     *
+     *   `.ltp-band--tall` declares its fade ONCE, as `--ltp-vis`, and uses it for its opacity.
+     *   `.ltp-band` derives `--ltp-touchable` from that same variable as a near-step and clips
+     *   itself to zero area when it reaches 0. A zero-area clip is out of hit-testing and out of
+     *   the wheel, and it is a pure function of `--sc-p` — so there is no frame, no sampler and
+     *   no class between the opacity and the guard. One expression, used twice.
+     *
+     *   The class still owns `visibility`, because CSS cannot take an element out of the tab
+     *   order from a number, so `main.ts` reconciles it on a 250 ms interval too — a dead-man's
+     *   switch rather than a render loop, four calls a second that do nothing when they agree.
+     *
+     * This test asserts the invariant now instead of reproducing its absence.
      */
     test('an invisible band does not stay interactive when a frame is dropped', async ({
       page,
     }) => {
-      test.fail();
       await page.goto('/');
       await page.waitForSelector('html.sc-ready');
       await page.waitForTimeout(1200);
