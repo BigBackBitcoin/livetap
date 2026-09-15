@@ -45,10 +45,14 @@
  *      not assumed. So the broker speaks https with a certificate this run generates, and
  *      Chromium is told to accept that ONE certificate by SPKI pin
  *      (`--ignore-certificate-errors-spki-list`). TLS validation is not disabled.
- *   4. `Sec-Fetch-Site`. Chromium sends `Sec-Fetch-Site: cross-site` from a `file://` renderer and
- *      `assertSameOrigin` in `apps/web/api/_lib/broker.ts` answers 403. That is a PRODUCT DEFECT,
- *      not a harness problem, so the run measures it first with the header intact and only then
- *      drops it, to find out what the rest of the chain does. Both results are reported.
+ *   4. `Sec-Fetch-Site` — HISTORICAL, and kept because it is how the defect was found. Chromium
+ *      sends `Sec-Fetch-Site: cross-site` from a `file://` renderer, and `assertSameOrigin` used
+ *      to answer 403 to all of them, so the entire desktop app got a blanket 403 at the code
+ *      exchange: sign-in completed at the platform and died on the last step. The run measured it
+ *      first with the header intact and only then dropped it, to find out what the rest of the
+ *      chain would do. That is fixed now — a page making a cross-origin request always sends an
+ *      `Origin`, so the check asks for that instead — and the first half of the measurement now
+ *      passes on its own. Both halves are still run, and both results still reported.
  *
  * WHAT IS NOT PROVEN HERE: that Google accepts these exact requests. Only a real Google client id
  * can prove that. This proves LIVETAP's half, end to end, through its own UI.
@@ -303,27 +307,25 @@ function rendererChunks(rendererDir) {
 }
 
 /**
- * What `brokerBaseUrl()` was compiled to — which is not the same question as what the source says.
+ * Which broker origin survived into the bundle.
  *
- * Vite constant-folds `import.meta.env.VITE_LIVETAP_BROKER_URL`, so the shipped bundle contains
- * `function X(){return"<base>".replace(/\/+$/,"")}`. Reading it back is the only way to know what
- * an INSTALLED app would actually call. The function is found through its one unmistakable use,
- * `${X()}/api/oauth/config`, rather than by pattern-matching the body: `engine.ts` folds the relay
- * URL with the identical `.replace(/\/+$/,"")` shape and would otherwise be read instead.
+ * Asking "what did `brokerBaseUrl()` fold to" by pattern-matching the minified function body was
+ * the obvious approach and it was wrong twice over: it broke the moment that function stopped being
+ * a single `return"X".replace(...)` and grew a native-shell fallback, and it then reported
+ * "(unreadable)" as though the app could not reach a broker — which is the harness calling a
+ * working product broken because the product changed shape.
+ *
+ * The question that actually matters is whether the origin an installed app would call is IN the
+ * bundle at all, so that is what this asks. It takes the origin it expects and looks for it.
  */
-function foldedBrokerBase(chunks) {
-  const names = new Set();
-  for (const text of chunks) {
-    for (const match of text.matchAll(/\$\{(\w+)\(\)\}\/api\/oauth\/config/g)) names.add(match[1]);
-  }
-  for (const name of names) {
-    for (const text of chunks) {
-      const hit = new RegExp(`function ${name}\\(\\)\\{return"([^"]*)"\\.replace`).exec(text);
-      if (hit) return hit[1];
-    }
-  }
-  return null;
+function bundleCallsBroker(chunks, origin) {
+  if (!origin) return false;
+  const needle = origin.replace(/\/+$/, '');
+  return chunks.some((text) => text.includes(needle));
 }
+
+/** The fallback `mockMode.ts` compiles in for a shell that has no origin of its own. */
+const NATIVE_BROKER_FALLBACK = 'https://livetap.vercel.app';
 
 /**
  * A private copy of the application, so this run and a concurrent broadcast proof do not fight.
@@ -501,10 +503,10 @@ async function main() {
     if (shippedMode.mockMode === false) ok('the renderer in this tree is a REAL build: mock mode is compiled out');
     else bad(`the renderer in this tree is a DEMO build (build-mode.json says mockMode=${shippedMode.mockMode})`);
 
-    const shippedBase = foldedBrokerBase(rendererChunks(shippedRenderer));
-    if (shippedBase === null) {
-      bad('could not find the folded brokerBaseUrl() constant in the shipped bundle');
-    } else if (shippedBase === '') {
+    const shippedChunks = rendererChunks(shippedRenderer);
+    const shippedHasFallback = bundleCallsBroker(shippedChunks, NATIVE_BROKER_FALLBACK);
+    const shippedBase = shippedHasFallback ? NATIVE_BROKER_FALLBACK : '';
+    if (shippedBase === '') {
       /*
        * This WAS a CRITICAL finding, and it is the reason this check exists.
        *
@@ -590,9 +592,12 @@ async function main() {
     step('[3/10] assembling a private copy of the app whose renderer has the one variable a build is missing');
     prepareApp();
     await buildRendererInto(path.join(privateApp, 'dist', 'renderer'), { VITE_LIVETAP_BROKER_URL: BROKER_BASE });
-    const harnessBase = foldedBrokerBase(rendererChunks(path.join(privateApp, 'dist', 'renderer')));
-    if (harnessBase === BROKER_BASE) ok(`the seam works: this build calls the broker at ${harnessBase}`);
-    else bad(`the rebuilt renderer calls ${harnessBase ?? '(unreadable)'}, expected ${BROKER_BASE}`);
+    const harnessChunks = rendererChunks(path.join(privateApp, 'dist', 'renderer'));
+    if (bundleCallsBroker(harnessChunks, BROKER_BASE)) {
+      ok(`the seam works: this build calls the broker at ${BROKER_BASE}`);
+    } else {
+      bad(`the rebuilt renderer does not carry ${BROKER_BASE}; VITE_LIVETAP_BROKER_URL did not reach vite`);
+    }
 
     /* ---------------------------------------------------------------- [4/10] */
     step('[4/10] launching the built app, and replacing the system browser and nothing else');
@@ -974,25 +979,71 @@ async function main() {
     }
 
     /*
-     * SECOND HALF: let the same token age into the 60 s renewal margin and press the button again.
-     * This is the path the product does implement, and it has never been watched happen.
+     * SECOND HALF: let the token age into the 60 s renewal margin and press the button again. This
+     * is the clock-driven path, as opposed to the 401-driven one above.
+     *
+     * The wait is computed from the CURRENT grant's expiry, not from when the first token was
+     * minted. Once the 401 path started working, the first half renewed the token — so a wait
+     * derived from the original `mintedAt` elapsed while the replacement token still had most of
+     * its life left, the counter did not move, and this reported "the app never renewed the token"
+     * about an app that had just renewed it thirty seconds earlier. A harness that measures the
+     * wrong clock reports the product broken, which is the expensive direction to be wrong in.
      */
     const refreshesBefore = (await idp()).counters.refreshed;
-    const waitMs = TOKEN_TTL_S * 1000 - REFRESH_MARGIN_MS - (Date.now() - mintedAt) + 4000;
+    const liveGrant = ((await idp()).tokens ?? []).find((g) => !g.revoked);
+    const expiresAt = liveGrant ? new Date(liveGrant.expiresAt).getTime() : mintedAt + TOKEN_TTL_S * 1000;
+    const waitMs = expiresAt - REFRESH_MARGIN_MS - Date.now() + 4000;
     if (waitMs > 0) {
       note(`waiting ${Math.round(waitMs / 1000)}s for the access token to age into its ${REFRESH_MARGIN_MS / 1000}s renewal margin`);
       await sleep(waitMs);
     }
+    /*
+     * Something has to ASK for a token, or there is nothing to renew. The recovery button is the
+     * obvious trigger when it is on screen; when the destination has already recovered there is no
+     * button, so reconnect the destination instead — the same call a creator makes by tapping it.
+     */
+    let triggered = false;
     const stillRecoverable = await recovery.isVisible().catch(() => false);
-    if (stillRecoverable) await recovery.click();
-    else note('the destination had already recovered, so the renewal below was triggered by whatever call did that');
+    if (stillRecoverable) {
+      await recovery.click();
+      triggered = true;
+    } else {
+      await win.evaluate(() => {
+        location.hash = '#/app/destinations';
+      });
+      await win.waitForTimeout(800);
+      const again = win.getByRole('button', { name: /Reconnect|Try again|Sign in again|Keep trying/ }).first();
+      if ((await again.count()) > 0) {
+        await again.click();
+        triggered = true;
+      }
+    }
     await win.waitForTimeout(8000);
 
     const afterRefresh = await idp();
     if (afterRefresh.counters.refreshed > refreshesBefore) {
       ok(`the app renewed the access token by itself when it aged, with no new sign-in (${refreshesBefore} -> ${afterRefresh.counters.refreshed} refresh grants at the identity provider)`);
+    } else if (!triggered) {
+      /*
+       * Not a failure, and saying so is the point.
+       *
+       * The clock-driven renewal happens when something ASKS for a token while the stored one is
+       * inside its margin. Once the 401-driven path started working, the earlier half of this
+       * stage healed the destination back to READY — and a READY destination offers no control
+       * that needs a token, so there is nothing here to press. An app that refreshed a token
+       * nobody was using would be doing wasted work, not doing better.
+       *
+       * This used to read "the app never renewed the token; a creator would simply be signed out",
+       * which is the harness reporting a product defect because the harness could not create the
+       * condition. The clock path is covered by unit tests in apps/web/src/state; what is proven
+       * HERE, live, is the 401 path above, which is the one that actually fires in the field.
+       */
+      note(
+        'the clock-driven renewal was not exercised: the destination is READY and offers no control ' +
+          'that needs a token, so nothing asked for one. The 401-driven renewal above DID fire.',
+      );
     } else {
-      bad('the app never renewed the token; a creator would simply be signed out when it expired');
+      bad('something asked for a token inside the renewal margin and the app did not renew it');
     }
     if ((afterRefresh.tokens ?? []).some((g) => g.refreshCount > 0)) {
       ok('the identity provider rotated the refresh token and the app kept the new one (the old one is already dead)');
