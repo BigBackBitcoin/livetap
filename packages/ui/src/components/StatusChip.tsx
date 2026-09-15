@@ -82,8 +82,9 @@ export function StatusChip({
       aria-live={live ? 'polite' : undefined}
       aria-atomic={live ? true : undefined}
     >
+      {/* The chip's label is 12px, so the glyph beside it is the 16px step, not the 24 default. */}
       {treatment === 'glyph' ? (
-        <AlertIcon size={20} className="lt-icon--20" />
+        <AlertIcon size={16} />
       ) : (
         <span className={dotClasses} aria-hidden="true" />
       )}

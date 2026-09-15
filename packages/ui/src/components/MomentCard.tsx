@@ -74,7 +74,13 @@ export function MomentCard({
         </span>
       )}
       <span className="lt-moment__name">{name}</span>
-      {meta ? <span className="lt-moment__meta">{meta}</span> : null}
+      {/*
+        Rendered whether or not there is a meta line, because only the ACTIVE Moment has one and
+        a strip of six cards where one is 18px taller than the rest is a ragged row, not a row.
+        The element reserves the line; the words are still conditional, so nothing is announced
+        that is not true.
+      */}
+      <span className="lt-moment__meta">{meta}</span>
     </button>
   );
 }

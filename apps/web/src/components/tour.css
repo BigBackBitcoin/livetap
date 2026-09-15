@@ -1,0 +1,141 @@
+/**
+ * The Quick Tour's surface.
+ *
+ * Two rules here matter more than the rest, and both are about what this layer must NOT do.
+ *
+ * 1. `pointer-events: none` on the layer, `auto` on the card. The tour is an offer laid over a
+ *    working product, so every control it is not is still clickable through it. This is also the
+ *    property that makes "the tour never covers the stop control" true by construction rather
+ *    than by the card happening to be somewhere else: even if a future layout put the card over
+ *    END, the ring and the layer would not take the click, and the card itself is pinned to the
+ *    opposite edge of the screen.
+ * 2. `--lt-z-golive`, not a number. The stacking scale exists so the one control that stops a
+ *    broadcast (`--lt-z-livebar`, 900) outranks everything, and the way that guarantee gets lost
+ *    is a new overlay picking its own z-index because 9999 felt safe.
+ */
+
+.lt-tour {
+  position: fixed;
+  inset: 0;
+  z-index: var(--lt-z-golive);
+  pointer-events: none;
+}
+
+/*
+ * The ring, drawn from the target's measured box.
+ *
+ * `transform` rather than `inset-block-start`/`inset-inline-start`, so re-measuring during a
+ * smooth scroll is a compositor move and not a layout on every frame.
+ */
+.lt-tour__ring {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  border: var(--lt-focus-width) solid var(--lt-accent-focus);
+  border-radius: var(--lt-radius-lg);
+  box-shadow: 0 0 0 var(--lt-focus-offset) var(--lt-bg-0);
+  pointer-events: none;
+  transition:
+    transform var(--lt-dur-2) var(--lt-ease-standard),
+    inline-size var(--lt-dur-2) var(--lt-ease-standard),
+    block-size var(--lt-dur-2) var(--lt-ease-standard);
+}
+
+/*
+ * Top of the screen, at every width, deliberately.
+ *
+ * The bottom edge is where the pinned GO LIVE bar lives below 1025px and where `LiveBar` lives
+ * at every width, and those are the two things in this product that may never be covered. The
+ * card being at the top is not a taste decision, it is the third of the three guarantees in
+ * `Tour.tsx`, so moving it is a change to a safety property.
+ */
+.lt-tour__card {
+  position: absolute;
+  inset-block-start: var(--lt-space-4);
+  inset-inline-end: var(--lt-space-4);
+  inline-size: fit-content;
+  max-inline-size: min(22rem, calc(100vw - var(--lt-space-8)));
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+  padding: var(--lt-card-pad);
+  background: var(--lt-bg-2);
+  border: 1px solid var(--lt-border-control);
+  border-radius: var(--lt-radius-lg);
+  box-shadow: var(--lt-shadow-3);
+  pointer-events: auto;
+}
+
+@media (max-width: 639.98px) {
+  .lt-tour__card {
+    inset-inline: var(--lt-space-4);
+    inline-size: auto;
+  }
+}
+
+/* Below 1025px the app's own top bar occupies this corner, so the card clears it. */
+@media (min-width: 640px) and (max-width: 1024.98px) {
+  .lt-tour__card {
+    inset-block-start: calc(var(--lt-space-16) + var(--lt-space-3));
+  }
+}
+
+.lt-tour__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+}
+
+.lt-tour__count {
+  color: var(--lt-text-tertiary);
+}
+
+.lt-tour__beat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+}
+
+.lt-tour__title {
+  margin: 0;
+  font-size: var(--lt-text-18);
+  line-height: var(--lt-leading-18);
+  letter-spacing: var(--lt-tracking-18);
+  font-weight: var(--lt-weight-semibold);
+  color: var(--lt-text-primary);
+}
+
+.lt-tour__line,
+.lt-tour__offer {
+  margin: 0;
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  color: var(--lt-text-secondary);
+}
+
+.lt-tour__offer {
+  color: var(--lt-text-primary);
+}
+
+.lt-tour__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-2);
+}
+
+/*
+ * Next is the one the thumb is aiming at, so it takes the room the others do not need — but only
+ * while the tour is running. On the offer there are two buttons and pushing them apart turns a
+ * question into a dialog.
+ */
+[data-lt-tour='running'] .lt-tour__actions .lt-btn:last-child {
+  margin-inline-start: auto;
+}
+
+/* Movement is the only thing reduced motion removes. The ring still appears, instantly. */
+@media (prefers-reduced-motion: reduce) {
+  .lt-tour__ring {
+    transition: none;
+  }
+}

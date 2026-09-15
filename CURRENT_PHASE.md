@@ -1,5 +1,15 @@
 # CURRENT PHASE
 
+## REAL-WORLD PERSONAL ALPHA — the build host's half is done, 2026-09-15
+
+> **The completion gate passes 4 of 4 stages** (2026-09-15). Everything that can
+> be proven without the owner's own accounts and devices is proven. What remains
+> is the owner's: a real platform account, and a physical Android phone. See
+> `docs/qa/REAL_WORLD_ALPHA_READINESS.md` and `docs/OWNER_ACTIONS.md`.
+>
+> A UX polish, performance and consolidation pass followed it:
+> `docs/qa/UX_POLISH_PASS.md`.
+
 ## REAL-WORLD PERSONAL ALPHA — in progress, 2026-09-14
 
 The mission, in the owner's words: **make LIVETAP real.** Install it on Windows

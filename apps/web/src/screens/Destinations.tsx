@@ -343,9 +343,9 @@ export function Destinations(): ReactElement {
                 streamKey: value.streamKey,
                 aspect: value.aspect,
                 /*
-                 * The destination is the platform they tapped, not "Custom RTMP". Pasting a key is
-                 * how it got configured; it is not what it is. Without this the card reads
-                 * "Custom RTMP · YouTube" and carries the generic honesty line, so the one thing a
+                 * The destination is the platform they tapped, not the generic one. Pasting a key
+                 * is how it got configured; it is not what it is. Without this the card is named
+                 * after the generic profile and carries its honesty line, so the one thing a
                  * YouTube creator has to be told - that YouTube will not publish until they press
                  * Go live in Studio - is replaced by a shrug about the far end.
                  */

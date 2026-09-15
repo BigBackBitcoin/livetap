@@ -34,7 +34,19 @@ export interface AuthorizeUrlInput {
  */
 export function buildAuthorizeUrl(platform: PlatformId, input: AuthorizeUrlInput): string {
   const config = getOAuthConfig(platform);
-  const usePkce = config.pkce !== 'none' && Boolean(input.codeChallenge);
+  /*
+   * A platform that documents PKCE gets PKCE, or gets nothing.
+   *
+   * This used to read `config.pkce !== 'none' && Boolean(input.codeChallenge)`, so a caller that
+   * forgot the challenge silently received a PKCE-less authorize URL — for Kick and TikTok, where
+   * it is mandatory, as well as everywhere else. No caller does that today (`oauthFlow.ts` always
+   * generates a pair), but the failure mode of the old line was a downgrade nobody would see,
+   * and the failure mode of this one is a stack trace during development.
+   */
+  if (config.pkce !== 'none' && !input.codeChallenge) {
+    throw new Error(`${platform} requires PKCE and no code_challenge was supplied`);
+  }
+  const usePkce = config.pkce !== 'none';
   const base = usePkce ? (config.pkceAuthorizeUrl ?? config.authorizeUrl) : config.authorizeUrl;
 
   const params = new URLSearchParams();

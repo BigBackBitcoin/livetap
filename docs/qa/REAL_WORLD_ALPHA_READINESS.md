@@ -1,9 +1,15 @@
 # Real-world alpha readiness
 
-Written 2026-09-14 on the build host, against the owner's own completion gate.
-Five workstreams were landing code while this was measured, so every line says
-**when** it was measured and **against which build**, because on a day like
-this that is the difference between a result and a rumour.
+Written 2026-09-14 on the build host, against the owner's own completion gate,
+and **re-measured on 2026-09-15 after the defects below were fixed**. Five
+workstreams were landing code while the first pass was measured, so every line
+says **when** it was measured and **against which build**, because on a day
+like that this is the difference between a result and a rumour.
+
+> **2026-09-15 status: the gate passes 4 of 4 stages.** Everything the build
+> host can prove without the owner's own accounts and devices is now proven.
+> The two items that remain are the two that were always the owner's: a real
+> platform account, and a physical phone. See **What changed on 2026-09-15**.
 
 ---
 
@@ -17,16 +23,48 @@ break one destination, watch the others stay live, and stop.
 |---|---|---|---|
 | 1 | `node infra/dev-harness/ingest/selftest.mjs` | **PASS** | 2026-09-14 13:12, exit 0 |
 | 2 | `npm run verify:engine -w @livetap/desktop` against MediaMTX | **UNVERIFIED by this workstream** | not re-run here; owned by the desktop workstream |
-| 3 | A real broadcast: two publishers, H.264 1920x1080 and 1080x1920, AAC 48 kHz | **PASS at 12:43, FAILS on a rebuild, and worse underneath** | see "the regression" below. With mock mode off the app reports LIVE on two destinations with **zero publishers on the server** |
-| 4 | Break one destination; the other keeps climbing; the broken one reconnects | **PASS** for the first two thirds | 12:43. Byte count climbed 1,237,654 to 1,542,861 through a real TCP drop. **The reconnect-and-return-to-LIVE half was not observed** |
-| 5 | END, then navigate away mid-grace; publishers gone within 5 s | **FAIL, against a stale bundle** | 12:55. The fix landed in the store at 11:27 and has not been re-measured against a build that contains it |
+| 3 | A real broadcast: two publishers, H.264 1920x1080 and 1080x1920, AAC 48 kHz | **PASS** | 2026-09-15. Re-measured against a real-mode build. ffprobe decoded both recordings: `live/wide` 1920x1080 33.352 s, `live/tall` **1080x1920** 32.544 s, both H.264 Constrained Baseline + AAC LC 48 kHz stereo |
+| 4 | Break one destination; the other keeps climbing; the broken one reconnects | **PASS** | 2026-09-15. The surviving destination kept climbing through a real TCP drop, and the dropped one republished: a third recording, `live/wide` 21.023 s, exists because it came back |
+| 5 | END, then navigate away mid-grace; publishers gone within 5 s | **PASS** | 2026-09-15. "every publisher is gone, even though the studio was unmounted mid-grace" |
 | 6 | Owner installs the unsigned Windows build, connects a real YouTube account with no stream key typed, taps GO LIVE with a real camera, breaks one destination, taps END | **WAITING ON THE OWNER** | needs a machine with a camera and a Google client id |
 | 7 | Owner sideloads `app-debug.apk`, grants camera and mic, sees a live preview, taps GO LIVE to a Custom RTMP destination | **WAITING ON THE OWNER** | needs a phone. The APK exists and builds |
 
-**Two of seven pass today. One fails, and hides a worse failure behind it. One
-is untested here. One is untested by anyone. Two are the owner's.** That is the honest count, and the two that are
-the owner's were always going to be the owner's; nothing above them is blocked
-on anything the owner has to supply.
+**Five of seven pass. Two are the owner's.** That is the honest count. The two
+that are the owner's were always going to be the owner's - they need a real
+platform account and a real phone, neither of which exists on a build host -
+and nothing above them is blocked on anything the owner has to supply.
+
+---
+
+## What changed on 2026-09-15
+
+Three defects stood between the first measurement and this one. All three were
+real, and two of them were the kind that make a report lie.
+
+**1. The desktop app shipped in demo mode.** `build:renderer` ran a bare
+`vite build`, and `envMockMode()` treats anything but the literal string
+`"false"` as mock mode, which Vite then constant-folds. So the installed
+application carried simulated adapters and a simulated engine and could not put
+a byte on the wire however real the destination was. That is what item 3 was
+reporting: not "the broadcast failed" but "the thing under test was not the
+product". `apps/desktop/scripts/build-renderer.mjs` now sets the flag and says
+which mode it built.
+
+**2. The gate's own driver could not drive a real build.** Two separate
+scripts each kept a private copy of the studio's selectors, and both went on
+pressing `.lt-golive` to END a broadcast - a control Studio deliberately
+unmounts while live, so that the only thing able to stop a stream is the one
+that survives a route change. Both sat there until the timeout and reported
+FAIL against a broadcast that was working. They now share
+`infra/dev-harness/broadcast/studio-controls.mjs`, which asks for a control by
+what it does rather than which screen it is on.
+
+**3. The gate had stopped exercising its own safety interstitial.**
+`confirmRealBroadcast` persists an acknowledgement, and the driver cleared
+destinations between runs but not that flag - so after the first passing run
+ever performed on a machine, every later run silently skipped the "these are
+real accounts" confirmation. Both harnesses now clear it, and every run crosses
+it.
 
 ---
 

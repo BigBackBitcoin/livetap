@@ -7,21 +7,38 @@
 /* Icons                                                              */
 /* ================================================================== */
 
+/*
+ * `--lt-icon` is what a caller asked for; `--lt-icon-size` is what this density gives by default.
+ *
+ * The fallback chain is the whole fix for a `size` prop that had never worked: this rule beats
+ * the SVG `width`/`height` attributes, so before `GlyphShell` started writing `--lt-icon`, every
+ * glyph in the product rendered at the density default regardless of what it was asked for.
+ */
 .lt-icon {
   flex: none;
-  inline-size: var(--lt-icon-size);
-  block-size: var(--lt-icon-size);
+  inline-size: var(--lt-icon, var(--lt-icon-size));
+  block-size: var(--lt-icon, var(--lt-icon-size));
   color: inherit;
 }
 
+/*
+ * Size classes for glyphs that are not ours to build: `<use href="#sprite">` on the landing page
+ * has no React prop to pass. Anything rendered by `Icons.tsx` takes `size` instead.
+ */
+.lt-icon--16 {
+  --lt-icon: var(--lt-icon-inline);
+}
+
 .lt-icon--20 {
-  inline-size: 20px;
-  block-size: 20px;
+  --lt-icon: var(--lt-icon-ui);
 }
 
 .lt-icon--24 {
-  inline-size: 24px;
-  block-size: 24px;
+  --lt-icon: var(--lt-icon-control);
+}
+
+.lt-icon--32 {
+  --lt-icon: var(--lt-icon-badge);
 }
 
 /* ================================================================== */
@@ -230,10 +247,19 @@
 /* Toggle — a button with role=switch/aria-checked, not a checkbox    */
 /* ================================================================== */
 
+/*
+ * The switch is `sm` tall even though its track is not.
+ *
+ * The track is 26px, which is right for a switch and wrong for a row: on Studio's device card a
+ * 26px switch sat beside a 44px select and a 44px button, and on the Settings cards it sat beside
+ * nothing at all, so the three cards had three different content heights. Height comes from the
+ * control scale; the track is a graphic drawn inside it.
+ */
 .lt-toggle {
   display: inline-flex;
   align-items: center;
   gap: var(--lt-space-3);
+  min-block-size: var(--lt-control-sm);
   padding: 0;
   color: var(--lt-text-primary);
   font-size: var(--lt-label-size);
@@ -244,8 +270,8 @@
 .lt-toggle__track {
   position: relative;
   flex: none;
-  inline-size: 44px;
-  block-size: 26px;
+  inline-size: var(--lt-switch-w);
+  block-size: var(--lt-switch-h);
   border-radius: var(--lt-radius-full);
   background: var(--lt-bg-3);
   border: 1px solid var(--lt-border-control);
@@ -254,10 +280,10 @@
 
 .lt-toggle__knob {
   position: absolute;
-  inset-block-start: 2px;
-  inset-inline-start: 2px;
-  inline-size: 20px;
-  block-size: 20px;
+  inset-block-start: var(--lt-switch-inset);
+  inset-inline-start: var(--lt-switch-inset);
+  inline-size: var(--lt-switch-knob);
+  block-size: var(--lt-switch-knob);
   border-radius: var(--lt-radius-full);
   background: var(--lt-text-secondary);
   transition:
@@ -272,7 +298,7 @@
 
 .lt-toggle[aria-checked='true'] .lt-toggle__knob {
   background: var(--lt-on-focus);
-  transform: translateX(18px);
+  transform: translateX(var(--lt-switch-travel));
 }
 
 .lt-toggle:disabled {
@@ -447,7 +473,7 @@
   .lt-sheet {
     inset-block: 0;
     inset-inline-end: 0;
-    inline-size: 380px;
+    inline-size: var(--lt-sheet-w);
     max-inline-size: 100vw;
     border-radius: var(--lt-radius-xl) 0 0 var(--lt-radius-xl);
     animation: lt-slide-in-end var(--lt-dur-3) var(--lt-ease-standard);
@@ -456,7 +482,7 @@
 
 @media (min-width: 1025px) {
   .lt-sheet {
-    inline-size: 420px;
+    inline-size: var(--lt-sheet-w-wide);
   }
 }
 
@@ -488,8 +514,8 @@
 
 .lt-sheet__handle {
   align-self: center;
-  inline-size: 36px;
-  block-size: 4px;
+  inline-size: var(--lt-control-sm);
+  block-size: var(--lt-space-1);
   margin-block-start: var(--lt-space-2);
   border-radius: var(--lt-radius-full);
   background: var(--lt-border-control);
@@ -570,11 +596,12 @@
   color: var(--lt-text-primary);
 }
 
+/* A panel is a card's inside, so it is padded like one. It used to be 16 beside a card's 20. */
 .lt-tabpanel {
   flex: 1;
   min-block-size: 0;
   overflow-y: auto;
-  padding: var(--lt-space-4);
+  padding: var(--lt-card-pad);
 }
 
 /* ================================================================== */
@@ -632,8 +659,8 @@
 .lt-dot {
   position: relative;
   flex: none;
-  inline-size: 8px;
-  block-size: 8px;
+  inline-size: var(--lt-space-2);
+  block-size: var(--lt-space-2);
   border-radius: var(--lt-radius-full);
   background: currentColor;
 }
@@ -785,6 +812,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--lt-space-2);
+  /* 34px, off every scale in the product, beside a 36px segmented control. Now both are `sm`. */
+  min-block-size: var(--lt-control-sm);
   padding: var(--lt-space-1) var(--lt-space-3);
   border-radius: var(--lt-radius-full);
   background: var(--lt-pill-bg);
@@ -966,9 +995,16 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--lt-space-3);
-  min-inline-size: 140px;
-  min-block-size: 104px;
+  /*
+   * A tile, not a card: `space-2` gaps and `space-4` padding, not `--lt-card-pad`.
+   *
+   * A Moment card holds a badge, a name and at most four words of state on a 140px target - it
+   * is a thing to hit, not a thing to read. Padding it like a content card pushed every card in
+   * the strip to 138px tall, which on a phone costs a row of the screen for nothing.
+   */
+  gap: var(--lt-space-2);
+  min-inline-size: var(--lt-moment-min-w);
+  min-block-size: var(--lt-moment-min-h);
   padding: var(--lt-space-4);
   background: var(--lt-bg-2);
   border: 1px solid var(--lt-border);
@@ -1037,7 +1073,16 @@
   color: var(--lt-text-primary);
 }
 
+/*
+ * The meta row is always in the layout, whether or not it has anything to say.
+ *
+ * Only the active Moment carries "Viewers see this", so in a strip of six the selected card was
+ * 122px tall and its five neighbours were 104 — a row with one card sticking out of it, on the
+ * control a creator reaches for most. The line box is reserved for all six; only the words are
+ * conditional, which is the difference between a row and a ragged edge.
+ */
 .lt-moment__meta {
+  min-block-size: var(--lt-leading-12);
   font-size: var(--lt-text-12);
   line-height: var(--lt-leading-12);
   color: var(--lt-text-tertiary);
@@ -1061,7 +1106,7 @@
   justify-content: center;
   gap: var(--lt-space-3);
   inline-size: 100%;
-  min-block-size: 56px;
+  min-block-size: var(--lt-control-xl);
   padding-inline: var(--lt-space-5);
   border: 1px solid transparent;
   border-radius: var(--lt-radius-lg);
@@ -1077,11 +1122,6 @@
     transform var(--lt-dur-1) var(--lt-ease-standard);
 }
 
-@media (max-width: 639.98px) {
-  .lt-golive {
-    min-block-size: 64px;
-  }
-}
 
 .lt-golive:active:not(:disabled) {
   transform: scale(0.99);
@@ -1342,7 +1382,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-inline-size: 22px;
+  min-inline-size: var(--lt-space-6);
   padding: 0 var(--lt-space-1);
   background: var(--lt-bg-3);
   color: var(--lt-text-secondary);

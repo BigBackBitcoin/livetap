@@ -233,7 +233,15 @@ function ownsTransform(el: Element): void {
 function layout(): void {
   const box = stage.getBoundingClientRect();
   const wrap = (stage.parentElement as HTMLElement).getBoundingClientRect();
-  const reserve = stateLine.offsetHeight + stateDetail.offsetHeight + 16;
+  /*
+   * Everything that sits below the frame, measured - not a list of the things that happened to
+   * be there when this was written. "Sample picture." moved out from ON the production to under
+   * it, was not added here, and so the frame went on claiming its height: the detail line below
+   * was then cut in half by the toolbar. Anything added under the stage must be reserved here,
+   * which is why this reads the note's own box rather than adding a constant for it.
+   */
+  const note = cameraNote.parentElement as HTMLElement | null;
+  const reserve = stateLine.offsetHeight + stateDetail.offsetHeight + (note?.offsetHeight ?? 0) + 16;
   const maxH = Math.max(120, wrap.height - reserve);
   const maxW = Math.max(200, box.width);
   const ar = format === '16:9' ? 16 / 9 : format === '9:16' ? 9 / 16 : 1;
@@ -688,12 +696,19 @@ function paintStateLine(): void {
   else line = 'Nothing is connected yet.';
   if (stateLine.textContent !== line) stateLine.textContent = line;
 
+  /*
+   * One fact per line, and only the fact this line is the only place to learn.
+   *
+   * The connected line used to open with the intent's own title and tagline - "Talking. Just you
+   * and the camera." - which the intent profile above it is already showing, selected, in its own
+   * control. What is left is the claim nothing else on the page makes: that the shapes being
+   * produced come from a single production.
+   */
   let detail: string;
   if (format === '1:1') {
-    detail =
-      'Square is the canvas you compose in. No destination here asks for it, so LIVETAP sends each one the shape it accepts.';
+    detail = 'No destination here asks for square. Each gets the shape it accepts.';
   } else if (connected().length) {
-    detail = `${intent.title}. ${intent.tagline} ${producedFormats().join(' and ')} from one production.`;
+    detail = `${producedFormats().join(' and ')} from one production.`;
   } else {
     detail = 'Tap a destination to open its own connection.';
   }

@@ -41,6 +41,7 @@ export function LiveBar(): ReactElement | null {
   const onAir = production.state !== 'IDLE' && production.state !== 'PREVIEW';
   const elapsedMs = useElapsed(production.startedAt, onAir);
   const graceLeft = useGrace(endingAt);
+  const undoArmed = useUndoArmed(endingAt);
 
   /*
    * The tab title is the one place a backgrounded live stream can still announce itself, and it
@@ -61,15 +62,19 @@ export function LiveBar(): ReactElement | null {
    * Escape cancels a scheduled END from anywhere, for the same reason the bar is in the shell:
    * the gesture that takes back the most consequential action in the product cannot belong to
    * one screen. It never ends a live stream, only the ending of one.
+   *
+   * It waits for the take-back to arm, like the button does and for the same reason: a key that
+   * is held down repeats, and a repeat that lands the moment END is pressed would take it back
+   * without anyone deciding to.
    */
   useEffect(() => {
-    if (endingAt === null) return undefined;
+    if (endingAt === null || !undoArmed) return undefined;
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') undoEnd();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [endingAt, undoEnd]);
+  }, [endingAt, undoArmed, undoEnd]);
 
   if (!onAir) return null;
 
@@ -121,8 +126,37 @@ export function LiveBar(): ReactElement | null {
           which of the four states it is looking at.
         */}
         {ending ? (
-          <Button variant="secondary" size="lg" data-lt-stop="undo" onClick={undoEnd}>
-            {`${COPY.undo} · Ending in ${graceLeft}`}
+          /*
+           * The take-back is on the screen from the first frame of the grace, and inert for the
+           * first half-second of it.
+           *
+           * END replaces itself with this control, in the same place, at the same size. That is
+           * the right shape for the grace — one slot, one action, wherever the creator is looking
+           * — and it is also a trap: the second half of a double-tap lands on whatever has moved
+           * under the finger, and what moves under the finger here is the button that cancels the
+           * thing the first tap asked for. A creator who taps END twice, which is what people do
+           * with a button that does not appear to have reacted yet, stayed live. Nothing on the
+           * screen was covering anything, every control was reachable, and the most consequential
+           * action in the product silently did not happen.
+           *
+           * So it is rendered, focusable and hit-testable immediately — `[data-lt-stop]` must
+           * never be missing while a broadcast is running — and it refuses to act until longer
+           * than a double-tap has passed. It says which of the two it is rather than looking like
+           * a take-back that does nothing: "Ending in 5" for that beat, then "UNDO · Ending in 4".
+           * Four and a half seconds is still plenty to change your mind, and the half-second
+           * belongs to the decision that was just made.
+           */
+          <Button
+            variant="secondary"
+            size="lg"
+            data-lt-stop="undo"
+            aria-disabled={!undoArmed || undefined}
+            onClick={() => {
+              if (!undoArmed) return;
+              undoEnd();
+            }}
+          >
+            {undoArmed ? `${COPY.undo} · Ending in ${graceLeft}` : `Ending in ${graceLeft}`}
           </Button>
         ) : starting ? (
           <Button
@@ -168,6 +202,34 @@ function useElapsed(startedAt: number | undefined, onAir: boolean): number {
     return () => clearInterval(timer);
   }, [onAir, startedAt]);
   return ms;
+}
+
+/**
+ * How long the take-back stays inert after END.
+ *
+ * Longer than a double-tap, which Windows defaults to 500 ms and every platform measures in
+ * hundreds of milliseconds, and a small fraction of the five-second grace it sits inside.
+ */
+export const UNDO_ARM_MS = 550;
+
+/** False for the first {@link UNDO_ARM_MS} of a scheduled END, true for the rest of the grace. */
+function useUndoArmed(endingAt: number | null): boolean {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (endingAt === null) {
+      setArmed(false);
+      return undefined;
+    }
+    const left = UNDO_ARM_MS - (Date.now() - endingAt);
+    if (left <= 0) {
+      setArmed(true);
+      return undefined;
+    }
+    setArmed(false);
+    const timer = setTimeout(() => setArmed(true), left);
+    return () => clearTimeout(timer);
+  }, [endingAt]);
+  return armed;
 }
 
 /** 5 → 1, counting down the END grace the store is actually running. */

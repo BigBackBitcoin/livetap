@@ -4,6 +4,7 @@ import { Card, Toggle, useTheme } from '@livetap/ui';
 import type { QualityPreset } from '@livetap/core';
 import type { ThemePreference } from '@livetap/ui';
 import { useAppStore } from '../state/store.js';
+import { replayTour } from '../components/Tour.js';
 import { ProSettings } from './pro/ProSettings.js';
 
 /**
@@ -86,6 +87,18 @@ export function Settings(): ReactElement {
       <Card title="About">
         <p>LIVETAP 0.1.0 · MIT licence · built in public.</p>
         <ul className="lt-linklist">
+          <li>
+            {/*
+              The Quick Tour is offered once and then never again, which is the directive's own
+              rule (§26: "never repeatedly show instructional text"). A rule like that needs a
+              door back in, or the one creator who dismissed it by reflex has lost it for good.
+              It is a button rather than a link because it changes state here and navigates
+              nowhere: the tour appears on Studio the next time this person is on it.
+            */}
+            <button type="button" className="lt-textlink lt-touch" onClick={() => replayTour()}>
+              Play the quick tour again
+            </button>
+          </li>
           <li>
             <Link to="/app/start" onClick={() => restartOnboarding()}>
               Run setup again

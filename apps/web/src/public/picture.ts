@@ -242,6 +242,8 @@ let scratch: HTMLCanvasElement | null = null;
 let scratchCtx: CanvasRenderingContext2D | null = null;
 let scratchSource: HTMLVideoElement | null = null;
 let scratchFilled = false;
+/** The video's own clock at the moment the scratch was filled. -1 means never. */
+let scratchTime = -1;
 
 /**
  * Drop the cached downscale.
@@ -278,11 +280,24 @@ function scaled(video: HTMLVideoElement): { src: CanvasImageSource; w: number; h
     scratch.height = h;
     scratchFilled = false;
   }
-  if (!scratchFilled || scratchSource !== video) {
+  /*
+   * Refill only when the picture has actually moved on.
+   *
+   * Two loops draw from this - the destination thumbnails at 10 fps and the outputs panel at its
+   * own cadence - and each correctly starts its own pass, so a blunt "invalidate on beginFrame"
+   * would resample twice in a tick where both happen to run. The video's own clock settles it:
+   * same `currentTime`, same pixels, and the copy already in the scratch is exactly right.
+   *
+   * It stays keyed on `beginFrame` as well, so a source swap or a paused clock can never serve a
+   * frame from a previous pass.
+   */
+  const stale = scratchSource !== video || video.currentTime !== scratchTime;
+  if (!scratchFilled && stale) {
     scratchCtx.drawImage(video, 0, 0, SCRATCH_W, h);
-    scratchFilled = true;
     scratchSource = video;
+    scratchTime = video.currentTime;
   }
+  scratchFilled = true;
   return { src: scratch, w: SCRATCH_W, h };
 }
 

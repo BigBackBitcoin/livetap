@@ -686,13 +686,21 @@ body {
  * The stage's own state line. The largest type on the page is either a number the surface is
  * counting or a sentence the surface is reporting about itself. It is never a claim.
  */
+/*
+ * A readout, sized like a readout.
+ *
+ * This was the H1 scale, which put "Ready on YouTube, Twitch and TikTok" in direct competition
+ * with the page's actual headline three hundred pixels above it, and cost enough vertical space
+ * that the line beneath it was clipped by the toolbar. It is a status line: it changes every time
+ * a destination changes, it is never the thing a visitor reads first, and at H2 it still lands.
+ */
 .ltp-stage__state {
   flex: none;
   max-inline-size: 44rem;
   font-family: var(--ltp-font-display);
-  font-size: var(--lt-text-28);
-  line-height: var(--lt-leading-28);
-  letter-spacing: var(--lt-tracking-28);
+  font-size: var(--lt-text-22);
+  line-height: var(--lt-leading-22);
+  letter-spacing: var(--lt-tracking-22);
   font-weight: var(--lt-weight-semibold);
   color: var(--lt-text-primary);
   text-align: center;
@@ -714,14 +722,22 @@ body {
 }
 
 @media (min-width: 1025px) {
+  /* Pre-script fallback only: `layout()` measures and sets --ltp-frame-h on every resize. */
   .ltp-stage__frame {
     block-size: var(--ltp-frame-h, 34svh);
   }
 
+  /*
+   * Desktop used to push this readout up to 36px - HERO scale, on a status line, directly under
+   * the picture and directly above the toolbar. It beat the page's own H1 for attention and it
+   * cost so much vertical space that the line below it was cut in half by the toolbar. H1 scale
+   * is plenty for the largest viewport; the hierarchy is H1 headline, H1 readout, and nothing
+   * on this page needs to be bigger than the headline.
+   */
   .ltp-stage__state {
-    font-size: var(--lt-text-36);
-    line-height: var(--lt-leading-36);
-    letter-spacing: var(--lt-tracking-36);
+    font-size: var(--lt-text-28);
+    line-height: var(--lt-leading-28);
+    letter-spacing: var(--lt-tracking-28);
   }
 }
 

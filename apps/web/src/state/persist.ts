@@ -80,10 +80,17 @@ export function clearAll(): void {
       /* nothing to do */
     }
   }
-  try {
-    s.removeItem('livetap.theme');
-  } catch {
-    /* nothing to do */
+  /*
+   * Keys owned by something other than `KEYS`, and therefore easy to forget here. A reset that
+   * leaves the tour dismissed is a reset that does not give the creator back the first run, which
+   * is the only reason anyone presses it.
+   */
+  for (const key of ['livetap.theme', 'livetap.tour.answered', 'livetap.tour.step']) {
+    try {
+      s.removeItem(key);
+    } catch {
+      /* nothing to do */
+    }
   }
 }
 

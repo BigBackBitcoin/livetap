@@ -41,6 +41,22 @@ import {
 } from './security/policy.js';
 import { SecretVault } from './vault.js';
 
+/**
+ * The slice of electron-updater this process touches.
+ *
+ * Declared structurally rather than imported, so the module is never loaded at type-check time
+ * on a host where it is not installed, and so the interop shim below can describe both the
+ * CommonJS and the ESM shape without an inline `import()` type.
+ */
+interface AutoUpdaterSurface {
+  autoDownload: boolean;
+  allowDowngrade: boolean;
+  allowPrerelease: boolean;
+  on(event: 'error', listener: (error: unknown) => void): unknown;
+  checkForUpdatesAndNotify(): Promise<unknown>;
+}
+
+
 const IS_DEV = process.argv.includes('--dev');
 const DEV_SERVER_ORIGIN = 'http://localhost:5173/app.html';
 const RENDERER_INDEX = path.join(__dirname, '..', 'renderer', 'app.html');
@@ -140,8 +156,8 @@ async function main(): Promise<void> {
        * the bundler will produce next time.
        */
       const mod = (await import('electron-updater')) as unknown as {
-        autoUpdater?: typeof import('electron-updater').autoUpdater;
-        default?: { autoUpdater?: typeof import('electron-updater').autoUpdater };
+        autoUpdater?: AutoUpdaterSurface;
+        default?: { autoUpdater?: AutoUpdaterSurface };
       };
       const autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater;
       if (!autoUpdater) throw new Error('electron-updater exported no autoUpdater');

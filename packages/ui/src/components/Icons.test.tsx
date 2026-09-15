@@ -43,15 +43,33 @@ describe('IntentIcon', () => {
     }
   });
 
-  it('renders at 20, 24 and 32 without rescaling the stroke', () => {
-    for (const size of [20, 24, 32] as GlyphSize[]) {
+  /*
+   * The attribute is not the size.
+   *
+   * This test used to assert `width` and `height` only, and passed for months while every icon
+   * in the product rendered at 24px whatever it was asked for: `.lt-icon` sets `inline-size`
+   * from a token, and a CSS declaration beats a presentation attribute. `--lt-icon` is the value
+   * the browser actually uses, so it is the value the test asserts.
+   */
+  it('renders at 16, 20, 24 and 32 without rescaling the stroke', () => {
+    for (const size of [16, 20, 24, 32] as GlyphSize[]) {
       const { container, unmount } = render(<IntentIcon intent="gaming" size={size} />);
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('width')).toBe(String(size));
       expect(svg?.getAttribute('height')).toBe(String(size));
+      expect(svg?.getAttribute('style'), 'the size CSS will actually use').toContain(
+        `--lt-icon: ${size}px`,
+      );
       expect(svg?.getAttribute('stroke-width')).toBe('1.75');
       unmount();
     }
+  });
+
+  /* No size means "whatever this density gives", which is what Pro mode moves. */
+  it('leaves the size to the density token when the caller does not ask', () => {
+    const { container, unmount } = render(<IntentIcon intent="gaming" />);
+    expect(container.querySelector('svg')?.getAttribute('style') ?? '').not.toContain('--lt-icon');
+    unmount();
   });
 
   it('becomes an img with a name when given a title', () => {
@@ -129,10 +147,12 @@ describe('MomentIcon', () => {
     expect(hasMomentGlyph('toString')).toBe(false);
   });
 
-  it('renders at 20, 24 and 32 and can carry a title', () => {
-    for (const size of [20, 24, 32] as GlyphSize[]) {
+  it('renders at 16, 20, 24 and 32 and can carry a title', () => {
+    for (const size of [16, 20, 24, 32] as GlyphSize[]) {
       const { container, unmount } = render(<MomentIcon moment="break" size={size} />);
-      expect(container.querySelector('svg')?.getAttribute('width')).toBe(String(size));
+      const svg = container.querySelector('svg');
+      expect(svg?.getAttribute('width')).toBe(String(size));
+      expect(svg?.getAttribute('style')).toContain(`--lt-icon: ${size}px`);
       unmount();
     }
 

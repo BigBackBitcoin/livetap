@@ -337,3 +337,159 @@ describe('no shipped source file logs a credential-bearing value unredacted', ()
     expect(leaks, `a credential could reach a log line here:\n  ${leaks.join('\n  ')}`).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// TEAM F (SECURITY), 2026-09-15: who owns which shape
+// ---------------------------------------------------------------------------
+
+/**
+ * HANDOFF item 4 asked for a decision, not a note. Here it is, with the test that
+ * enforces it — and with a SECOND asymmetry, in the opposite direction, that the
+ * original note did not record and that matters more.
+ *
+ * THE DECISION
+ * ------------
+ * The two redactors guard different doors, so they do not need identical rule sets.
+ * They need identical rule sets FOR THE SHAPES THAT CAN REACH THEM.
+ *
+ *   packages/core `redactSecrets` guards the LOG FILE. Everything the desktop engine
+ *   writes goes through it: the ffmpeg argv, ffmpeg's stderr, engine diagnostics. So it
+ *   owns every shape that can appear in an FFMPEG COMMAND LINE OR IN FFMPEG'S OUTPUT.
+ *   That is a superset of what travels over HTTP, because ffmpeg speaks rtmp, rtmps,
+ *   rtsp, srt, whip-over-https and file: as well.
+ *
+ *   packages/adapters `redact` guards an HTTP ERROR MESSAGE. It sees platform API URLs,
+ *   response bodies and status text. It owns every shape that can appear THERE.
+ *
+ * Applying that rule to the two asymmetries:
+ *
+ *   1. `-authorization <token>` (the ffmpeg WHIP muxer's flag). Argv only. **core owns
+ *      it, adapters does not need it.** The integrator changes NOTHING. This confirms
+ *      what HANDOFF item 4 guessed, and now it is a decision with a test under it.
+ *
+ *   2. URL userinfo (`scheme://user:password@host`). `redact` masks it for rtsp, srt,
+ *      http, https, ws and wss. `redactSecrets` masks it for **rtsp only**. But a WHIP
+ *      target is an https URL that ffmpeg receives as an argv element, and an SRT target
+ *      can carry userinfo too — both of which are exactly the log file's problem. So
+ *      **core owns it and core is missing it.** The integrator must change
+ *      `packages/core/src/validation/ingest.ts:81`.
+ *
+ * SEC-F17 below is the failing test for (2). It is deliberately left red rather than
+ * softened, because a green suite over a real gap is worse than a red one.
+ */
+
+const OWNERSHIP_VALUE = 'EXAMPLEownershipVALUEthatMustNeverSurvive12345';
+
+/** Shapes that can only appear in an ffmpeg command line or in ffmpeg's own stderr. */
+const ARGV_ONLY_SHAPES = [
+  {
+    what: 'the WHIP muxer -authorization flag',
+    text: `-f whip -authorization ${OWNERSHIP_VALUE} https://relay.livetap.example/whip`,
+  },
+  {
+    what: 'an RTMP publish URL whose last path segment is the stream key',
+    text: `rtmp://a.rtmp.youtube.com/live2/${OWNERSHIP_VALUE}`,
+  },
+];
+
+/** Shapes that can appear in EITHER an ffmpeg argv or an HTTP error. Both must mask these. */
+const SHARED_SHAPES = [
+  {
+    what: 'rtsp userinfo, which is how the relay hook authenticates to MediaMTX',
+    text: `rtsp://relayhook:${OWNERSHIP_VALUE}@127.0.0.1:8554/live`,
+  },
+  {
+    what: 'an SRT passphrase in a query parameter',
+    text: `srt://ingest.example.com:9000?streamid=live&passphrase=${OWNERSHIP_VALUE}`,
+  },
+  {
+    what: 'a bearer token',
+    text: `Authorization: Bearer ${OWNERSHIP_VALUE}`,
+  },
+];
+
+/**
+ * Userinfo in the schemes ffmpeg speaks that are NOT rtsp. These reach the log file
+ * through the sender argv, so core owns them.
+ */
+const USERINFO_SHAPES = [
+  {
+    what: 'https userinfo, which is how a WHIP target carries a credential',
+    text: `https://relayhook:${OWNERSHIP_VALUE}@relay.livetap.example/whip/session`,
+  },
+  {
+    what: 'srt userinfo',
+    text: `srt://relayhook:${OWNERSHIP_VALUE}@127.0.0.1:9000`,
+  },
+  {
+    what: 'wss userinfo, which is how a chat socket can carry one',
+    text: `wss://relayhook:${OWNERSHIP_VALUE}@chat.example.com/ws`,
+  },
+];
+
+describe('SEC-F17 redactor ownership: which module owns which shape, decided', () => {
+  describe('argv-only shapes are the ENGINE redactor\'s, and only its', () => {
+    for (const shape of ARGV_ONLY_SHAPES) {
+      it(`packages/core masks ${shape.what}`, () => {
+        expect(redactSecrets(shape.text)).not.toContain(OWNERSHIP_VALUE);
+      });
+    }
+
+    it('packages/adapters is NOT required to mask -authorization, and does not', () => {
+      // Pinning the decision, not the omission. If someone adds the rule to `redact` this
+      // test fails and they must come here and change the decision deliberately, which is
+      // the point of writing it down.
+      const argv = ARGV_ONLY_SHAPES[0].text;
+      expect(redact(argv)).toContain(OWNERSHIP_VALUE);
+    });
+
+    it('an ffmpeg argv never reaches the HTTP redactor, which is why that is safe', () => {
+      // `redact` is called from exactly two places in packages/adapters/src/real/http.ts:
+      // the HttpError constructor (a request URL) and errorMessage (a response body). The
+      // scan below proves no OTHER call site exists that could hand it an argv.
+      const http = readFileSync(join(REPO_ROOT, 'packages/adapters/src/real/http.ts'), 'utf8');
+      const callSites = http.match(/(?<![\w.])redact\(/g) ?? [];
+      // One definition plus two call sites.
+      expect(callSites.length).toBeLessThanOrEqual(3);
+      expect(http).not.toMatch(/redact\(\s*argv/);
+    });
+  });
+
+  describe('shapes that can reach either door must be masked by both', () => {
+    for (const shape of SHARED_SHAPES) {
+      it(`both mask ${shape.what}`, () => {
+        expect(redactSecrets(shape.text), 'packages/core').not.toContain(OWNERSHIP_VALUE);
+        expect(redact(shape.text), 'packages/adapters').not.toContain(OWNERSHIP_VALUE);
+      });
+    }
+  });
+
+  describe('URL userinfo: the asymmetry HANDOFF item 4 did not record', () => {
+    for (const shape of USERINFO_SHAPES) {
+      it(`packages/adapters already masks ${shape.what}`, () => {
+        expect(redact(shape.text)).not.toContain(OWNERSHIP_VALUE);
+      });
+    }
+
+    /**
+     * OPEN, MEDIUM. FAILING ON PURPOSE.
+     *
+     * `packages/core/src/validation/ingest.ts:81` masks userinfo for `rtsp`/`rtsps` only:
+     *     .replace(/(rtsps?:\/\/)[^\s@|'"]*@/gi, '$1' + MASK + '@')
+     * The HTTP redactor's equivalent (packages/adapters/src/real/http.ts:79) covers
+     * `rtsp`, `srt`, `http`, `https`, `ws` and `wss`.
+     *
+     * core is the one guarding main.log, and the sender argv for a WHIP output is an
+     * https URL. So the module with the WIDER exposure has the NARROWER rule.
+     *
+     * THE FIX, for the integrator: widen that one regex in packages/core to the same
+     * scheme set adapters already uses. Nothing else changes; the adapters redactor is
+     * correct as it stands.
+     */
+    for (const shape of USERINFO_SHAPES) {
+      it(`packages/core MUST mask ${shape.what} — it does not today`, () => {
+        expect(redactSecrets(shape.text)).not.toContain(OWNERSHIP_VALUE);
+      });
+    }
+  });
+});

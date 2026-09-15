@@ -21,7 +21,7 @@
  * confidential-client exchanges go through the web app's server function (ADR-002).
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
@@ -38,6 +38,18 @@ import type { LoopbackInfo } from '../shared/ipc.js';
  */
 const LOOPBACK_IP = '127.0.0.1';
 export type LoopbackHost = 'localhost' | '127.0.0.1';
+/**
+ * Constant-time comparison of two secrets that may differ in length.
+ *
+ * `timingSafeEqual` throws on a length mismatch, which would itself leak the length, so both
+ * sides are hashed to a fixed width first and the digests are compared.
+ */
+function sameSecret(a: string, b: string): boolean {
+  const left = createHash('sha256').update(a, 'utf8').digest();
+  const right = createHash('sha256').update(b, 'utf8').digest();
+  return timingSafeEqual(left, right);
+}
+
 const CALLBACK_PATH = '/callback';
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -144,8 +156,11 @@ export class LoopbackOAuthServer {
     }
 
     // The state check is what stops another local process from feeding us its own callback.
+    // Compared in constant time: the comparand is attacker-supplied and arrives over a socket
+    // anything on this machine can open, so a length-or-prefix early exit is a measurable oracle
+    // for guessing it one character at a time.
     const state = parsed.searchParams.get('state');
-    if (state === null || state !== this.state) {
+    if (state === null || !sameSecret(state, this.state)) {
       res.writeHead(400, {
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
@@ -172,7 +187,14 @@ export class LoopbackOAuthServer {
       this.stop();
       pending.resolve(url);
     } else {
+      /*
+       * Nobody is waiting yet, so hold it - and stop listening anyway. Leaving the listener up
+       * meant the same state went on being accepted, and a SECOND callback would overwrite the
+       * first: whoever arrives last wins, which is the wrong way round for a one-shot
+       * authorization code.
+       */
       this.buffered = url;
+      this.stop();
     }
   }
 

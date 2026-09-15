@@ -21,6 +21,7 @@
     "verify:engine": "npm run build:verify && node dist/verify/verify-engine.cjs",
     "e2e:smoke": "node e2e/smoke.mjs",
     "e2e:broadcast": "node e2e/broadcast.mjs",
+    "e2e:oauth": "node e2e/oauth.mjs",
     "lint": "eslint .",
     "prepackage": "node scripts/ensure-renderer.mjs"
   },

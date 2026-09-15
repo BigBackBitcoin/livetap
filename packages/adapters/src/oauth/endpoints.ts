@@ -114,7 +114,10 @@ export const PLATFORM_OAUTH: Record<PlatformId, OAuthPlatformConfig | undefined>
       'channel:write',
       'streamkey:read',
       'chat:write',
-      'events:subscribe',
+      // No `events:subscribe`. KickAdapter documents why it cannot use it — the subscription
+      // delivers to a webhook at a public HTTPS endpoint, which a desktop LIVETAP has no way to
+      // receive — so asking for it puts a permission on the consent screen that buys the creator
+      // nothing. Scope minimisation is not a policy here, it is the consent screen being honest.
       'moderation:ban',
       'moderation:chat_message:manage',
     ],

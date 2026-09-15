@@ -1,6 +1,6 @@
 # HANDOFF — LIVETAP
 
-Status: **REAL-WORLD PERSONAL ALPHA, in progress (2026-09-14).** Everything below is
+Status: **REAL-WORLD PERSONAL ALPHA — the completion gate passes 4/4 (2026-09-15).** Everything below is
 verified on the build host unless labelled otherwise; see IMPLEMENTATION_STATUS.md for
 per-area labels and BLOCKERS.md for the human dependency queue. Release audit:
 docs/release/RELEASE_AUDIT.md.
@@ -12,6 +12,7 @@ docs/release/RELEASE_AUDIT.md.
 | `docs/qa/REAL_WORLD_ALPHA_READINESS.md` | the owner's completion gate, item by item, with what is proven, what is proven only against the local harness, and what waits on the owner |
 | `docs/OWNER_ACTIONS.md` | **everything the owner has to do, once, in order.** Do not ask them for things one at a time |
 | `docs/platforms/PLATFORM_AUTH_MATRIX.md` | why each platform is Level 1, 2, 3 or 4, and the exact console steps per platform |
+| `docs/qa/UX_POLISH_PASS.md` | the 2026-09-15 polish pass: what the copy audit found, the type system, the `hidden` bug class, and the measured 23.9 -> 44.1 fps |
 | `docs/qa/REAL_PLATFORM_TEST_MATRIX.md` | per destination: what has actually been run against the real platform (today: almost nothing, and it says so) |
 | `docs/qa/REAL_DEVICE_TEST_MATRIX.md` | per surface: Windows, macOS, Android, iOS |
 | `docs/security/REAL_CREDENTIAL_SECURITY.md` | where every token and stream key lives now that they are real, and which guarantees hold today |

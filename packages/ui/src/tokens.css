@@ -138,17 +138,79 @@
   --lt-bp-tablet: 1024px;
   --lt-bp-desktop: 1025px;
 
-  /* Control sizing — Simple density is the default */
+  /*
+   * Control sizing — Simple density is the default.
+   *
+   * Four heights, and every control in the product is one of them. There used to be four *named*
+   * heights and eight actual ones: the switch was 26px, the health pill 34, the segmented item
+   * 32 and GO LIVE 56, so a row containing a select (44), a switch (26) and a pill (34) had
+   * three baselines and read as three unrelated things. A control that picks its own height is
+   * the single cheapest way to make a screen look unfinished, and none of the four literals
+   * above was a decision anyone would defend out loud — they were what the padding happened to
+   * add up to.
+   *
+   * `xl` exists for exactly one control: GO LIVE. It is bigger than everything else on purpose
+   * and it is on the scale so that "bigger" is a step rather than a number someone typed.
+   */
   --lt-control-sm: 36px;
   --lt-control-md: 44px;
   --lt-control-lg: 52px;
+  --lt-control-xl: 56px;
   --lt-touch-min: 44px;
   --lt-body-size: var(--lt-text-16);
   --lt-label-size: var(--lt-text-14);
   --lt-card-pad: var(--lt-space-5);
   --lt-row-gap: var(--lt-space-3);
   --lt-section-gap: var(--lt-space-8);
-  --lt-icon-size: 24px;
+
+  /*
+   * The switch, drawn from the control scale rather than from three literals.
+   *
+   * The track is `sm` wide and the knob is `sm` minus a 2px inset on each side, so the one thing
+   * that has to be true — the knob's travel equals the track's width minus its own diameter —
+   * is arithmetic instead of a hand-tuned `translateX`.
+   */
+  --lt-switch-w: 44px;
+  --lt-switch-h: 26px;
+  --lt-switch-inset: 2px;
+  --lt-switch-knob: calc(var(--lt-switch-h) - 2 * var(--lt-switch-inset));
+  --lt-switch-travel: calc(var(--lt-switch-w) - var(--lt-switch-h));
+
+  /*
+   * The icon scale. Four sizes, each paired with the text it sits beside.
+   *
+   * There was one size, and it was not a choice: `.lt-icon` set `inline-size: var(--lt-icon-size)`,
+   * which beats the `width`/`height` attributes the `size` prop writes, so every `size={20}` in
+   * the product rendered at 24. That is how a 24px glyph ended up next to 13px type in the device
+   * cards and how the Moment cards' `size={32}` badges came out 24 — the prop had been dead since
+   * it was added, and `StatusChip` carried a hand-written `lt-icon--20` class working around it.
+   *
+   * A glyph beside text should look like it belongs to the text, which means it is sized from the
+   * text's role, not from a global default. The pairing:
+   *   16  meta and status (12-13px)     20  ui and body (14-16px)
+   *   24  controls, nav, anything aimed at     32  a card's own badge
+   */
+  --lt-icon-inline: 16px;
+  --lt-icon-ui: 20px;
+  --lt-icon-control: 24px;
+  --lt-icon-badge: 32px;
+  /** The size an icon takes when it does not ask for one. Density moves it; the scale does not. */
+  --lt-icon-size: var(--lt-icon-control);
+
+  /*
+   * The Moment card's minimum target (PRODUCT_SPEC §5c asks for at least 140x96).
+   *
+   * It is here rather than in `components.css` because it is the one surface in the product that
+   * is deliberately larger than any control: switching Moments is the most frequent action while
+   * live, often one-handed, sometimes mid-sentence. A number that exists to be broken by nothing
+   * belongs where the other numbers that exist to be broken by nothing live.
+   */
+  --lt-moment-min-w: 140px;
+  --lt-moment-min-h: 104px;
+
+  /* The Sheet's two widths: a side panel on a tablet, a wider one where there is room. */
+  --lt-sheet-w: 380px;
+  --lt-sheet-w-wide: 420px;
 
   /* ---------------------------------------------------------------- */
   /* Type roles                                                        */
@@ -180,8 +242,16 @@
   --lt-type-hero-size: var(--lt-text-36);
   --lt-type-h1-size: var(--lt-text-28);
   --lt-type-h2-size: var(--lt-text-22);
-  --lt-type-body-size: var(--lt-text-16);
-  --lt-type-ui-size: var(--lt-text-14);
+  /*
+   * BODY and UI follow density; the display sizes above it do not.
+   *
+   * Pro density already drops body text to 14 and labels to 13 (and a coarse pointer puts them
+   * back), and a role that hardcoded 16 would have quietly overridden that - a type system that
+   * fights the density system is worse than no type system. Headings do not shrink in Pro,
+   * because the point of Pro is more rows on screen, not a smaller product.
+   */
+  --lt-type-body-size: var(--lt-body-size);
+  --lt-type-ui-size: var(--lt-label-size);
   --lt-type-meta-size: var(--lt-text-13);
   --lt-type-status-size: var(--lt-text-12);
   --lt-type-button-size: var(--lt-text-14);
@@ -216,7 +286,7 @@
 }
 
 .lt-type-body {
-  font-size: var(--lt-text-16);
+  font-size: var(--lt-body-size);
   line-height: var(--lt-leading-16);
   letter-spacing: var(--lt-tracking-16);
   font-weight: var(--lt-weight-regular);
@@ -224,7 +294,7 @@
 
 /* Controls, labels, and anything the hand is aimed at rather than the eye reading. */
 .lt-type-ui {
-  font-size: var(--lt-text-14);
+  font-size: var(--lt-label-size);
   line-height: var(--lt-leading-14);
   letter-spacing: var(--lt-tracking-14);
   font-weight: var(--lt-weight-medium);
@@ -264,12 +334,15 @@
   --lt-control-sm: 28px;
   --lt-control-md: 36px;
   --lt-control-lg: 44px;
+  --lt-control-xl: 52px;
+  --lt-switch-w: 36px;
+  --lt-switch-h: 22px;
   --lt-body-size: var(--lt-text-14);
   --lt-label-size: var(--lt-text-13);
   --lt-card-pad: var(--lt-space-4);
   --lt-row-gap: var(--lt-space-2);
   --lt-section-gap: var(--lt-space-6);
-  --lt-icon-size: 20px;
+  --lt-icon-size: var(--lt-icon-ui);
 }
 
 @media (pointer: coarse) {
@@ -277,9 +350,26 @@
     --lt-control-sm: 36px;
     --lt-control-md: 44px;
     --lt-control-lg: 52px;
+    --lt-control-xl: 64px;
+    --lt-switch-w: 44px;
+    --lt-switch-h: 26px;
     --lt-body-size: var(--lt-text-16);
     --lt-label-size: var(--lt-text-14);
-    --lt-icon-size: 24px;
+    --lt-icon-size: var(--lt-icon-control);
+  }
+}
+
+/*
+ * A thumb gets the bigger dominant action, at either density.
+ *
+ * `.lt-golive` used to carry this as `min-block-size: 64px` inside its own media query, which is
+ * how the one control with a size nobody else had also ended up with a breakpoint nobody else
+ * had. The condition is `.lt-touch`'s, from global.css, so "this is a finger" is answered in one
+ * voice across the product.
+ */
+@media (max-width: 639.98px), (pointer: coarse) {
+  :root {
+    --lt-control-xl: 64px;
   }
 }
 

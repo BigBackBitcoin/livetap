@@ -170,21 +170,29 @@ function IntentStep({
                 onClick={() => onChoose(id)}
               >
                 {/*
+                  Glyph and title on one line.
                   The icon set, not emoji (PRODUCT_REVIEW P2-5). Emoji on the intent cards and
                   Moment cards put a second visual language next to the drawn icons in the nav,
                   and it renders differently on every platform — which for the first screen of
                   the product is the one place a glyph has to look deliberate.
                 */}
-                <span className="lt-intentcard__glyph" aria-hidden="true">
-                  <IntentIcon intent={id} size={32} />
+                <span className="lt-intentcard__head">
+                  <span className="lt-intentcard__glyph" aria-hidden="true">
+                    <IntentIcon intent={id} size={24} />
+                  </span>
+                  <span className="lt-intentcard__title">{profile.title}</span>
                 </span>
-                <span className="lt-intentcard__title">{profile.title}</span>
                 <span className="lt-intentcard__tagline">{profile.tagline}</span>
-                <ul className="lt-intentcard__gets">
-                  {profile.whatYouGet.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
+                {/*
+                  What the preset does, as one line rather than a bulleted list.
+
+                  Six cards x three bullets is eighteen indented lines of specification on the
+                  first screen anyone sees, which reads as documentation rather than as a choice
+                  between six things. The facts are the same facts; separated by middots they are
+                  a caption under a card instead of a list to work through, and the card goes
+                  from five rows to three.
+                */}
+                <span className="lt-intentcard__gets">{profile.whatYouGet.join(' · ')}</span>
               </button>
             </li>
           );

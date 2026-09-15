@@ -42,12 +42,32 @@ export function DeviceControls({ live }: { live: boolean }): ReactElement {
   const cameraValue = optionValue(cameraOptions, cameraDeviceOf(active));
   const micValue = optionValue(micOptions, active?.audio.micDeviceId);
 
+  /*
+   * A hint is printed when there is something to say and not otherwise.
+   *
+   * These three cards used to carry a line each in every state, including "Not sharing" under a
+   * switch that is visibly off and "Say something — the level should move" beside a level this
+   * product does not draw. The second of those is the worse one: it is the interface describing
+   * feedback that does not exist, which is the same class of untruth as a disabled control with
+   * no visible reason. Silence is the correct state for a control that is doing the obvious
+   * thing; the only states that need words are the ones with a consequence.
+   */
+  const micHint = micMuted ? 'Muted — viewers hear nothing' : null;
+  const screenHint = live
+    ? 'Switching now shows viewers a brief cut'
+    : screenSharing
+      ? 'Your screen is in the picture'
+      : null;
+
   return (
     <div className="lt-devices">
+      {/*
+        No glyph beside the camera picker. `Select` already draws the word "Camera" directly
+        above it, and a 20px camera icon next to the word "Camera" is not a second signal, it is
+        the same signal drawn twice — while costing 32px of the width the device name needs. Two
+        of these three cards were spending a whole row on a picture of their own label.
+      */}
       <div className="lt-devices__item">
-        <span className="lt-devices__icon" aria-hidden="true">
-          <Icons.camera size={20} />
-        </span>
         <Select
           label="Camera"
           options={cameraOptions}
@@ -58,9 +78,6 @@ export function DeviceControls({ live }: { live: boolean }): ReactElement {
       </div>
 
       <div className="lt-devices__item">
-        <span className="lt-devices__icon" aria-hidden="true">
-          {micMuted ? <MicOffIcon size={20} /> : <Icons.mic size={20} />}
-        </span>
         <Select
           label="Microphone"
           options={micOptions}
@@ -68,25 +85,31 @@ export function DeviceControls({ live }: { live: boolean }): ReactElement {
           disabled={!hasMicrophones}
           onChange={(event: ChangeEvent<HTMLSelectElement>) => setMicDevice(event.target.value)}
         />
-        <Toggle pressed={micMuted} onPressedChange={() => void toggleMic()}>
-          Mute
-        </Toggle>
-        <p className="lt-devices__hint">
-          {micMuted ? 'Muted — viewers hear nothing' : 'Say something — the level should move'}
-        </p>
+        {/*
+          The glyph that stays is the one that carries state rather than repeating a word: struck
+          through when muted, beside the control that mutes.
+        */}
+        <div className="lt-devices__switch">
+          <span className="lt-devices__icon" aria-hidden="true">
+            {micMuted ? <MicOffIcon size={20} /> : <Icons.mic size={20} />}
+          </span>
+          <Toggle pressed={micMuted} onPressedChange={() => void toggleMic()}>
+            Mute
+          </Toggle>
+        </div>
+        {micHint ? <p className="lt-devices__hint lt-devices__hint--warn">{micHint}</p> : null}
       </div>
 
       <div className="lt-devices__item">
-        <span className="lt-devices__icon" aria-hidden="true">
-          <Icons.screen size={20} />
-        </span>
-        <Toggle pressed={screenSharing} onPressedChange={() => void toggleScreen()}>
-          Share my screen
-        </Toggle>
-        <p className="lt-devices__hint">
-          {screenSharing ? 'Sharing your screen' : 'Not sharing'}
-          {live ? ' · switching now shows a brief cut to viewers' : ''}
-        </p>
+        <div className="lt-devices__switch">
+          <span className="lt-devices__icon" aria-hidden="true">
+            <Icons.screen size={20} />
+          </span>
+          <Toggle pressed={screenSharing} onPressedChange={() => void toggleScreen()}>
+            Share my screen
+          </Toggle>
+        </div>
+        {screenHint ? <p className="lt-devices__hint">{screenHint}</p> : null}
       </div>
     </div>
   );

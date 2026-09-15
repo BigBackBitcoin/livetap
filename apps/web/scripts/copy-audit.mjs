@@ -20,7 +20,17 @@ const ROUTES = [
   ['/app/start', 'Setup'],
 ];
 
-const server = spawn(process.execPath, ['scripts/preview-server.mjs'], {
+/*
+ * Its own port, deliberately.
+ *
+ * Playwright's `webServer` owns 4173 and is configured with `reuseExistingServer`, so a probe
+ * that starts and stops a server on that port while a suite is running pulls the floor out from
+ * under it: the suite reuses the probe's server, the probe exits and kills it, and forty tests
+ * fail with ERR_CONNECTION_REFUSED that have nothing wrong with them.
+ */
+const PROBE_PORT = '4183';
+
+const server = spawn(process.execPath, ['scripts/preview-server.mjs', 'dist', PROBE_PORT], {
   cwd: new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'),
   stdio: 'ignore',
 });
@@ -35,7 +45,7 @@ let totalWords = 0;
  * Onboarding state first, once. The app sends a first-time visitor to setup from every route, so
  * a walk that has not been through it measures the setup screen five times.
  */
-await page.goto('http://localhost:4173/app');
+await page.goto('http://localhost:4183/app');
 await page.evaluate(() => {
   localStorage.setItem('livetap.onboarding', 'true');
   localStorage.setItem('livetap.intent', '"talking"');
@@ -43,7 +53,7 @@ await page.evaluate(() => {
 });
 
 for (const [route, name] of ROUTES) {
-  await page.goto(`http://localhost:4173${route}`);
+  await page.goto(`http://localhost:4183${route}`);
   await page.waitForTimeout(1800);
 
   /* Only what a person can actually read: visible, non-empty, and not screen-reader-only. */

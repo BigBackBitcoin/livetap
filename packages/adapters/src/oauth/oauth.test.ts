@@ -113,13 +113,19 @@ describe('buildAuthorizeUrl', () => {
     expect(scope.split(' ')).toContain('offline.access');
   });
 
-  it('uses LinkedIn\'s separate native-pkce endpoint only when a challenge is supplied', () => {
+  it("uses LinkedIn's separate native-pkce endpoint, and refuses to build a URL without one", () => {
     const withPkce = new URL(buildAuthorizeUrl('linkedin', base));
     expect(withPkce.pathname).toBe('/oauth/native-pkce/authorization');
-    const withoutPkce = new URL(
-      buildAuthorizeUrl('linkedin', { ...base, codeChallenge: undefined }),
+
+    /*
+     * This used to assert that omitting the challenge quietly fell back to the non-PKCE endpoint.
+     * That is the downgrade spelled out as a feature: a caller who forgot to generate a verifier
+     * got a working authorize URL with no proof-of-possession on it, for every platform including
+     * the two that mandate PKCE. The fallback is gone; asking for it is now a programming error.
+     */
+    expect(() => buildAuthorizeUrl('linkedin', { ...base, codeChallenge: undefined })).toThrow(
+      /requires PKCE/i,
     );
-    expect(withoutPkce.pathname).toBe('/oauth/v2/authorization');
   });
 
   it('supports Facebook Login for Business config_id instead of scopes', () => {

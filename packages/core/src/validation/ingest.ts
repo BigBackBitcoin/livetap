@@ -77,7 +77,17 @@ export function redactSecrets(text: string): string {
     text
       // rtmp/rtmps/rtsp: the LAST path segment is the stream key.
       .replace(/(rtmps?:\/\/[^\s|'"]*\/)([^\s/|?'"]+)/gi, '$1' + MASK)
-      .replace(/(rtsps?:\/\/)[^\s@|'"]*@/gi, '$1' + MASK + '@')
+      /*
+       * Userinfo — `scheme://user:password@host` — across every scheme a target can arrive as,
+       * not only rtsp.
+       *
+       * This module guards the desktop main-process log, so it has the WIDER exposure of the two
+       * redactors in this repository and had the NARROWER rule: rtsp alone, while
+       * `packages/adapters/src/real/http.ts` already covered rtsp, srt, http(s) and ws(s). A WHIP
+       * target is an https URL that reaches ffmpeg as an argv element and is logged from here, so
+       * a credential in its userinfo went out in the clear.
+       */
+      .replace(/((?:rtsps?|rtmps?|srt|https?|wss?):\/\/)[^\s@/|'"]*@/gi, '$1' + MASK + '@')
       // SRT / WHIP / generic query parameters that carry a credential.
       .replace(
         /((?:passphrase|streamid|stream_key|streamkey|access_token|refresh_token|id_token|token|key|secret|client_secret|code|code_verifier|password|pwd|signature|sig|auth|authorization)=)[^&\s|'"]+/gi,

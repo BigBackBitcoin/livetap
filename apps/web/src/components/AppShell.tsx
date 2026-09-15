@@ -6,6 +6,7 @@ import { useAppStore } from '../state/store.js';
 import { LiveBar } from './LiveBar.js';
 import { MockBanner } from './MockBanner.js';
 import { NoticeRegion } from './NoticeRegion.js';
+import { Tour } from './Tour.js';
 
 interface NavItem {
   to: string;
@@ -113,6 +114,13 @@ export function AppShell(): ReactElement {
         cannot unmount it. This is the whole answer to "END is cancelled by navigating away".
       */}
       <LiveBar />
+
+      {/*
+        The Quick Tour, after `LiveBar` in the DOM and beneath it in the stacking scale.
+        It renders nothing at all while the production is not idle, so the two can never be on
+        screen together — see the guarantees documented in `Tour.tsx`.
+      */}
+      <Tour />
 
       <NoticeRegion />
     </div>

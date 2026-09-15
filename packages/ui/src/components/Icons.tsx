@@ -13,23 +13,28 @@
  * must use `IconButton`, which carries the accessible name.
  */
 
-import type { ReactElement, ReactNode, SVGProps } from 'react';
+import type { CSSProperties, ReactElement, ReactNode, SVGProps } from 'react';
 
-export type IconSize = 20 | 24;
+/**
+ * The icon scale, as a type. Four sizes, paired with the type role the glyph sits beside:
+ * 16 with meta and status, 20 with ui and body, 24 for controls and nav, 32 for a card's badge.
+ * `scale.test.ts` fails if this union and the `--lt-icon-*` tokens stop agreeing.
+ */
+export type IconSize = 16 | 20 | 24;
 
 /** Intent and Moment glyphs also render at 32px, the size of a Moment card's badge. */
-export type GlyphSize = 20 | 24 | 32;
+export type GlyphSize = 16 | 20 | 24 | 32;
 
 export interface GlyphProps
   extends Omit<SVGProps<SVGSVGElement>, 'children' | 'width' | 'height'> {
-  /** 20px inline with text, 24px for controls and nav, 32px for Moment cards. */
+  /** 16px with meta, 20px inline with text, 24px for controls and nav, 32px for Moment cards. */
   size?: GlyphSize;
   /** When set, the glyph becomes `role="img"` with this accessible name. */
   title?: string;
 }
 
 export interface IconProps extends Omit<GlyphProps, 'size'> {
-  /** 20px inline with text, 24px for controls and nav. Strokes are not rescaled. */
+  /** 16px with meta, 20px inline with text, 24px for controls and nav. Strokes are not rescaled. */
   size?: IconSize;
 }
 
@@ -39,20 +44,35 @@ interface GlyphShellProps extends GlyphProps {
   children: ReactNode;
 }
 
-/** The one SVG shell every glyph in the package is drawn into. */
+/**
+ * The one SVG shell every glyph in the package is drawn into.
+ *
+ * `size` is written as a custom property, not only as `width`/`height`. The attributes are
+ * presentation hints and `.lt-icon` sets `inline-size`/`block-size` from a token, so CSS won
+ * every time and the prop did nothing: `<Icons.camera size={20} />` measured 24x24 in the
+ * browser, next to a 14px label. Setting `--lt-icon` is what lets a caller ask, while a caller
+ * who does not ask still follows `--lt-icon-size` and so still shrinks in Pro density.
+ */
 function GlyphShell({
-  size = 24,
+  size,
   title,
   className,
+  style,
   children,
   ...rest
 }: GlyphShellProps): ReactElement {
   const classes = ['lt-icon', className].filter(Boolean).join(' ');
+  const drawn = size ?? 24;
   return (
     <svg
       viewBox="0 0 24 24"
-      width={size}
-      height={size}
+      width={drawn}
+      height={drawn}
+      style={
+        size === undefined
+          ? style
+          : ({ ...style, '--lt-icon': `${size}px` } as CSSProperties)
+      }
       fill="none"
       stroke="currentColor"
       strokeWidth={1.75}

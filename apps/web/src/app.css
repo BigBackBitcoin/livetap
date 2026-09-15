@@ -158,9 +158,14 @@ body {
     justify-content: flex-start;
   }
 
+  /*
+   * A nav row is a control, so it is `md` like every other control in the rail. It was 32px -
+   * shorter than the Pro switch beside it and than every button on the screen it navigates to.
+   */
   .lt-shell__navitem {
     flex-direction: row;
     gap: var(--lt-space-2);
+    min-block-size: var(--lt-control-md);
     font-size: var(--lt-text-14);
   }
 
@@ -253,7 +258,17 @@ body {
  */
 @media (max-width: 1024.98px) {
   .lt-shell {
-    --lt-navbar-h: calc(64px + env(safe-area-inset-bottom));
+    --lt-navbar-h: calc(var(--lt-space-16) + env(safe-area-inset-bottom));
+    /*
+     * How much room the pinned GO LIVE bar needs above the tab bar.
+     *
+     * It is a measurement, not a scale step: the bar is the pre-flight row, an `xl` button and a
+     * subtitle, and its height depends on which of those has something to say. Named here beside
+     * the nav's own height so the two numbers this layout depends on are in one place, and so a
+     * change to the button's size is a change to one declaration rather than a hunt through
+     * `padding-block-end`.
+     */
+    --lt-golivebar-reserve: 220px;
   }
 
   .lt-shell__nav {
@@ -279,17 +294,17 @@ body {
   .lt-shell {
     /* Top bar: the GO LIVE bar sticks to the bottom of the window, with nothing under it. */
     --lt-navbar-h: 0px;
-    --lt-topbar-h: 64px;
+    --lt-topbar-h: var(--lt-space-16);
   }
 
   .lt-shell__nav {
     inset-block-start: 0;
     inset-block-end: auto;
-    block-size: 64px;
+    block-size: var(--lt-topbar-h);
   }
 
   .lt-shell__main {
-    padding-block-start: calc(64px + var(--lt-space-4));
+    padding-block-start: calc(var(--lt-topbar-h) + var(--lt-space-4));
   }
 }
 
@@ -373,7 +388,7 @@ body {
   .lt-bannerslot a {
     display: inline-flex;
     align-items: center;
-    min-block-size: 44px;
+    min-block-size: var(--lt-touch-min);
   }
 }
 
@@ -529,8 +544,17 @@ body {
   font-size: var(--lt-text-13);
 }
 
+/*
+ * A segmented control is the width of its options and not a pixel more.
+ *
+ * `inline-flex` says so, and inside a flex column (which every Card is) `align-items: stretch`
+ * overrode it: Settings rendered a four-option Quality control 880px wide with 230px of content
+ * and 650px of dead track, and Appearance did the same with three. `align-self: start` is the
+ * one declaration that makes the intrinsic width actually intrinsic.
+ */
 .lt-segmented {
   display: inline-flex;
+  align-self: start;
   gap: var(--lt-space-05);
   padding: var(--lt-space-05);
   background: var(--lt-bg-3);
@@ -547,7 +571,7 @@ body {
   padding: var(--lt-space-1) var(--lt-space-3);
   border-radius: var(--lt-radius-full);
   cursor: pointer;
-  min-block-size: 32px;
+  min-block-size: var(--lt-control-sm);
 }
 
 .lt-segmented__item.is-active {
@@ -566,13 +590,13 @@ body {
  */
 @media (max-width: 1024.98px) {
   .lt-segmented__item {
-    min-block-size: 44px;
-    min-inline-size: 44px;
+    min-block-size: var(--lt-touch-min);
+    min-inline-size: var(--lt-touch-min);
     padding-inline: var(--lt-space-4);
   }
 
   .lt-toggle {
-    min-block-size: 44px;
+    min-block-size: var(--lt-touch-min);
   }
 }
 
@@ -604,37 +628,81 @@ body {
   scroll-padding-inline: var(--lt-space-3);
 }
 
+/*
+ * Three cards, three heights.
+ *
+ * A grid row stretches its items, so the camera card (one picker) was drawn to the height of the
+ * microphone card (picker, mute switch and a hint) — 230px of box holding 110px of controls, with
+ * the rest empty. `start` lets each card be the size of what is in it, which is also what stops
+ * the row reading as "something is missing from this card".
+ */
 .lt-devices {
   display: grid;
+  align-items: start;
   gap: var(--lt-space-4);
   grid-template-columns: 1fr;
 }
 
+/*
+ * Three columns only when three columns fit.
+ *
+ * `repeat(3, ...)` from 640px up gave each card a third of whatever the row happened to be - on
+ * a 1440px laptop that is 220px, and a 220px card cannot show "Fake Default Audio Input" or fit
+ * "Share my screen" on one line beside its switch. `auto-fit` with a real minimum drops to two
+ * columns instead of clipping, which is the difference between a layout and a guess.
+ */
 @media (min-width: 640px) {
   .lt-devices {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   }
 }
 
 .lt-devices__item {
   display: flex;
   flex-direction: column;
-  gap: var(--lt-space-2);
-  padding: var(--lt-space-4);
+  align-items: flex-start;
+  gap: var(--lt-space-3);
+  padding: var(--lt-card-pad);
   background: var(--lt-bg-2);
   border: 1px solid var(--lt-border);
   border-radius: var(--lt-radius-lg);
   min-inline-size: 0;
 }
 
+/* The one glyph that carries state, on the switch's row. */
+.lt-devices__switch {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-3);
+}
+
 .lt-devices__icon {
+  display: inline-flex;
+  align-items: center;
   color: var(--lt-text-tertiary);
 }
 
+/* A picker fills its card: a device name is the one string here that has to be readable. */
+.lt-devices__item .lt-field {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+/*
+ * 13px, not 12. This is a sentence a creator reads while setting their sound up ("Say something -
+ * the level should move"), which makes it prose; 12px in this product is the status role, which
+ * is uppercase, wide-tracked and never a sentence.
+ */
 .lt-devices__hint {
   margin: 0;
-  font-size: var(--lt-text-12);
+  font-size: var(--lt-text-13);
+  line-height: var(--lt-leading-13);
   color: var(--lt-text-tertiary);
+}
+
+/* A forgotten mute is the most common silent failure in this category (tenet 6). It is not grey. */
+.lt-devices__hint--warn {
+  color: var(--lt-warning);
 }
 
 .lt-chiprow {
@@ -672,8 +740,8 @@ body {
 }
 
 .lt-preflight__dot {
-  inline-size: 8px;
-  block-size: 8px;
+  inline-size: var(--lt-space-2);
+  block-size: var(--lt-space-2);
   border-radius: var(--lt-radius-full);
   background: var(--lt-text-tertiary);
   flex: 0 0 auto;
@@ -753,7 +821,7 @@ body {
 
   /* Room for the pinned bar, so the Moment strip and the dock can still be scrolled to. */
   .lt-shell__main {
-    padding-block-end: calc(var(--lt-navbar-h) + 220px);
+    padding-block-end: calc(var(--lt-navbar-h) + var(--lt-golivebar-reserve));
   }
 
   /* The preview gives up height before the button gives up its place on the screen. */
@@ -842,9 +910,10 @@ body {
   min-inline-size: 0;
 }
 
+/* One dot size in the product. This one was 10px, the pre-flight's 8 and `.lt-dot`'s 8. */
 .lt-livebar__dot {
-  inline-size: 10px;
-  block-size: 10px;
+  inline-size: var(--lt-space-2);
+  block-size: var(--lt-space-2);
   border-radius: var(--lt-radius-full);
   background: var(--lt-accent-live-solid);
   flex: 0 0 auto;
@@ -886,15 +955,16 @@ body {
     align-items: stretch;
   }
 
+  /* The stop control is never smaller than the start control it replaced. */
   .lt-livebar__action .lt-btn {
     inline-size: 100%;
-    min-block-size: 56px;
+    min-block-size: var(--lt-control-xl);
   }
 }
 
 /* While the bar is up, the scrolling column ends above it rather than under it. */
 .lt-shell.is-onair .lt-shell__main {
-  padding-block-end: calc(var(--lt-navbar-h, 0px) + 160px);
+  padding-block-end: calc(var(--lt-navbar-h, 0px) + var(--lt-space-20) * 2);
 }
 
 /*
@@ -1041,8 +1111,8 @@ body {
 }
 
 .lt-onboarding__dots span {
-  inline-size: 32px;
-  block-size: 4px;
+  inline-size: var(--lt-space-8);
+  block-size: var(--lt-space-1);
   border-radius: var(--lt-radius-full);
   background: var(--lt-bg-3);
 }
@@ -1157,14 +1227,17 @@ body {
   font-size: var(--lt-text-14);
 }
 
+.lt-intentcard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
 .lt-intentcard__gets {
   margin: 0;
-  padding-inline-start: var(--lt-space-5);
   color: var(--lt-text-tertiary);
   font-size: var(--lt-text-13);
-  display: flex;
-  flex-direction: column;
-  gap: var(--lt-space-05);
+  line-height: var(--lt-leading-13);
 }
 
 .lt-platformcard__badges,
@@ -1182,10 +1255,16 @@ body {
   border-style: dashed;
 }
 
+/*
+ * The reason a platform cannot be used, in the card that says so. §"never claim something
+ * untrue": a disabled control has to carry its reason where the eye already is, with no hover
+ * and no click - so this is 13px prose, not a 12px machine label.
+ */
 .lt-platformcard__why,
 .lt-addrow__why {
   color: var(--lt-text-tertiary);
-  font-size: var(--lt-text-12);
+  font-size: var(--lt-text-13);
+  line-height: var(--lt-leading-13);
 }
 
 .lt-devicestep {

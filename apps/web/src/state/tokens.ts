@@ -29,6 +29,7 @@
 import { PLATFORM_OAUTH } from '@livetap/adapters';
 import type { AccountSummary, CredentialRef, PlatformId } from '@livetap/core';
 import { brokerBaseUrl } from './mockMode.js';
+import { valueOf, wrote } from './secrets.js';
 import type { VaultBridge } from './secrets.js';
 
 /** Renew this many ms before the platform says the token dies, so a slow call cannot straddle it. */
@@ -77,18 +78,21 @@ const memory = new Map<PlatformId, StoredTokens>();
 
 export async function saveTokens(platform: PlatformId, tokens: StoredTokens): Promise<void> {
   const store = vault();
-  if (store) {
-    await store.set(vaultKey(platform), JSON.stringify(tokens));
-    return;
-  }
+  // A refused write is not a write. Keeping the session copy means the creator finishes the
+  // sign-in they started, on a machine whose keychain is unavailable, instead of watching it
+  // succeed and then finding themselves signed out.
+  if (store && wrote(await store.set(vaultKey(platform), JSON.stringify(tokens)))) return;
   memory.set(platform, tokens);
 }
 
 export async function readTokens(platform: PlatformId): Promise<StoredTokens | undefined> {
   const store = vault();
   if (!store) return memory.get(platform);
-  const raw = await store.get(vaultKey(platform));
-  if (!raw) return undefined;
+  // valueOf() is what makes this work at all on desktop: the Electron preload answers with a
+  // result object, and handing that straight to JSON.parse is why every desktop sign-in used to
+  // read back as no sign-in. See the note in secrets.ts.
+  const raw = valueOf(await store.get(vaultKey(platform))) ?? undefined;
+  if (!raw) return memory.get(platform);
   try {
     const parsed = JSON.parse(raw) as StoredTokens;
     return typeof parsed?.accessToken === 'string' && parsed.accessToken.length > 0 ? parsed : undefined;

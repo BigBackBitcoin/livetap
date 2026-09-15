@@ -179,6 +179,16 @@ export function mountOutputs(
   }
 
   function drawAll(): void {
+    /*
+     * This panel owns its own loop, so it starts its own pass.
+     *
+     * `beginFrame` invalidates the shared downscale of the camera that every consumer reads from.
+     * Without it this loop would draw whatever the thumbnail loop last cached - a frame up to
+     * 100 ms stale, and a permanently FROZEN one whenever the thumbnails idle, which they do as
+     * soon as no thumbnail is on screen. Six outputs showing a still of the creator while the
+     * stage beside them moves is the precise failure this panel exists to disprove.
+     */
+    picture.beginFrame();
     for (const cell of cells) drawCell(cell);
   }
 
