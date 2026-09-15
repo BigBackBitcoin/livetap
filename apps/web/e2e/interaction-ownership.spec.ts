@@ -681,13 +681,26 @@ test.describe('the landing page, with a frame dropped', () => {
  *     the full column, which is what pulls the shape control and MUTE under it.
  *   · `apps/web/src/components/Tour.tsx:20` the comment that has to become true again.
  *
- * Not fixed here: `Tour.tsx` and `tour.css` are not this team's files. `test.fail()` so the
- * reproduction stands and turns green the moment the card stops landing on other controls.
+ * FIXED 2026-09-15, and not by moving the card.
+ *
+ * A fixed thing over a scrolling document covers SOMETHING at some scroll offset, so choosing a
+ * corner only decides which control breaks next time the layout moves. The offer takes ROOM
+ * instead: it is now a `Banner` in `<main>`'s own flow, one slot above `MockBanner`, which is
+ * the same shape the demo banner already uses. Nothing can be underneath a thing that is not
+ * over anything.
+ *
+ * The distinction that survives this fix, and the reason the beats did not change: AN OVERLAY
+ * NOBODY ASKED FOR MAY NOT TAKE A RECTANGLE OF THE WORKING PRODUCT. The offer arrives unbidden
+ * on a first visit, so it is a banner. The beats are opened by pressing "Show me", they ring a
+ * control the tour brought you to, and Escape or the close button ends them — a mode a person
+ * chose, which is allowed to float.
+ *
+ * `test.fail()` is gone. The union below is asked of BOTH surfaces, so the beats are held to
+ * the same standard the offer now meets by construction.
  */
 test.describe('the Quick Tour offer', () => {
   for (const viewport of VIEWPORTS) {
     test(`does not cover the controls behind it at ${viewport.name}`, async ({ page }) => {
-      test.fail();
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await seedApp(page, { destinations: 2 });
       await page.goto('/app/studio');
@@ -695,7 +708,10 @@ test.describe('the Quick Tour offer', () => {
       await page.waitForTimeout(900);
 
       // If the offer is not showing, there is nothing to measure and nothing to claim.
-      expect(await page.locator('.lt-tour__card').count(), 'the tour offer did not appear').toBe(1);
+      expect(
+        await page.locator('[data-lt-tour="offer"]').count(),
+        'the tour offer did not appear',
+      ).toBe(1);
 
       /*
        * The right question for a card pinned to the viewport is not "is some control covered
@@ -707,6 +723,8 @@ test.describe('the Quick Tour offer', () => {
       const shadowed = await page.evaluate(async () => {
         const SELECTOR =
           'button, a[href], input, select, textarea, [role="switch"], [role="radio"], [role="tab"]';
+        /* Both of the tour's surfaces: the fixed beat layer, and the in-flow offer banner. */
+        const TOUR = '.lt-tour, [data-lt-tour]';
         const describe = (node: Element): string => {
           const raw = typeof node.className === 'string' ? node.className.trim() : '';
           return (node.tagName.toLowerCase() + (raw ? '.' + raw.split(/\s+/).join('.') : '')).slice(
@@ -720,14 +738,14 @@ test.describe('the Quick Tour offer', () => {
           scrollTo({ top: y, behavior: 'instant' });
           await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           for (const el of Array.from(document.querySelectorAll<HTMLElement>(SELECTOR))) {
-            if (el.closest('.lt-tour')) continue;
+            if (el.closest(TOUR)) continue;
             const r = el.getBoundingClientRect();
             if (r.width < 4 || r.height < 4) continue;
             if (r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth) continue;
             const cs = getComputedStyle(el);
             if (cs.visibility === 'hidden' || cs.pointerEvents === 'none') continue;
             const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-            if (!hit?.closest('.lt-tour')) continue;
+            if (!hit?.closest(TOUR)) continue;
             seen.set(
               describe(el),
               (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 40) +

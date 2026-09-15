@@ -104,7 +104,20 @@ export function AppShell(): ReactElement {
         </div>
       </nav>
 
+      {/*
+        The Quick Tour sits INSIDE `<main>`, above the demo banner, because its offer is a
+        banner in the flow rather than an overlay — see the long note in `Tour.tsx`. A fixed
+        card pinned to the top of the viewport covered `MockBanner`'s own action link on a desk
+        and the shape control, the mic picker and MUTE on a phone, and no position exists that
+        is empty at every scroll offset. Taking room is the fix; taking a corner is not.
+
+        It renders nothing at all while the production is not idle, so it and `LiveBar` can
+        never be on screen together — see the three guarantees documented in `Tour.tsx`. The
+        beats it shows once the creator presses "Show me" are still a fixed layer, at
+        `--lt-z-golive` (40), far below `--lt-z-livebar` (900).
+      */}
       <main className="lt-shell__main" id="lt-main">
+        <Tour />
         <MockBanner />
         <Outlet />
       </main>
@@ -114,13 +127,6 @@ export function AppShell(): ReactElement {
         cannot unmount it. This is the whole answer to "END is cancelled by navigating away".
       */}
       <LiveBar />
-
-      {/*
-        The Quick Tour, after `LiveBar` in the DOM and beneath it in the stacking scale.
-        It renders nothing at all while the production is not idle, so the two can never be on
-        screen together — see the guarantees documented in `Tour.tsx`.
-      */}
-      <Tour />
 
       <NoticeRegion />
     </div>

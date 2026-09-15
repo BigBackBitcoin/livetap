@@ -42,6 +42,25 @@
 }
 
 /*
+ * THE OFFER: a banner in the page's own flow, not a layer over it.
+ *
+ * It is a slot and a `Banner`, the same shape `MockBanner` uses one row below, so it takes room
+ * instead of taking clicks. There is nothing to position and nothing to pin, which is the whole
+ * point — a fixed card covers SOMETHING at some scroll offset, and choosing which control that
+ * is was how this became a defect. The only rule here is that the two buttons stay on one line
+ * with the question until there is no room for them.
+ */
+.lt-tour__offerbar .lt-tour__actions {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 519.98px) {
+  .lt-tour__offerbar .lt-tour__actions {
+    flex-wrap: wrap;
+  }
+}
+
+/*
  * Top of the screen, at every width, deliberately.
  *
  * The bottom edge is where the pinned GO LIVE bar lives below 1025px and where `LiveBar` lives

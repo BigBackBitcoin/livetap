@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Icons, IconButton, useReducedMotion } from '@livetap/ui';
+import { Banner, Icons, IconButton, useReducedMotion } from '@livetap/ui';
 import { useAppStore } from '../state/store.js';
 import './tour.css';
 
@@ -323,35 +323,62 @@ export function Tour(): ReactElement | null {
    */
   if (live || !onboardingDone || phase === 'done') return null;
 
+  /*
+   * THE OFFER IS A BANNER, NOT AN OVERLAY, AND THAT IS THE FIX FOR A REAL DEFECT.
+   *
+   * It used to be the same fixed `.lt-tour__card` the beats use, pinned to the top of the
+   * viewport. The header comment above promised "the page behind is fully usable while the tour
+   * is up", and it was not true: the card parked in the corner `MockBanner`'s own "Manage demo
+   * destinations" link occupies, and at phone widths `tour.css` widened it across the whole
+   * column, so the stream-shape radios, the health pill, the microphone picker and MUTE all
+   * answered the tour instead of themselves, depending on scroll position. MUTE is the control
+   * this product's own spec calls the most common silent failure in the category.
+   *
+   * Moving the card somewhere emptier is not a fix — a fixed thing over a scrolling document
+   * covers SOMETHING at some scroll position, and picking the position is how this bug comes
+   * back the next time the layout changes. Taking room instead of taking clicks is structural:
+   * a banner in the flow cannot cover a control at any scroll position, at any width, because
+   * there is nothing underneath it. `MockBanner` is the same shape, one slot above.
+   *
+   * The distinction this encodes: AN OVERLAY NOBODY ASKED FOR MAY NOT TAKE A RECTANGLE OF THE
+   * WORKING PRODUCT. The beats below are different — the creator opened them by pressing "Show
+   * me", they ring a control they were brought to, and Escape or the close button ends them.
+   * That is a mode someone chose, and it is allowed to float.
+   */
   if (phase === 'offer') {
     return (
-      <div className="lt-tour" data-lt-tour="offer" aria-live="polite">
-        <div className="lt-tour__card" role="region" aria-label="Quick tour">
-          <p className="lt-tour__offer">Thirty seconds on how this works?</p>
-          <div className="lt-tour__actions">
-            <button
-              type="button"
-              className="lt-btn lt-btn--primary lt-btn--sm lt-touch"
-              onClick={() => {
-                // The step is written now, not on the first Next: a reload one second into the
-                // tour must resume at beat one, not decide the whole thing was already done.
-                writeLocal(STEP_KEY, '0');
-                setStep(0);
-                setManual(false);
-                answer('running');
-              }}
-            >
-              <span className="lt-btn__label">Show me</span>
-            </button>
-            <button
-              type="button"
-              className="lt-btn lt-btn--ghost lt-btn--sm lt-touch"
-              onClick={() => answer('done')}
-            >
-              <span className="lt-btn__label">No thanks</span>
-            </button>
-          </div>
-        </div>
+      <div className="lt-bannerslot lt-tour__offerbar" data-lt-tour="offer" aria-live="polite">
+        <Banner
+          tone="info"
+          icon={<Icons.play size={20} />}
+          action={
+            <div className="lt-tour__actions">
+              <button
+                type="button"
+                className="lt-btn lt-btn--primary lt-btn--sm lt-touch"
+                onClick={() => {
+                  // The step is written now, not on the first Next: a reload one second into the
+                  // tour must resume at beat one, not decide the whole thing was already done.
+                  writeLocal(STEP_KEY, '0');
+                  setStep(0);
+                  setManual(false);
+                  answer('running');
+                }}
+              >
+                <span className="lt-btn__label">Show me</span>
+              </button>
+              <button
+                type="button"
+                className="lt-btn lt-btn--ghost lt-btn--sm lt-touch"
+                onClick={() => answer('done')}
+              >
+                <span className="lt-btn__label">No thanks</span>
+              </button>
+            </div>
+          }
+        >
+          Thirty seconds on how this works?
+        </Banner>
       </div>
     );
   }
