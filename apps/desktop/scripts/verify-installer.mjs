@@ -275,6 +275,51 @@ if (existsSync(asarPath)) {
       mode.mockMode === false && mode.viteEnv?.VITE_LIVETAP_MOCK_MODE === 'false',
       'this installer carries the DEMO renderer: every adapter and the engine are simulated',
     );
+
+    /*
+     * Is this installer the one you just built, or the one from last time?
+     *
+     * Nothing above can tell. Every check here reads the artifact, and a stale artifact is
+     * internally consistent with itself: its asar, its build-mode.json and its folded constant all
+     * agree, because they all came from the same older build. This passed 30/30 on an installer
+     * that was ninety minutes old, while electron-builder had in fact failed and left the previous
+     * one in place — and the SHA-256 matching the last build's exactly was the most convincing
+     * possible way to be wrong about what was being shipped.
+     *
+     * So: the renderer on disk is where the next build's bytes come from, and if it is NEWER than
+     * the installer, the installer does not contain it.
+     */
+    const rendererMode = join(DESKTOP, 'dist', 'renderer', 'build-mode.json');
+    if (existsSync(rendererMode)) {
+      const onDisk = JSON.parse(readFileSync(rendererMode, 'utf8'));
+      const packagedAt = Date.parse(mode.builtAt ?? '');
+      const builtAt = Date.parse(onDisk.builtAt ?? '');
+      check(
+        'the unpacked app contains the renderer currently on disk, not an older one',
+        Number.isFinite(packagedAt) && Number.isFinite(builtAt) && packagedAt >= builtAt,
+        `dist/renderer was built at ${onDisk.builtAt} and this app.asar carries ${mode.builtAt}. ` +
+          'electron-builder most likely failed and left the previous output in release/. ' +
+          'Check the packaging output rather than trusting release/.',
+      );
+
+      /*
+       * And the same question about the INSTALLER, which is the thing that ships.
+       *
+       * electron-builder writes `win-unpacked/` first and the .exe last, so a run that dies in
+       * between leaves a fresh unpacked directory beside a stale installer — and every check above
+       * reads the unpacked one. That is not hypothetical: it is what this script did, passing
+       * 30/30 while the .exe on disk was ninety minutes and several fixes old.
+       */
+      const installerAt = statSync(installerPath).mtimeMs;
+      const rendererAt = statSync(rendererMode).mtimeMs;
+      check(
+        'the INSTALLER is newer than the renderer it is supposed to contain',
+        installerAt >= rendererAt,
+        `the .exe was written ${Math.round((rendererAt - installerAt) / 60000)} minutes BEFORE the ` +
+          'renderer it claims to carry. The packaging run did not finish; the artifact in release/ ' +
+          'is the previous one.',
+      );
+    }
   }
 
   const chunks = [...asar.keys()].filter(

@@ -160,12 +160,23 @@ rest is the first thing to find out.
    Presentation, Event, Vertical Live), or **Skip setup**.
 3. **Let it see your camera and microphone.** Windows prompts per device on first use. If you say no,
    the app keeps working with whatever it still has and says so rather than pretending.
-4. **Add a destination.** Go to **Destinations**. For the alpha, use the paste-a-key path rather than
-   OAuth: open your platform's own studio page, copy the **RTMP ingest URL** and the **stream key**,
-   and paste both in. This needs no OAuth app, no review queue and no approval.
-   - YouTube: Studio → Go live → Stream → "Stream URL" + "Stream key"
-   - Twitch: Creator Dashboard → Settings → Stream → "Primary Stream key"
-   - Anything else with an RTMP ingest: the Custom destination.
+4. **Add a destination — tap the platform, not "Custom".** Go to **Destinations** →
+   **Add destination** → **YouTube**. LIVETAP looks for an OAuth client for YouTube, finds none in
+   this build, and opens a paste form **already pointed at YouTube**: the server address is
+   pre-filled with `rtmp://a.rtmp.youtube.com/live2` and the destination is already named YouTube.
+   The only thing you type is the stream key.
+   - YouTube: Studio → Go live → Stream → **Stream key** (the Stream URL is already filled in)
+   - Twitch: Creator Dashboard → Settings → Stream → **Primary Stream key**
+   - Anything else with an RTMP ingest: the Custom destination takes both halves.
+
+   This is a real destination of that real platform, not a generic one: it carries YouTube's aspect
+   ratios, YouTube's bitrate ceiling, and YouTube's own warning that it will not publish until you
+   press **Go live** in Studio. It needs no OAuth app, no review queue and no approval.
+
+   **CONFIRMED**, unlike the rest of this section: `npm run verify:paste` drives exactly this flow
+   through the built app and puts real encoded bytes on a real RTMP wire. What it cannot prove is
+   that youtube.com accepts them — that is step 5 on your own channel.
+
    Keys are stored through the OS credential store (DPAPI via Electron `safeStorage`) and are
    redacted in logs.
 5. **Go live.** Back in Studio, check the preview, then press **GO LIVE**. The state the app shows
@@ -173,6 +184,15 @@ rest is the first thing to find out.
    established.
 6. **Stop.** Press the same control to end. Recordings, if you enabled them, land under
    `%APPDATA%\LIVETAP\recordings`.
+
+### One thing it does on its own, so you are not surprised by it
+
+On launch the app asks `https://livetap.vercel.app/api/oauth/config` which platforms this
+deployment can sign you in to. That is your own Vercel deployment, it is the only call the app makes
+that you did not ask for, it carries no identifier of you, and its answer decides one thing: whether
+tapping YouTube opens a sign-in or the paste form. With nothing registered it answers "none", which
+is why the paste path is what you get. Set `VITE_LIVETAP_BROKER_URL` at build time to point it
+somewhere else.
 
 ### If something goes wrong
 
