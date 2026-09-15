@@ -70,12 +70,24 @@ export interface MediaStreamAudioDestinationLike extends AudioNodeLike {
   stream: MediaStream;
 }
 
+/** A node that emits a constant value forever. LIVETAP runs one at offset 0 as silence. */
+export interface ConstantSourceLike extends AudioNodeLike {
+  offset: AudioParamLike;
+  start(when?: number): void;
+  stop?(when?: number): void;
+}
+
 export interface AudioContextLike {
   readonly state?: string;
   readonly destination: unknown;
   createGain(): GainNodeLike;
   createMediaStreamSource(stream: MediaStream): AudioNodeLike;
   createMediaStreamDestination(): MediaStreamAudioDestinationLike;
+  /**
+   * Optional: a silent heartbeat for the mix, so the destination always has a live input even
+   * when there is no microphone and no system audio. See `buildAudioMix` for why that matters.
+   */
+  createConstantSource?(): ConstantSourceLike;
   resume?(): Promise<void>;
   close?(): Promise<void>;
 }

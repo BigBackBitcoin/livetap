@@ -16,7 +16,13 @@
  */
 import type { ErrorCode, Moment } from '@livetap/core';
 import type { DrawableSource } from '../compositor/types.js';
-import type { AudioContextLike, GainNodeLike, MediaStreamAudioDestinationLike, ResolvedDeps } from '../browser/deps.js';
+import type {
+  AudioContextLike,
+  ConstantSourceLike,
+  GainNodeLike,
+  MediaStreamAudioDestinationLike,
+  ResolvedDeps,
+} from '../browser/deps.js';
 
 const DEFAULT_WARM_MS = 5000;
 
@@ -61,6 +67,8 @@ export class LocalSources {
   private systemAudioStream: MediaStream | null = null;
 
   private audioContext: AudioContextLike | null = null;
+  /** The silent heartbeat that keeps the mix rendering when nothing else is connected. */
+  private silence: ConstantSourceLike | null = null;
   private audioDestination: MediaStreamAudioDestinationLike | null = null;
   private micGain: GainNodeLike | null = null;
   private systemGain: GainNodeLike | null = null;
@@ -364,6 +372,39 @@ export class LocalSources {
         gain.connect(destination);
         this.systemGain = gain;
       }
+      /*
+       * A SILENT HEARTBEAT, so the mix always has a live input.
+       *
+       * With no microphone and no system audio — a server, a laptop with the mic disabled,
+       * anyone who picked "No microphone" — nothing above connects, and the destination node is
+       * left with NO inputs at all. Its track still reports `readyState: "live"`, which is what
+       * made this so hard to see, but a WebAudio graph with nothing connected to the destination
+       * has no reason to render, so the track delivers no audio frames. `MediaRecorder` will not
+       * emit a chunk until every track in its stream has produced data, so the recorder stalls
+       * before the first chunk, the encoder ffmpeg receives nothing, and the sender ffmpeg never
+       * writes a header — which is why, on a host with no capture devices, six ffmpeg processes
+       * spawn and not one of them ever opens a TCP connection to the server.
+       *
+       * Measured on the owner's build host: with a capture device, 3 of 3 publishers and three
+       * shapes decoded off disk; without one, 0 of 3 and not a single `[RTMP] conn opened` line
+       * in the receiver's log. See docs/qa/NO_CAPTURE_DEVICE_DEFECT.md.
+       *
+       * A ConstantSourceNode at offset 0 is exactly silence, costs one node, and gives the graph
+       * a reason to pull forever. It is also what the product already TELLS the creator it does:
+       * "LIVETAP is streaming silence rather than stopping your broadcast."
+       */
+      if (!this.silence && typeof ctx.createConstantSource === 'function') {
+        try {
+          const quiet = ctx.createConstantSource();
+          quiet.offset.value = 0;
+          quiet.connect(destination);
+          quiet.start();
+          this.silence = quiet;
+        } catch {
+          /* An engine without ConstantSourceNode keeps the old behaviour rather than failing. */
+        }
+      }
+
       if (moment) this.refreshGains(moment);
       void ctx.resume?.().catch?.(() => undefined);
       return destination.stream;
@@ -382,12 +423,15 @@ export class LocalSources {
     try {
       this.micGain?.disconnect();
       this.systemGain?.disconnect();
+      this.silence?.stop?.();
+      this.silence?.disconnect();
       void this.audioContext?.close?.().catch?.(() => undefined);
     } catch {
       /* ignore */
     }
     this.micGain = null;
     this.systemGain = null;
+    this.silence = null;
     this.audioDestination = null;
     this.audioContext = null;
   }

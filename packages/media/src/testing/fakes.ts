@@ -10,6 +10,7 @@ import type {
   AudioContextCtorLike,
   AudioContextLike,
   AudioNodeLike,
+  ConstantSourceLike,
   GainNodeLike,
   MediaRecorderCtorLike,
   MediaRecorderLike,
@@ -464,12 +465,45 @@ export class FakeAudioContext implements AudioContextLike {
     };
   }
 
+  /** Every ConstantSourceNode this context has handed out, so a test can see the silence. */
+  readonly constantSources: FakeConstantSource[] = [];
+
+  createConstantSource(): ConstantSourceLike {
+    const node = new FakeConstantSource();
+    this.constantSources.push(node);
+    return node;
+  }
+
   async resume(): Promise<void> {
     /* no-op */
   }
 
   async close(): Promise<void> {
     this.closed = true;
+  }
+}
+
+export class FakeConstantSource implements ConstantSourceLike {
+  offset = { value: 1 };
+  connected = 0;
+  started = false;
+  stopped = false;
+
+  connect(): unknown {
+    this.connected += 1;
+    return this;
+  }
+
+  disconnect(): void {
+    this.connected = 0;
+  }
+
+  start(): void {
+    this.started = true;
+  }
+
+  stop(): void {
+    this.stopped = true;
   }
 }
 
