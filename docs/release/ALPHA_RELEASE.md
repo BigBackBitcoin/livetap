@@ -11,11 +11,11 @@ command whose output is quoted, or clearly labelled as untested.
 |---|---|
 | File | `apps/desktop/release/LIVETAP-0.1.0-win-x64.exe` |
 | Kind | NSIS installer, per-user (no admin password needed) |
-| Size | 230,661,718 bytes (220 MB) |
-| SHA-256 | `52952ee8ecbe79c6ece1fe4732bd7021f3df806c3ae950bfab493a402643f65a` |
+| Size | 230,666,763 bytes (220 MB) |
+| SHA-256 | `9f148bce093afac1340e4f1b2517798ab65b61b52dd40b8049addf83add07001` |
 | Version | 0.1.0 |
-| Built from commit | `3ec7f8fbf0b4fd8a86cae847dc5d27295778ce3e` **plus uncommitted working-tree changes** — see §7 |
-| Built | 2026-09-15T06:22:53Z |
+| Built from commit | `d255ceb28278896703440669c0aecaee111d63b7` |
+| Built | 2026-09-15T08:18:02.933Z |
 | Platform | Windows x64 only. macOS is unbuilt: there is no Mac here. |
 | Electron | 44.3.0 |
 | Signed | **No.** See §4. |
@@ -25,7 +25,7 @@ Check the download matches before installing:
 
 ```powershell
 certutil -hashfile LIVETAP-0.1.0-win-x64.exe SHA256
-# 52952ee8ecbe79c6ece1fe4732bd7021f3df806c3ae950bfab493a402643f65a
+# 9f148bce093afac1340e4f1b2517798ab65b61b52dd40b8049addf83add07001
 ```
 
 ### Why it is 220 MB

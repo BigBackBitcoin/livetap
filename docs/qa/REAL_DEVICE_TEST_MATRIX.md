@@ -105,8 +105,8 @@ in this app's dependency graph except `apps/web`, which is what was actually
 built into the bundle below). Re-run the same command to reproduce.
 
 - **APK:** `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
-- **SHA-256:** `0674ed32c4f1c331e0643f6986d5c6fa8c0a97b674009a7756b19e54e8526743`
-- **Size:** 10,151,907 bytes (9.68 MiB)
+- **SHA-256:** `29d943b535ed33c0a3a9a85bc34d7976782a85114f9f96582d67e56615b1ec5e`
+- **Size:** 10,196,764 bytes (9.68 MiB)
 - **Package id:** `app.livetap.mobile`
 - **Version:** versionName `1.0`, versionCode `1`
 - **SDK range:** minSdkVersion 26 (Android 8.0), targetSdkVersion 36 (Android 16), compileSdk 36

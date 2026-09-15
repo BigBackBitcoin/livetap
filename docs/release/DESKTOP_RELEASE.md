@@ -126,7 +126,7 @@ EXIT=0
 | `latest.yml` (electron-updater feed) | 347 B |
 | `release/win-unpacked/` on disk | ~794 MB |
 
-SHA-256 of the installer: `52952ee8ecbe79c6ece1fe4732bd7021f3df806c3ae950bfab493a402643f65a`.
+SHA-256 of the installer: `9f148bce093afac1340e4f1b2517798ab65b61b52dd40b8049addf83add07001`.
 
 Verified afterwards, both exit 0:
 
