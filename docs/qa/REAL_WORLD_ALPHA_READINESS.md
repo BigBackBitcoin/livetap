@@ -31,15 +31,73 @@ passing unit test of the arithmetic behind a feature is not the feature.
 | 8 | REAL FAILURE ISOLATION | **PASS** | A real TCP kill on one live publisher; the survivors climbed 3,195,228 → 3,529,560 bytes through it and the app went on reporting a live broadcast |
 | 9 | REAL RECONNECT | **PASS** | `live/tall republished on its own 18.9s after the drop`, carried real bytes again (1,646,584 → 1,904,519), came back as H264 1080x1920 — the shape it left — and the app stopped calling it reconnecting. The first run that asserted this found it **broken**: see "What the harness caught" |
 | 10 | REAL SECURITY | **PASS, with the findings listed** | `docs/security/REAL_CREDENTIAL_SECURITY.md`. 83 security assertions plus a 55-assertion secret-log harness. The HIGH finding — desktop token storage was silently unreadable — is fixed |
-| 11 | NO CRITICAL CLICK-THROUGH | `apps/web/e2e/interaction-ownership.spec.ts` | A grid of points across every route and viewport, asserting nothing hit-testable is invisible. This class of bug has been found here three times |
-| 12 | NO UNREACHABLE END CONTROL | `apps/web/e2e/end-invariant.spec.ts` | The stop control present, topmost at its own centre point, keyboard-reachable and functional across the state matrix |
+| 11 | NO CRITICAL CLICK-THROUGH | **PASS** | `apps/web/e2e/interaction-ownership.spec.ts` — a grid of points across every route and viewport asserting nothing hit-testable is invisible. This class of bug has been found here **four** times, so the guard is no longer JavaScript: `.ltp-band` derives `--ltp-touchable` from the same expression as its opacity and clips itself to zero area, which holds with the main thread starved for 350 ms. The fourth instance was the guard's own OPEN end — `inset(0)` clips to the border box, which broke the one band that paints outside it — fixed in `18f7702` and pinned by a test that hit-tests both ends of the switch. The Quick Tour offer, the last surface that answered for controls it did not own, became a banner in the flow in `38ddd2b` |
+| 12 | NO UNREACHABLE END CONTROL | **PASS** | `apps/web/e2e/end-invariant.spec.ts` — the stop control present, topmost at its own centre point, keyboard-reachable and functional across the state matrix. Reinforced in `de16128`: an armed countdown no longer survives a route change invisibly, because the clock moved into the store and leaving the studio cancels it audibly rather than silently going live on return |
 | 13 | REAL 16:9 | **PASS** | 1920x1080, parsed from the stream's own SPS |
 | 14 | REAL 9:16 | **PASS** | 1080x1920 — a true vertical composition, not a letterboxed wide one. The dimensions on the wire are the only thing that can tell those apart, which is why they are asserted there |
 | 15 | REAL 1:1 | **PASS** | 1080x1080, simultaneously with the other two |
 | 16 | STUDIO PARITY | **PARTIAL** | The app and the public page share the camera, media, Moments, format engine, destination model, broadcast state and output composition. The drag-off-stage signature move is now real in the app and stops an actual destination. The public page keeps playgrounds the app has no use for |
 | 17 | PERFORMANCE ACCEPTABLE | **PASS on this host, with the ceiling stated** | The reported 22.5 fps and 18 canvases reproduce on the MARKETING page, which runs at 60.2 fps. The studio has three canvases, none in the DOM. The multi-second task was `localStorage.getItem` at 1017 ms, now read once. This VM's own idle rAF ceiling is 31 fps, so 60 is unreachable here regardless of code |
 | 18 | UX / TYPOGRAPHY / SPACING | **PASS** | Six control heights became the three that were declared; card padding unified; the icon `size` prop fixed, having never worked anywhere in the product; clipped device labels, an 880px control around 230px of content, and a claim about a level meter this product does not draw, all gone. `packages/ui/src/scale.test.ts` fails on a spacing literal, a fourth control height or a fifth icon size |
-| 19 | FIRST-TIME CREATOR EXPERIENCE | **NOT YET RETESTED** | §40 requires an independent blind audit that has not read this document. It has not been run against the final build |
+| 19 | FIRST-TIME CREATOR EXPERIENCE | **NOT YET RETESTED** | §40 requires an independent blind audit that has not read this document. The most recent scored audit is A3 at **114/150** against `471d998`, and the defects it opened have since been fixed — but a score is not inherited by a later build, so this row stays open until an audit is run against the released artifacts |
+
+---
+
+## Reconciliation with the independent status audit
+
+A second session audited this product on the same day, against `18f7702`, and
+wrote `LIVETAP_100_PERCENT_PRODUCT_STATUS.md`. It scores the product at **50%
+overall** and recommends **C — functional prototype**. This document is a wall of
+PASS. Both are in the repository and a reader deserves to know why they disagree,
+because the answer is not that one of them is wrong.
+
+**They measure different questions.**
+
+This document answers *"is the capability real on this host"* — the gate the
+owner's §41 release list actually asks. Its rule is stated at the top: a row is
+PASS only if something was executed that would have failed had the capability
+been absent. By that rule REAL BROADCAST is a genuine PASS, because ffprobe
+decoded H.264 at 1920x1080, 1080x1920 and 1080x1080 off a real server's disk.
+
+The audit answers *"what can the owner do today"*. By that rule the same fact is
+30%, because the only way to reach it is to build from source, on Windows, with a
+pasted stream key.
+
+Both are true at once, and the second is the one that matters to a person trying
+to use this. **Where the two disagree, prefer the audit**, and treat this table as
+what has been proven rather than as what is available.
+
+**The four facts the audit is right about, which this table does not say loudly
+enough:**
+
+1. **The deployed website broadcasts nothing.** Mock mode is on, no relay is
+   deployed, and a browser has no RTMP socket. The product says so itself in its
+   own banner, so it is honest — but the central thesis is undelivered on the one
+   surface a stranger actually visits. Deploying `infra/relay/` is the single
+   change that moves it, and it is blocked here by a system Caddy on 443/80/2019
+   and gated on the owner's DNS and certificates.
+2. **No OAuth client is configured on any surface.** `GET /api/oauth/config`
+   returns `mockMode:true` with all four platforms `configured:false`. Row 3 says
+   the flow is real and it is; nobody can use it today. Owner-only dependency,
+   steps in `docs/OWNER_ACTIONS.md`.
+3. **A reused receiver was recorded as PASS** by the completion gate, so every
+   gate run that found one listening carried unmeasured shared state. Fixed in
+   `508c1a2` — it is a WARN now, it says how old the receiver is and how many
+   recordings predate the run, and `--own-receiver` refuses to share one at all.
+   Rows 6 through 9 rest on gate runs made before that fix.
+4. **Bond is a workspace package with no dependents.** Not merely unimported:
+   `grep -rn "@livetap/bond" apps packages` outside its own package returns
+   nothing, and the only `package.json` hit is its own name. It carries no part
+   of the shipping media path.
+
+**One finding from that audit is open and deliberately not resolved here.** It
+reported `live on 1 of 3` from one gate run and all three from another, minutes
+apart on the same HEAD, and downgraded it in writing to a P0-candidate marked
+CONFOUNDED once it emerged that both runs shared a receiver with a concurrent
+session. It needs one isolated re-run — one session, one receiver, an empty
+recordings tree — before anyone treats it as a defect or dismisses it. That run
+is pending and its outcome will be recorded either way, including if it vindicates
+the original instinct.
 
 ---
 
