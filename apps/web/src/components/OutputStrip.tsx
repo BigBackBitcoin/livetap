@@ -67,13 +67,25 @@ export function OutputStrip(): ReactElement | null {
 function OutputPicture({ aspect, live }: { aspect: AspectRatio; live: boolean }): ReactElement {
   const video = useRef<HTMLVideoElement | null>(null);
 
+  /*
+   * Point at the engine's stream for this format, and leave it pointed there.
+   *
+   * Assigning `srcObject` is not free even when the value is unchanged: the element tears its
+   * pipeline down and rebuilds it, which on these tiles showed as every output picture blinking
+   * black at the moment the broadcast went live - the one moment a creator is watching them to
+   * check that each shape looks right. The `live` dependency is what caused it, and it has to
+   * stay, because going live is also when a format's capture can legitimately be rebuilt. So the
+   * effect still runs; the assignment is what became conditional.
+   */
   useEffect(() => {
     const el = video.current;
     if (!el) return;
     const stream = currentFormatRenderer()?.streamFor(aspect) ?? null;
-    if (stream) el.srcObject = stream;
-    const played = el.play?.();
-    if (played && typeof played.catch === 'function') played.catch(() => undefined);
+    if (stream && el.srcObject !== stream) el.srcObject = stream;
+    if (el.srcObject && el.paused) {
+      const played = el.play?.();
+      if (played && typeof played.catch === 'function') played.catch(() => undefined);
+    }
   }, [aspect, live]);
 
   return <video ref={video} className="lt-output__video" muted playsInline autoPlay aria-hidden="true" />;

@@ -1,6 +1,9 @@
 # HANDOFF — LIVETAP
 
-Status: **REAL-WORLD PERSONAL ALPHA — the completion gate passes 4/4 (2026-09-15).** Everything below is
+Status: **REAL-WORLD ALPHA SHIP, in progress (2026-09-15).** The completion gate
+proves a real three-shape broadcast with failure isolation and a clean END; its
+newest assertion, that a dropped destination comes BACK, found that feature
+broken and the fix is not yet re-verified end to end. Everything below is
 verified on the build host unless labelled otherwise; see IMPLEMENTATION_STATUS.md for
 per-area labels and BLOCKERS.md for the human dependency queue. Release audit:
 docs/release/RELEASE_AUDIT.md.
@@ -21,65 +24,60 @@ docs/release/RELEASE_AUDIT.md.
 
 ## The state of the broadcast, in two sentences
 
-A real two-destination broadcast was measured on 2026-09-14 at 12:43: real
-getUserMedia, real canvases, real MediaRecorder, real IPC, real ffmpeg, two real
-RTMP publishers at 1920x1080 and 1080x1920, a real mid-broadcast TCP kill that the
-survivor rode through, and a clean END. It does **not** reproduce on a rebuild, for
-the two reasons named below, and fixing them is the shortest path to a green gate.
+The built desktop app captures through the real `getUserMedia`, composes one
+canvas per aspect ratio, encodes with Chromium, muxes with real ffmpeg and
+publishes **three simultaneous RTMP streams at 1920x1080, 1080x1920 and
+1080x1080** that a real server accepts and ffprobe decodes as H.264 plus AAC.
+One is dropped at the TCP level mid-broadcast and the others keep climbing; END
+clears every publisher, even if the creator leaves the studio mid-grace.
 
-## Open cross-workstream handoffs, 2026-09-14
+Nothing in that chain is mocked, and it reproduces from a clean build:
+`npm run verify:broadcast`.
 
-These were found by running the gate. Each names the file, the mechanism and the
-reason it matters. None of them was edited by the workstream that found them.
+## Resolved since 2026-09-14
 
-0. **A destination reports LIVE with no publisher behind it.** The most serious
-   item on this page, and the reason it is numbered zero. Build the desktop
-   renderer with `VITE_LIVETAP_MOCK_MODE=false`, add two Custom RTMP
-   destinations pointed at a running local receiver, tap GO LIVE and confirm.
-   Twelve seconds later the app reads `Live`, `0:07 · live on 2 of 2`, `You are
-   live on 2 destinations`, and both cards read `Custom RTMP · Live / Sending to
-   this destination` — while MediaMTX reports **zero publishers**. A LIVE badge
-   with no bytes on the wire is the worst defect this product can ship, and it
-   is invisible in every current build because mock mode is on everywhere and a
-   mock LIVE with no bytes is correct. Not diagnosed; reproduced twice.
-1. **`apps/web/src/state/registry.ts` — a Custom RTMP destination is simulated when
-   it does not need to be.** `createRegistry` returns `createMockAdapters()` for the
-   whole registry when `mockMode` is true, including `custom`. A Custom RTMP
-   destination needs no credentials and is the one path that works with nothing
-   configured anywhere, so simulating it makes the app's own "LIVETAP is not
-   broadcasting anywhere" banner accidentally true even when the creator pasted a
-   real server address. The right behaviour is already described in the file's own
-   comment for the other branch: register the real `CustomRtmpAdapter` (and the
-   paste-key profiles) on the mock branch too, and keep mock adapters only for the
-   account-based platforms.
-2. **`apps/desktop/package.json` — the desktop app builds in demo mode.**
-   `build:renderer` runs a bare `vite build` with `VITE_LIVETAP_MOCK_MODE` unset, and
-   mock mode is the default. The Android script already gets this right
-   (`apps/mobile/scripts/build-android.sh:57`).
-3. **The Studio screen points a returning creator at the wrong action.** Stream keys
-   are deliberately not persisted, so a destination restored from a previous session
-   comes back needing its key. The Destinations screen says exactly that ("is missing
-   something", "Paste a new key"). Studio says only "No destination is ready" and
-   offers "Add a destination", so the creator is told to create a second copy of a
-   destination they already have.
-4. **`packages/adapters/src/real/http.ts` — one redactor asymmetry, recorded not
-   hidden.** Its `redact` does not mask the `-authorization <token>` argv shape,
-   which `packages/core`'s `redactSecrets` does. That flag only ever appears in an
-   ffmpeg command line and never travels through the HTTP layer, so the split may be
-   correct; the secret-log test assigns the responsibility explicitly rather than
-   leaving it to be discovered. Decide and record which one owns it.
-5. **`apps/desktop/e2e/broadcast.mjs` cannot drive a non-demo build.** With mock
-   mode off, tapping GO LIVE raises a real-broadcast confirmation ("You are
-   about to broadcast to your connected accounts... This is not a demo",
-   **Yes, go live on 2** / **Not yet**). The driver taps `.lt-golive` and waits
-   for an in-button countdown, so it stops there and never reaches a broadcast.
-   Separately worth a decision: the plan called for that confirmation to be the
-   existing in-button countdown naming the real destinations, explicitly not a
-   modal over a live preview. What shipped is a confirmation surface.
-6. **Reconnect-and-return-to-LIVE is unverified end to end.** The gate asserts that
-   the surviving destination keeps climbing through a real TCP drop, which is the
-   half the product's promise rests on, and does not wait for the dropped destination
-   to republish and come back to LIVE.
+Every item that was open on this page a day ago, and what happened to it.
+
+0. **"A destination reports LIVE with no publisher behind it" — RESOLVED, and it
+   was two separate faults wearing one symptom.** The desktop renderer was being
+   built without `VITE_LIVETAP_MOCK_MODE=false`, so the app the owner would have
+   installed was a demo of itself; that is fixed and asserted on the artifact.
+   Underneath it sat a real one: the production reached LIVE when `engine.start()`
+   resolved, which means the encoder started, not that a byte arrived anywhere.
+   The production now becomes LIVE on the first `outputUp`, which every engine
+   emits only on evidence, and the clock starts with it.
+1. **Custom RTMP simulated when it need not be — RESOLVED**, and gone much
+   further: every platform whose API path is not configured now gets the real
+   paste adapter wearing its own profile.
+2. **The desktop app builds in demo mode — RESOLVED** (`scripts/build-renderer.mjs`).
+3. **Studio points a returning creator at the wrong action — RESOLVED.** Stream
+   keys are deliberately not persisted, so yesterday's destinations come back
+   listed and unusable, and Studio answered that with "add a destination". It now
+   names the destination whose key did not survive.
+4. **The `-authorization` redactor asymmetry — DECIDED.** `packages/core` owns it.
+   The asymmetry that actually mattered ran the other way and is fixed: core
+   masked URL userinfo for rtsp alone while the adapters' redactor covered rtsp,
+   srt, http(s) and ws(s) — and core is the one guarding the main-process log.
+5. **The driver cannot drive a non-demo build — RESOLVED**, and the coupling that
+   caused it is gone: both harnesses now ask `studio-controls.mjs` for controls
+   by what they do, and the product publishes `data-lt-stop` and `data-lt-connect`
+   to answer.
+6. **Reconnect-and-return-to-LIVE unverified — NOW VERIFIED AS BROKEN, AND FIXED.**
+   The gate watches for it now. Chromium emits a keyframe every 7.2 s and ffmpeg
+   gives a late joiner 5 s to learn the stream, so the reconnecting sender was
+   mathematically unable to lock on and died every time with "Could not write
+   header". The recorder now asks for a 2 s keyframe interval — which Twitch
+   requires anyway — and the sender gets a 20 s analyze window.
+
+## Open handoffs, 2026-09-15
+
+1. **The web surface cannot broadcast without a relay, and should say so louder.**
+   `BrowserEngine` honestly refuses RTMP with no WHIP relay configured, which is
+   correct, but the deployed site is where a curious visitor lands first.
+2. **Two `useElapsed` implementations** exist, in `Studio.tsx` and `LiveBar.tsx`.
+   They agree today. They are one edit from disagreeing about how long a
+   broadcast has been running.
+3. **macOS and iOS remain entirely unverified.** No Mac exists on this host.
 
 ## Where things are
 

@@ -6,18 +6,28 @@
  * were taken by hand once and then quoted for weeks; these are taken on demand, so an optimisation
  * can be shown to have worked rather than asserted to have.
  *
- *   node apps/web/scripts/perf-probe.mjs [--url=http://localhost:4173/] [--seconds=6]
+ *   node apps/web/scripts/perf-probe.mjs [--url=http://localhost:4183/] [--seconds=6]
  */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 
 const arg = (n, d) => process.argv.find((a) => a.startsWith(`--${n}=`))?.split('=')[1] ?? d;
 const seconds = Number(arg('seconds', 6));
-const target = arg('url', 'http://localhost:4173/');
+const target = arg('url', 'http://localhost:4183/');
 const label = arg('label', target);
 
 const webDir = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-const server = spawn(process.execPath, ['scripts/preview-server.mjs'], { cwd: webDir, stdio: 'ignore' });
+/*
+ * Its own port, deliberately.
+ *
+ * Playwright's `webServer` owns 4173 and is configured with `reuseExistingServer`, so a probe
+ * that starts and stops a server on that port while a suite is running pulls the floor out from
+ * under it: the suite reuses the probe's server, the probe exits and kills it, and forty tests
+ * fail with ERR_CONNECTION_REFUSED that have nothing wrong with them.
+ */
+const PROBE_PORT = '4183';
+
+const server = spawn(process.execPath, ['scripts/preview-server.mjs', 'dist', PROBE_PORT], { cwd: webDir, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 1500));
 
 const browser = await chromium.launch({

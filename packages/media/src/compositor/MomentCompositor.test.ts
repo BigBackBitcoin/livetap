@@ -334,6 +334,73 @@ describe('MomentCompositor', () => {
     compositor.stop();
   });
 
+  /**
+   * A 60 Hz display must not make a 30 fps format cost twice as much.
+   *
+   * This is the arithmetic the studio was paying: three formats, each composing a 1080-class frame
+   * on every animation frame, of which the encoder could use half. `captureStream(fps)` samples
+   * the canvas at the format's rate whatever the canvas does, so the extra frames were rendered
+   * and then discarded. The second half of the test is the one that matters more: under-delivering
+   * would starve a live encoder, which is a far worse bug than the one being fixed.
+   */
+  it('renders at the format fps, not at the display refresh rate', () => {
+    const frames: Array<(t: number) => void> = [];
+    const fake = createFakeCanvas();
+    const compositor = new MomentCompositor({
+      canvas: fake.canvas,
+      aspect: '16:9',
+      width: 1920,
+      height: 1080,
+      now,
+      raf: (cb) => frames.push(cb),
+      caf: () => {
+        frames.length = 0;
+      },
+    });
+    compositor.setMoment(moment({ id: 'a' }), 0);
+    compositor.start(30);
+
+    // One second of a 60 Hz display: 60 animation frames.
+    for (let i = 0; i < 60; i += 1) {
+      clock = Math.round((i * 1000) / 60);
+      const next = frames.pop();
+      frames.length = 0;
+      next?.(clock);
+    }
+
+    expect(compositor.frameCount).toBeGreaterThanOrEqual(30);
+    expect(compositor.frameCount).toBeLessThanOrEqual(32);
+    compositor.stop();
+  });
+
+  it('renders on every animation frame when the format asks for the display rate', () => {
+    const frames: Array<(t: number) => void> = [];
+    const fake = createFakeCanvas();
+    const compositor = new MomentCompositor({
+      canvas: fake.canvas,
+      aspect: '16:9',
+      width: 1920,
+      height: 1080,
+      now,
+      raf: (cb) => frames.push(cb),
+      caf: () => {
+        frames.length = 0;
+      },
+    });
+    compositor.setMoment(moment({ id: 'a' }), 0);
+    compositor.start(60);
+
+    for (let i = 0; i < 60; i += 1) {
+      clock = Math.round((i * 1000) / 60);
+      const next = frames.pop();
+      frames.length = 0;
+      next?.(clock);
+    }
+
+    expect(compositor.frameCount).toBe(60);
+    compositor.stop();
+  });
+
   it('start is idempotent', () => {
     const { compositor } = build();
     compositor.start(30);

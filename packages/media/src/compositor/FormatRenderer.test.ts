@@ -57,6 +57,41 @@ function build(options: { audioTracks?: () => MediaStreamTrack[] } = {}) {
   return { renderer, canvases };
 }
 
+/**
+ * A renderer whose loop and clock the test owns, so "which formats were composed in which task"
+ * is an observable fact rather than a matter of timing.
+ */
+function buildDriven() {
+  const canvases: Array<ReturnType<typeof createFakeCanvas>> = [];
+  const source = createFakeVideoSource(1280, 720);
+  let clock = 0;
+  const pending: Array<(t: number) => void> = [];
+  const renderer = new FormatRenderer({
+    createCanvas: (width, height) => {
+      const fake = createFakeCanvas(width, height);
+      canvases.push(fake);
+      return fake.canvas;
+    },
+    resolver: () => source,
+    now: () => clock,
+    raf: (cb) => {
+      pending.push(cb);
+      return pending.length;
+    },
+    caf: () => {
+      pending.length = 0;
+    },
+  });
+  /** Advance to `at` and deliver exactly one animation frame. */
+  const frame = (at: number): void => {
+    clock = at;
+    const next = pending.pop();
+    pending.length = 0;
+    next?.(at);
+  };
+  return { renderer, canvases, frame };
+}
+
 const F: Record<AspectRatio, OutputFormat> = {
   '16:9': formatForPreset('1080p30', '16:9'),
   '9:16': formatForPreset('1080p30', '9:16'),
@@ -137,6 +172,135 @@ describe('FormatRenderer', () => {
     renderer.stop();
     renderer.releaseStreams();
     expect(renderer.streamFor('16:9')).toBeNull();
+  });
+
+  /**
+   * The three formats of one camera frame must be composed in ONE task.
+   *
+   * This is a performance contract expressed as a correctness test, because it is invisible at
+   * runtime and expensive when it breaks. Measured with `apps/web/scripts/perf-canvas.mjs` on a
+   * GPU-less host: three draws of the same camera frame cost 10.5 ms + 8.1 ms + 8.1 ms when they
+   * share a task, because the frame is converted once - and 11.4 ms each when they are scattered
+   * across three animation frames. Independent per-compositor loops drift apart on their own, so
+   * nothing but a single driver keeps this true.
+   */
+  it('composes every format of a frame inside one animation frame', () => {
+    const { renderer, canvases, frame } = buildDriven();
+    renderer.setFormats({ '16:9': F['16:9'], '9:16': F['9:16'], '1:1': F['1:1'] }, '16:9', F['16:9']);
+    renderer.setMoment(moment(), 0);
+    renderer.start();
+
+    const drawsSoFar = (): number[] => canvases.map((c) => c.ops('drawImage').length);
+    frame(0);
+    const afterFirst = drawsSoFar();
+    expect(afterFirst).toHaveLength(3);
+    // Every canvas advanced by the same single frame, in the same callback.
+    expect(afterFirst.every((n) => n === afterFirst[0])).toBe(true);
+    expect(afterFirst[0]).toBeGreaterThan(0);
+
+    // A 30 fps format owes nothing 8 ms later, and nothing is what every format must draw.
+    frame(8);
+    expect(drawsSoFar()).toEqual(afterFirst);
+
+    // A frame interval later they all move again, together.
+    frame(34);
+    const afterSecond = drawsSoFar();
+    expect(afterSecond.every((n) => n === afterSecond[0])).toBe(true);
+    expect(afterSecond[0]).toBe(afterFirst[0]! + 1);
+    renderer.stop();
+  });
+
+  /**
+   * The regression this test exists for, in one sentence: throttling a 30 fps format on a 31 Hz
+   * display made the studio SLOWER.
+   *
+   * The first throttle used a tolerance of a quarter of the format's interval, which assumes the
+   * display is the faster of the two. On a GPU-less VM whose animation frames arrive about every
+   * 32 ms, a 33.3 ms interval meant roughly one frame in six was skipped - and the skipped frames
+   * did not come back as headroom, they came back as more expensive remaining frames, because a
+   * longer gap between draws of the same <video> means its frame is converted again. Five
+   * interleaved A/B pairs put cost per composited copy at 8.85 ms before and 12.65 ms after, with
+   * no frame rate gained. So: a display that is not faster than the format must never skip.
+   */
+  it('never skips a frame on a display no faster than the format', () => {
+    const { renderer, canvases, frame } = buildDriven();
+    renderer.setFormats({ '16:9': F['16:9'] }, '16:9', F['16:9']);
+    renderer.setMoment(moment(), 0);
+    renderer.start();
+
+    /*
+     * A 31 Hz display against a 30 fps format - the case the first throttle got badly wrong, and
+     * the case this build host actually is.
+     *
+     * The property is not "every animation frame composes": a 31 Hz display genuinely owes a 30 fps
+     * format only about 30 of its 31 frames. The property is that the encoder is never materially
+     * short-changed. 95% of target is the line, and the broken rule was nowhere near it - it threw
+     * away one frame in six while making the survivors more expensive.
+     */
+    const period = 1000 / 31;
+    const frames = 62;
+    for (let i = 0; i < frames; i += 1) frame(Math.round(i * period));
+    const delivered = canvases[0]!.ops('drawImage').length / ((frames * period) / 1000);
+    expect(delivered).toBeGreaterThanOrEqual(30 * 0.95);
+    renderer.stop();
+  });
+
+  it('skips only what captureStream would have discarded on a fast display', () => {
+    const { renderer, canvases, frame } = buildDriven();
+    renderer.setFormats({ '16:9': F['16:9'] }, '16:9', F['16:9']);
+    renderer.setMoment(moment(), 0);
+    renderer.start();
+
+    // A 120 Hz display against a 30 fps format: one frame in four is worth composing.
+    for (let i = 0; i < 120; i += 1) frame(Math.round((i * 1000) / 120));
+    const drawn = canvases[0]!.ops('drawImage').length;
+    expect(drawn).toBeGreaterThanOrEqual(30);
+    expect(drawn).toBeLessThanOrEqual(34);
+    renderer.stop();
+  });
+
+  it('composes the master first, so the other formats reuse the frame it converted', () => {
+    const { renderer, frame } = buildDriven();
+    renderer.setFormats({ '16:9': F['16:9'], '9:16': F['9:16'] }, '9:16', F['9:16']);
+    renderer.setMoment(moment(), 0);
+    const order: string[] = [];
+    for (const aspect of ['16:9', '9:16'] as AspectRatio[]) {
+      const compositor = renderer.compositorFor(aspect)!;
+      const original = compositor.tick.bind(compositor);
+      compositor.tick = (nowMs?: number): void => {
+        order.push(aspect);
+        original(nowMs);
+      };
+    }
+    renderer.start();
+    frame(0);
+    expect(order).toEqual(['9:16', '16:9']);
+    renderer.stop();
+  });
+
+  it('reports a driven compositor as running, because it is producing frames', () => {
+    const { renderer, frame } = buildDriven();
+    renderer.setFormats({ '16:9': F['16:9'] }, '16:9', F['16:9']);
+    renderer.setMoment(moment(), 0);
+    renderer.start();
+    frame(0);
+    expect(renderer.compositorFor('16:9')?.isRunning).toBe(true);
+    expect(renderer.compositorFor('16:9')?.targetFps).toBe(30);
+    renderer.stop();
+    expect(renderer.compositorFor('16:9')?.isRunning).toBe(false);
+  });
+
+  it('stops composing after stop, so a dead preview cannot keep painting', () => {
+    const { renderer, canvases, frame } = buildDriven();
+    renderer.setFormats({ '16:9': F['16:9'] }, '16:9', F['16:9']);
+    renderer.setMoment(moment(), 0);
+    renderer.start();
+    frame(0);
+    const drawn = canvases[0]!.ops('drawImage').length;
+    renderer.stop();
+    frame(40);
+    frame(80);
+    expect(canvases[0]!.ops('drawImage').length).toBe(drawn);
   });
 
   it('drops an aspect that is no longer wanted and keeps the ones that are', () => {

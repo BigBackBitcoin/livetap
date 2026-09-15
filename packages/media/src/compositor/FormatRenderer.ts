@@ -15,7 +15,8 @@
  * because a silent fallback to the master canvas is exactly the bug this class exists to remove.
  */
 import type { AspectRatio, Moment, OutputFormat, TransitionKind } from '@livetap/core';
-import { MomentCompositor } from './MomentCompositor.js';
+import { MomentCompositor, defaultCaf, defaultRaf } from './MomentCompositor.js';
+import { DisplayCadence, frameIntervalMs, frameIsDue, nextDueAt } from './cadence.js';
 import type { CompositorCanvas, MediaSourceResolver } from './types.js';
 
 export const ASPECT_ORDER: readonly AspectRatio[] = ['16:9', '9:16', '1:1'];
@@ -50,6 +51,14 @@ export class FormatRenderer {
   private master: AspectRatio = '16:9';
   private moment: Moment | null = null;
   private running = false;
+
+  /** The single render loop for every format. See `start`. */
+  private rafHandle: number | null = null;
+  private timerHandle: unknown = null;
+  /** When each format's next composited frame is owed, in `now()` time. */
+  private readonly frameDueAt = new Map<AspectRatio, number>();
+  /** The display's own measured cadence, which is what the throttle is allowed to assume. */
+  private readonly cadence = new DisplayCadence();
 
   constructor(options: FormatRendererOptions) {
     this.options = options;
@@ -110,6 +119,7 @@ export class FormatRenderer {
       entry.compositor.dispose();
       releaseStream(entry.stream);
       this.entries.delete(aspect);
+      this.frameDueAt.delete(aspect);
     }
 
     for (const [aspect, format] of wanted.entries()) {
@@ -177,14 +187,102 @@ export class FormatRenderer {
     return this.masterCompositor?.getNotice() ?? null;
   }
 
+  /**
+   * ONE render loop for every format, not one per format.
+   *
+   * Each MomentCompositor used to run its own animation-frame loop. Three loops, three callbacks,
+   * and - the part that cost real milliseconds - no guarantee that the three draws of a given
+   * camera frame happened in the same task. Measured on a GPU-less host
+   * (`apps/web/scripts/perf-canvas.mjs`): drawing one 1280x720 camera frame into the studio's
+   * three canvases costs 10.5 ms for the first draw and 8.1 ms for the second and third when they
+   * share a task, because the frame only has to be converted once - and 11.4 ms EACH when the
+   * three draws land in three different animation frames. Independent loops drift apart on their
+   * own, and the moment they do, every composited frame costs about 30% more than it needs to.
+   *
+   * So the driver lives here, where the set of formats is known, and it ticks the compositors
+   * directly. The master is ticked first: it is the one the creator is watching, so it gets the
+   * freshest frame and the others inherit the conversion it paid for.
+   *
+   * The per-format due times are computed from a single `now` in a single callback, which is what
+   * keeps formats that share a frame rate - the normal case, since every aspect comes from the
+   * same quality preset - permanently in lockstep instead of merely starting that way.
+   */
   start(): void {
     this.running = true;
-    for (const entry of this.entries.values()) entry.compositor.start(entry.format.fps);
+    // Running, but on this loop: `startDriven` cancels any scheduler of their own and leaves
+    // `isRunning` and `targetFps` reporting the truth about a compositor that is producing frames.
+    for (const entry of this.entries.values()) entry.compositor.startDriven(entry.format.fps);
+    if (this.rafHandle === null && this.timerHandle === null) this.schedule();
   }
 
   stop(): void {
     this.running = false;
     for (const entry of this.entries.values()) entry.compositor.stop();
+    if (this.rafHandle !== null) {
+      (this.options.caf ?? defaultCaf())?.(this.rafHandle);
+      this.rafHandle = null;
+    }
+    if (this.timerHandle !== null) {
+      (this.options.clearTimeoutFn ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>)))(this.timerHandle);
+      this.timerHandle = null;
+    }
+    this.frameDueAt.clear();
+    this.cadence.reset();
+  }
+
+  private schedule(): void {
+    if (!this.running) return;
+    const raf = this.options.raf ?? defaultRaf();
+    if (raf) {
+      this.rafHandle = raf(() => {
+        this.rafHandle = null;
+        if (!this.running) return;
+        this.driveFrame();
+        this.schedule();
+      });
+      return;
+    }
+    const setTimeoutFn = this.options.setTimeoutFn ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+    this.timerHandle = setTimeoutFn(() => {
+      this.timerHandle = null;
+      if (!this.running) return;
+      this.driveFrame();
+      this.schedule();
+    }, Math.max(1, Math.round(1000 / this.fastestFps())));
+  }
+
+  /**
+   * Compose every format that is due, in one task, master first.
+   *
+   * "Due" is decided by `cadence.ts`, which carries the reasoning and the measurement behind it.
+   * The short version: a format is due unless the NEXT animation frame would still deliver it on
+   * time, so a display no faster than the format is never throttled at all.
+   */
+  private driveFrame(): void {
+    const now = this.now();
+    const period = this.cadence.observe(now);
+    for (const aspect of this.tickOrder()) {
+      const entry = this.entries.get(aspect);
+      if (!entry) continue;
+      const due = this.frameDueAt.get(aspect) ?? 0;
+      // See cadence.ts: the tolerance is half the DISPLAY's period, so a display no faster than
+      // the format never skips a frame, and a fast one skips only what captureStream would drop.
+      if (!frameIsDue(now, due, period)) continue;
+      this.frameDueAt.set(aspect, nextDueAt(now, due, frameIntervalMs(entry.format.fps)));
+      entry.compositor.tick(now);
+    }
+  }
+
+  /** The master first, then the rest in a stable order. */
+  private tickOrder(): AspectRatio[] {
+    const rest = ASPECT_ORDER.filter((aspect) => aspect !== this.master && this.entries.has(aspect));
+    return this.entries.has(this.master) ? [this.master, ...rest] : rest;
+  }
+
+  private fastestFps(): number {
+    let fps = 1;
+    for (const entry of this.entries.values()) fps = Math.max(fps, entry.format.fps || 30);
+    return Math.min(60, fps);
   }
 
   /**

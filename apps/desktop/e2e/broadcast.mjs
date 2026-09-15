@@ -321,21 +321,33 @@ async function main() {
      * stalls looks identical at one sample — so this waits for a publisher, then waits for that
      * publisher's own counter to move.
      */
-    const reconnectDeadline = Date.now() + 25_000;
+    /*
+     * 40 s, and the elapsed time is reported whether it passes or fails.
+     *
+     * The reconnect is a backoff (1 s, then doubling) plus however long the new sender needs to
+     * see a keyframe, so its duration is a real number that varies with the machine. A bare
+     * pass/fail against a fixed deadline turns a slow host into a product defect, and says
+     * nothing on the runs that pass. On a contended machine this went red once and green twice,
+     * which is exactly the shape of a threshold set too close to the truth.
+     */
+    const droppedAt = Date.now();
+    const reconnectDeadline = droppedAt + 40_000;
     let republished = 0;
+    let cameBackAfterMs = 0;
     while (Date.now() < reconnectDeadline) {
       await win.waitForTimeout(500);
       const back = await publishers(TARGETS[1].pathName);
       if (back.length > 0) {
+        cameBackAfterMs = Date.now() - droppedAt;
         republished = await bytesOn(TARGETS[1].pathName);
         break;
       }
     }
 
     if (republished === 0 && (await publishers(TARGETS[1].pathName)).length === 0) {
-      bad(`${TARGETS[1].pathName} never came back: no publisher reconnected within 25 s of the drop`);
+      bad(`${TARGETS[1].pathName} never came back: no publisher reconnected within 40 s of the drop`);
     } else {
-      ok(`${TARGETS[1].pathName} republished on its own after the drop`);
+      ok(`${TARGETS[1].pathName} republished on its own ${(cameBackAfterMs / 1000).toFixed(1)}s after the drop`);
       await win.waitForTimeout(3000);
       const climbing = await bytesOn(TARGETS[1].pathName);
       if (climbing > republished) {

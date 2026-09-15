@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { Badge } from '@livetap/ui';
 import type { AspectRatio, Moment } from '@livetap/core';
 import { useAppStore } from '../state/store.js';
+import { outputStreamFor } from '../state/engine.js';
 
 /**
  * The shape is one of three known values, so it is a class rather than an inline style. That
@@ -35,13 +36,41 @@ export function PreviewCanvas({
 }): ReactElement {
   const video = useRef<HTMLVideoElement | null>(null);
   const attach = useAppStore((s) => s.attachPreview);
-  const moments = useAppStore((s) => s.moments);
-  const activeId = useAppStore((s) => s.production.activeMomentId);
-  const active = moments.find((m) => m.id === activeId) ?? moments[0];
+  /*
+   * The ACTIVE Moment, not the whole list.
+   *
+   * Subscribing to `s.moments` re-rendered the program preview every time any Moment anywhere
+   * changed identity - a rename in the editor, a layer toggled on a Moment that is not on screen,
+   * a reordering. Selecting the one Moment this component describes means zustand compares that
+   * object instead of the array, and the preview re-renders when the picture it is describing
+   * actually changed.
+   */
+  const active = useAppStore((s) => s.moments.find((m) => m.id === s.production.activeMomentId) ?? s.moments[0]);
+  const productionState = useAppStore((s) => s.production.state);
 
+  /*
+   * Attach the engine's output for this aspect, and attach it ONCE.
+   *
+   * This used to re-run on every Moment change, and re-running means `srcObject = stream` and
+   * `play()` on an element that was already playing that exact stream. A <video> handed a
+   * srcObject tears down its pipeline and rebuilds it, so switching Moment - the single most
+   * common thing a creator does while live - made the program preview stutter for no reason at
+   * all. Changing Moment does not change which stream the preview should be showing; only the
+   * aspect ratio and the engine's own lifecycle do.
+   *
+   * The comparison is against the engine's real output stream for this aspect, so the guard can
+   * never leave the element showing a stale picture: if the engine rebuilt its capture (a quality
+   * change, a restart), the identity differs and it is re-attached. Keeping the broad trigger list
+   * and making the attach itself idempotent is deliberate - a preview that misses an attach is
+   * black, which is worse than one that checks twice.
+   */
   useEffect(() => {
-    attach(video.current);
-  }, [attach, activeId, aspect]);
+    const el = video.current;
+    if (!el) return;
+    const wanted = outputStreamFor(aspect);
+    if (wanted && el.srcObject === wanted) return;
+    attach(el);
+  }, [attach, aspect, live, productionState, active?.id]);
 
   return (
     <div

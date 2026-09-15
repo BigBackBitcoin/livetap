@@ -18,6 +18,7 @@ import {
 } from './placement.js';
 import { computeTransitionFrame, transitionProgress, type TransitionTransform } from './transitions.js';
 import { approximateWidth, wrapText } from './text.js';
+import { DisplayCadence, frameIntervalMs, frameIsDue, nextDueAt } from './cadence.js';
 import {
   isDrawable,
   sourceDimensions,
@@ -106,6 +107,10 @@ export class MomentCompositor {
   private rafHandle: number | null = null;
   private timerHandle: unknown = null;
   private framesRendered = 0;
+  /** When the next composited frame is owed, in `nowFn` time. See `schedule`. */
+  private frameDueAt = 0;
+  /** What this display is actually doing, which is what the throttle is allowed to assume. */
+  private readonly cadence = new DisplayCadence();
 
   constructor(options: MomentCompositorOptions) {
     this.canvas = options.canvas;
@@ -249,11 +254,38 @@ export class MomentCompositor {
     this.targetFpsValue = clampFps(fps);
     if (this.running) return;
     this.running = true;
+    // A fresh start owes a frame immediately; only a running loop carries a due time forward.
+    this.frameDueAt = 0;
+    this.cadence.reset();
     this.schedule();
+  }
+
+  /**
+   * Run, but on somebody else's loop.
+   *
+   * FormatRenderer drives every format from one animation-frame callback so that the three draws
+   * of a single camera frame share a task (and therefore share one video-frame conversion). That
+   * makes this compositor's own scheduler redundant - but not its STATE: `isRunning` means "this
+   * compositor is producing frames", and the engine, the metrics sample and the UI all read it.
+   * Left to the plain `stop()` this method replaces, a perfectly healthy live preview reported
+   * itself as stopped, which is precisely the kind of lie the rest of this codebase is careful
+   * not to tell. So the flag and the target frame rate are set truthfully, and only the scheduling
+   * is handed over.
+   */
+  startDriven(fps = 30): void {
+    this.targetFpsValue = clampFps(fps);
+    this.cancelScheduled();
+    this.running = true;
+    this.frameDueAt = 0;
+    this.cadence.reset();
   }
 
   stop(): void {
     this.running = false;
+    this.cancelScheduled();
+  }
+
+  private cancelScheduled(): void {
     if (this.rafHandle !== null) {
       this.caf?.(this.rafHandle);
       this.rafHandle = null;
@@ -320,6 +352,20 @@ export class MomentCompositor {
 
   // ------------------------------------------------------------------ drawing
 
+  /**
+   * Compose at the format's frame rate, not at the display's.
+   *
+   * The rAF branch used to render on every animation frame and ignore `targetFps` entirely, which
+   * is a silent multiplier on the most expensive thing this product does: a 1080p30 broadcast on a
+   * 120 Hz laptop composed four frames for every one the encoder could use, and `captureStream`
+   * threw three of them away.
+   *
+   * `cadence.ts` decides what is due, and carries the measurement showing why the tolerance has to
+   * be derived from the DISPLAY rather than from the format. In the product this loop is not the
+   * one that runs - FormatRenderer drives every format together through `startDriven` and `tick` -
+   * but a compositor used on its own must throttle by the same rule, or the two disagree about
+   * what a frame rate means.
+   */
   private schedule(): void {
     if (!this.running) return;
     const raf = this.raf;
@@ -327,7 +373,12 @@ export class MomentCompositor {
       this.rafHandle = raf(() => {
         this.rafHandle = null;
         if (!this.running) return;
-        this.tick(this.nowFn());
+        const now = this.nowFn();
+        const period = this.cadence.observe(now);
+        if (frameIsDue(now, this.frameDueAt, period)) {
+          this.frameDueAt = nextDueAt(now, this.frameDueAt, frameIntervalMs(this.targetFpsValue));
+          this.tick(now);
+        }
         this.schedule();
       });
       return;
@@ -598,6 +649,18 @@ function safely(fn: () => void): void {
   }
 }
 
+/**
+ * The program context.
+ *
+ * An opaque context (`getContext('2d', { alpha: false })`) was tried here, on the reasoning that
+ * the background is filled edge to edge every frame so the alpha channel carries nothing. It was
+ * measured and it does nothing: on this product's target rasteriser, one 1280x720 camera frame
+ * drawn into a 1920x1080 canvas costs 10.1 ms opaque and 10.1 ms not, with and without an attached
+ * `captureStream` (`node apps/web/scripts/perf-canvas.mjs`, six interleaved rounds, n=200 each).
+ * It is left out rather than kept as a harmless extra, because an unmeasured change to how the
+ * program canvas is allocated is not harmless - it is a thing that would have to be ruled out the
+ * next time a frame looks wrong.
+ */
 function acquireContext(canvas: CompositorCanvas): Ctx2D | null {
   try {
     const ctx = canvas.getContext('2d');
@@ -618,13 +681,13 @@ function clampFps(fps: number): number {
   return Math.min(60, Math.max(1, Math.round(fps)));
 }
 
-function defaultRaf(): ((callback: (timestampMs: number) => void) => number) | undefined {
+export function defaultRaf(): ((callback: (timestampMs: number) => void) => number) | undefined {
   const g = globalThis as { requestAnimationFrame?: (cb: (t: number) => void) => number };
   const raf = g.requestAnimationFrame;
   return typeof raf === 'function' ? (cb) => raf.call(globalThis, cb) : undefined;
 }
 
-function defaultCaf(): ((handle: number) => void) | undefined {
+export function defaultCaf(): ((handle: number) => void) | undefined {
   const g = globalThis as { cancelAnimationFrame?: (h: number) => void };
   const caf = g.cancelAnimationFrame;
   return typeof caf === 'function' ? (h) => caf.call(globalThis, h) : undefined;

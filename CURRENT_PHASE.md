@@ -1,49 +1,52 @@
 # CURRENT PHASE
 
-## REAL-WORLD PERSONAL ALPHA — the build host's half is done, 2026-09-15
+## REAL-WORLD ALPHA SHIP — in progress, 2026-09-15
 
-> **The completion gate passes 4 of 4 stages** (2026-09-15). Everything that can
-> be proven without the owner's own accounts and devices is proven. What remains
-> is the owner's: a real platform account, and a physical Android phone. See
-> `docs/qa/REAL_WORLD_ALPHA_READINESS.md` and `docs/OWNER_ACTIONS.md`.
->
-> A UX polish, performance and consolidation pass followed it:
-> `docs/qa/UX_POLISH_PASS.md`.
+The owner's words: **build me a usable LIVETAP app.** Install it, connect a real
+account, use a real camera, tap GO LIVE, broadcast for real, survive a
+destination failure, stop safely, and do it again. Simple frontend, complex
+backend. The creator never has to understand RTMP, stream keys, OAuth scopes,
+tokens, bitrate or codecs.
 
-## REAL-WORLD PERSONAL ALPHA — in progress, 2026-09-14
+### The two things that changed today, and they are the two that mattered
 
-The mission, in the owner's words: **make LIVETAP real.** Install it on Windows
-and Android, connect real accounts, use a real camera and microphone, tap GO
-LIVE, broadcast for real, break one destination, watch the others stay live,
-and stop. Simple frontend, complex backend. The creator never has to understand
-RTMP, stream keys, OAuth scopes, tokens, bitrate or codecs.
+**There is an installer.** `apps/desktop/release/LIVETAP-0.1.0-win-x64.exe`,
+230,661,718 bytes, with a verified FFmpeg inside it. electron-builder had been
+configured for weeks and had never produced an artifact, and `resources/ffmpeg/`
+held two README files — so a packaged app would have opened and reported
+streaming UNAVAILABLE. `scripts/verify-installer.mjs` asserts thirty things
+about the artifact itself, including that the shipped ffmpeg runs and that the
+renderer inside is the real build rather than the demo one, checked through two
+witnesses that have to agree. The packaged app was launched and opened on
+"Step 1 of 3 — What are you making?".
 
-Plan: `.scratch/plan.md`. Six workstreams, all running in parallel, none of
-them blocked on the owner.
+**A real platform is reachable tonight, with nothing registered anywhere.** The
+assumption that this waited on OAuth client ids and review queues was wrong.
+Every priority platform publishes an RTMP ingest URL and a stream key in its own
+studio page, copyable in about thirty seconds. Tapping YouTube on a real build
+used to dead-end; it now opens a paste form with the server address already
+filled in and asks for the one value only the creator has. What it creates is a
+real YouTube destination wearing YouTube's own profile, not a generic one — its
+aspect ratios, its bitrate ceiling, and its own honesty line, which for YouTube
+is load-bearing because YouTube does not publish when video arrives.
 
-### Where it actually stands
+### Four defects found by looking rather than by testing
 
-**A real broadcast happened.** 2026-09-14 12:43: the built desktop app,
-driven through its own UI, captured through the real `getUserMedia`, composed
-one canvas per aspect ratio, encoded with Chromium, muxed with real ffmpeg and
-published two simultaneous RTMP streams at 1920x1080 and 1080x1920 that a real
-server accepted and ffprobe independently decoded as H.264 plus AAC. One was
-dropped at the TCP level mid-broadcast and the other kept climbing. END cleared
-both. Nothing in that chain was mocked.
-
-**It does not reproduce on a rebuild**, and the reason is two lines in two
-files that belong to two other workstreams. Both are named exactly in
-`docs/qa/REAL_WORLD_ALPHA_READINESS.md`, under "the regression".
-
-**And behind that sits the one defect that matters more than any schedule.**
-With mock mode turned off by hand, both destinations reach Ready, the
-real-broadcast confirmation appears, and after confirming the app reports
-`Live`, `live on 2 of 2`, `You are live on 2 destinations`, with both cards
-reading "Sending to this destination" — while the server reports **zero
-publishers**. A LIVE badge with no bytes on the wire is the worst thing this
-product can ship, and it is invisible in every build anyone currently runs,
-because mock mode is on everywhere and a mock LIVE with no bytes is correct.
-Reproduced twice, not diagnosed. It is item zero in HANDOFF.md.
+1. **Every broadcast was mirrored.** Pulled a frame out of a real recording and
+   read it: Chromium's test camera draws its timecode readable at top left, and
+   ours had it backwards at top right. Any shirt, book, whiteboard or product
+   label reached the audience reversed. Invisible on a green test pattern.
+2. **LIVE was claimed too early.** The production went LIVE when the encoder
+   started, not when bytes arrived, so a broadcast aimed at a server that was
+   switched off showed a running clock and a live badge.
+3. **A dropped destination could never come back.** Chromium emits a keyframe
+   every 7.2 s; ffmpeg gives a late joiner a 5 s window to learn the stream. The
+   reconnecting sender was mathematically unable to lock on. The GOP was also
+   longer than Twitch permits.
+4. **Desktop sign-in could never be read back.** The Electron vault answers with
+   a result object and the renderer expected a string, so every stored token
+   parsed as garbage and was swallowed. It type-checked because both consumers
+   reach the bridge through a cast.
 
 ### The gate, as a command
 
@@ -51,23 +54,14 @@ Reproduced twice, not diagnosed. It is item zero in HANDOFF.md.
 npm run verify:broadcast
 ```
 
-Two of seven gate items pass today, one fails, one is untested here, one is
-untested by anyone, and two are the owner's hardware. The full item-by-item
-account is `docs/qa/REAL_WORLD_ALPHA_READINESS.md`.
+Three simultaneous publishers at 1920x1080, 1080x1920 and 1080x1080, from one
+production, decoded back by ffprobe. Failure isolation confirmed on a real TCP
+drop. Reconnect is newly asserted and newly fixed; re-verification is the next
+thing that runs.
 
-### What the owner should do, once, when they have an afternoon
+### What is still the owner's
 
-`docs/OWNER_ACTIONS.md`. Every console step, every value, every redirect URI
-and scope, in the order to do them, with what each one unblocks. About two and
-a half hours. Start with Twitch: ten minutes, no review, no queue, and it is
-the fastest path from UNVERIFIED to PASS on the platform matrix.
-
-Nothing in the engineering plan waits on it.
-
-### Previous phase
-
-AUDIT CLOSURE (directive docs/prompt-pack/11) delivered 2026-09-14 and deployed
-to https://livetap.vercel.app, with a Scroll Craft pass the same day. Closure
-matrix: `docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_CLOSURE.md` (33 of 34
-actionable items closed). Retest:
-`docs/qa/LIVETAP_FIRST_TIME_CREATOR_AUDIT_RETEST.md`.
+`docs/OWNER_ACTIONS.md`. Nothing in the engineering plan waits on it, and the
+first real broadcast does not either — that is what the paste path bought.
+What the list buys is the nicer half: LIVETAP fetching the key itself so the
+creator never sees one.

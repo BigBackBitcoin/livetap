@@ -400,3 +400,40 @@ describe('app store', () => {
     expect(store.getState().production.state).not.toBe('LIVE');
   });
 });
+
+/**
+ * Store construction reads storage ONCE.
+ *
+ * `localStorage.getItem` is synchronous and blocks the main thread; a single call was measured at
+ * 1017 ms on the build host under load. Construction used to make seven, three of which read and
+ * re-parsed the same settings blob for three separate fields. The freeze that produced profiles as
+ * 81% "(program)" — V8's bucket for blocking platform calls — so it is invisible in a flame chart
+ * and looks like a rendering problem.
+ *
+ * This counts the calls rather than timing them, because a timing assertion on a contended machine
+ * is a flaky test rather than evidence.
+ */
+describe('boot cost', () => {
+  it('reads each stored key at most once while the store is being created', () => {
+    const real = Storage.prototype.getItem;
+    const reads: string[] = [];
+    Storage.prototype.getItem = function patched(key: string): string | null {
+      reads.push(key);
+      return real.call(this, key);
+    };
+    try {
+      createAppStore({ mockMode: true });
+    } finally {
+      Storage.prototype.getItem = real;
+    }
+
+    const counts = new Map<string, number>();
+    for (const key of reads) counts.set(key, (counts.get(key) ?? 0) + 1);
+    const repeated = [...counts.entries()].filter(([, n]) => n > 1);
+
+    expect(repeated, `these keys were read more than once: ${JSON.stringify(repeated)}`).toEqual([]);
+    // Seven was the number before. The ceiling is deliberately not 1: the intent, onboarding,
+    // mode, settings and acknowledgement are five genuinely different keys.
+    expect(reads.length).toBeLessThanOrEqual(5);
+  });
+});

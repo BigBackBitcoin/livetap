@@ -365,9 +365,38 @@ const EMPTY_PRODUCTION: ProductionSnapshot = {
 
 export type AppStore = UseBoundStore<StoreApi<AppState>>;
 
+/**
+ * Everything the store needs off disk, read once.
+ *
+ * `localStorage.getItem` is synchronous and blocks the main thread, and on this machine a single
+ * call was measured at **1017 ms** under load. Store construction made seven of them, three of
+ * which read and re-parsed the SAME settings blob for three different fields — so the first paint
+ * could be preceded by a multi-second freeze whose profile is 81% "(program)", V8's bucket for
+ * blocking platform calls, and which therefore looks like nothing at all in a flame chart.
+ *
+ * Reading them together is not a micro-optimisation: it is the difference between one blocking
+ * call and seven, on the path a creator waits through before they can press anything.
+ */
+function readBoot(): {
+  intent: ContentType | null;
+  onboardingDone: boolean;
+  mode: Mode;
+  settings: typeof DEFAULT_SETTINGS;
+  realBroadcastAck: boolean;
+} {
+  return {
+    intent: persist.readIntent(),
+    onboardingDone: persist.read<boolean>(persist.KEYS.onboarding, false),
+    mode: persist.read<Mode>(persist.KEYS.mode, 'simple'),
+    settings: persist.read(persist.KEYS.settings, DEFAULT_SETTINGS),
+    realBroadcastAck: persist.read<boolean>(persist.KEYS.realBroadcastAck, false),
+  };
+}
+
 export function createAppStore(deps: StoreDeps = {}): AppStore {
   let runtime: Runtime | null = null;
   const now = deps.now ?? ((): number => Date.now());
+  const boot = readBoot();
 
   return create<AppState>((set, get) => {
     /** Push one humane notice. Deduplicated by destination + code so a retry loop cannot spam. */
@@ -463,16 +492,16 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       recordings: [],
       log: [],
 
-      intent: persist.readIntent(),
-      onboardingDone: persist.read<boolean>(persist.KEYS.onboarding, false),
-      mode: persist.read<Mode>(persist.KEYS.mode, 'simple'),
-      quality: persist.read(persist.KEYS.settings, DEFAULT_SETTINGS).quality,
-      recordEveryStream: persist.read(persist.KEYS.settings, DEFAULT_SETTINGS).recordEveryStream,
-      aspect: persist.read(persist.KEYS.settings, DEFAULT_SETTINGS).aspect,
+      intent: boot.intent,
+      onboardingDone: boot.onboardingDone,
+      mode: boot.mode,
+      quality: boot.settings.quality,
+      recordEveryStream: boot.settings.recordEveryStream,
+      aspect: boot.settings.aspect,
 
       goLive: 'idle',
       endingAt: null,
-      realBroadcastAck: persist.read<boolean>(persist.KEYS.realBroadcastAck, false),
+      realBroadcastAck: boot.realBroadcastAck,
       pendingConfirm: false,
       micMuted: false,
       screenSharing: false,
