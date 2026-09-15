@@ -856,7 +856,7 @@ body {
 }
 
 .lt-livebar__headline {
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   letter-spacing: 0.04em;
   color: var(--lt-text-primary);
 }

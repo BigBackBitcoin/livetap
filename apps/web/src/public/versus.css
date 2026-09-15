@@ -124,7 +124,7 @@
   font-size: var(--lt-text-22);
   line-height: var(--lt-leading-22);
   letter-spacing: var(--lt-tracking-22);
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .ltv-note {

@@ -219,7 +219,7 @@
   font-size: var(--lt-text-22);
   line-height: var(--lt-leading-22);
   letter-spacing: var(--lt-tracking-22);
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   color: var(--lt-text-primary);
   text-wrap: balance;
 }
@@ -229,7 +229,7 @@
   font-size: clamp(1.5rem, 5.6vw, 1.75rem);
   line-height: 1.12;
   letter-spacing: -0.02em;
-  font-weight: var(--lt-weight-extrabold);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .ltp-band__lede {
@@ -312,6 +312,28 @@
   color: var(--lt-text-tertiary);
 }
 
+/*
+ * The first-visit offer.
+ *
+ * Sits in the flow under the hero's own controls, so it can never cover one. `[hidden]` is the
+ * default in the markup and script removes it only for a visitor who has not answered: a
+ * returning visitor never sees it appear and then vanish, which is worse than never seeing it.
+ */
+.ltp-offer {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+  margin: var(--lt-space-4) 0 0;
+}
+
+.ltp-offer__q {
+  font-size: var(--lt-text-13);
+  line-height: var(--lt-leading-13);
+  letter-spacing: var(--lt-tracking-13);
+  font-weight: var(--lt-weight-medium);
+  color: var(--lt-text-secondary);
+}
+
 @media (min-width: 1280px) {
   .ltp-band__trust {
     flex-basis: auto;
@@ -390,7 +412,7 @@
   font-size: var(--lt-text-28);
   line-height: var(--lt-leading-28);
   letter-spacing: var(--lt-tracking-28);
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   color: var(--lt-text-primary);
 }
 
@@ -626,7 +648,7 @@
   font-family: var(--ltp-font-display);
   font-size: var(--lt-text-28);
   line-height: 1;
-  font-weight: var(--lt-weight-extrabold);
+  font-weight: var(--lt-weight-semibold);
   color: var(--lt-text-primary);
 }
 
@@ -672,7 +694,7 @@
   font-size: var(--lt-text-12);
   line-height: var(--lt-leading-12);
   letter-spacing: 0.06em;
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .ltp-stage__live[hidden] {
@@ -683,25 +705,20 @@
   background: currentColor;
 }
 
-/* The camera control lives on the picture, bottom-left, where a creator looks for it. */
+/*
+ * What the picture is, said under the picture.
+ *
+ * This was absolutely positioned inside the stage, bottom-left, over the production - together
+ * with a duplicate of the hero's camera button. Nothing that is not the production belongs on the
+ * output, so it is in the flow now: no z-index, no scrim behind the text, no chance of covering
+ * the subject in a vertical shape.
+ */
 .ltp-stage__source {
-  position: absolute;
-  inset-block-end: var(--lt-space-2);
-  inset-inline-start: var(--lt-space-2);
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--lt-space-1);
-  max-inline-size: calc(100% - var(--lt-space-4));
+  margin: var(--lt-space-2) 0 0;
 }
 
 .ltp-stage__sourcenote {
-  max-inline-size: 24rem;
-  padding: var(--lt-space-05) var(--lt-space-2);
-  border-radius: var(--lt-radius-sm);
-  background: color-mix(in oklab, var(--lt-bg-0) 78%, transparent);
-  color: var(--lt-text-secondary);
+  color: var(--lt-text-tertiary);
   font-size: var(--lt-text-12);
   line-height: var(--lt-leading-12);
   letter-spacing: var(--lt-tracking-12);

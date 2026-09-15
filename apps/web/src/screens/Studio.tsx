@@ -272,6 +272,15 @@ export function Studio(): ReactElement {
             <div
               className={['lt-preflight', `lt-preflight--${rowLevel}`].join(' ')}
               aria-live="polite"
+              /*
+               * Hidden entirely, not just emptied, when the prompt above owns the message. A row
+               * reading "Not ready to go live" directly beneath one reading "Nowhere to send this
+               * yet" and directly above a subtitle reading "No destination is ready" is one fact
+               * told three times in three registers, and a creator reads that as three problems.
+               * `aria-live` is on this node, so hiding it is also what stops a screen reader
+               * announcing the same condition three times.
+               */
+              hidden={promptOwnsIt}
             >
             <span className="lt-preflight__dot" aria-hidden="true" />
             {collapsible ? (
@@ -358,7 +367,7 @@ export function Studio(): ReactElement {
                 demo={allMock}
                 className={allMock ? 'lt-golive--demo' : undefined}
               />
-              <p className="lt-golive__subtitle">
+              <p className="lt-golive__subtitle" hidden={promptOwnsIt}>
                 {goLive === 'countdown' && reality.real.length > 0
                   ? `Going live on ${nameDestinations(reality.real)}`
                   : allMock && preflight.readyCount > 0

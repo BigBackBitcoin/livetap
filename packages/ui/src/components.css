@@ -137,7 +137,7 @@
 .lt-btn--live {
   background: var(--lt-accent-live-solid);
   color: var(--lt-on-live);
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   letter-spacing: 0.02em;
 }
 
@@ -742,7 +742,7 @@
   --lt-chip-bg: var(--lt-state-live-tint);
   background: var(--lt-chip-bg);
   border-color: transparent;
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .lt-chip--degraded {
@@ -1069,7 +1069,7 @@
   color: var(--lt-on-live);
   font-size: var(--lt-text-18);
   line-height: var(--lt-leading-18);
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   letter-spacing: 0.04em;
   box-shadow: var(--lt-shadow-live);
   transition:
@@ -1091,11 +1091,34 @@
   box-shadow: inset 0 0 0 1px var(--lt-bg-0), var(--lt-shadow-live);
 }
 
-.lt-golive:disabled {
+/*
+ * Unavailable, and it looks it.
+ *
+ * `:disabled` alone never matched. GoLiveButton renders `aria-disabled` and never the `disabled`
+ * attribute - deliberately, so the control keeps its place in the tab order and can still
+ * announce WHY it cannot be used - which meant this rule was written, shipped, and silently
+ * never applied. A creator with no destination saw a full-strength red GO LIVE that did nothing
+ * when pressed.
+ *
+ * Red is also wrong for this state. Red is the colour of something going wrong right now; a
+ * stream with nowhere to go is not wrong, it is incomplete, and saying "error" about an empty
+ * setup sends a first-time creator looking for a fault they do not have.
+ */
+.lt-golive:disabled,
+.lt-golive[aria-disabled='true'] {
   background: var(--lt-bg-3);
   color: var(--lt-text-tertiary);
   box-shadow: none;
   border-color: var(--lt-border-control);
+  cursor: default;
+}
+
+/* A start in progress is busy, not unavailable: it keeps the live colour it is working towards. */
+.lt-golive--starting[aria-disabled='true'],
+.lt-golive--stopping[aria-disabled='true'] {
+  background: var(--lt-accent-live-solid);
+  color: var(--lt-on-live);
+  border-color: transparent;
 }
 
 .lt-golive--countdown {
@@ -1116,7 +1139,7 @@
 .lt-golive__count {
   font-size: var(--lt-text-28);
   line-height: var(--lt-leading-28);
-  font-weight: var(--lt-weight-extrabold);
+  font-weight: var(--lt-weight-semibold);
   color: var(--lt-accent-live);
 }
 
@@ -1210,7 +1233,7 @@
 }
 
 .lt-logo__wordmark {
-  font-weight: var(--lt-weight-extrabold);
+  font-weight: var(--lt-weight-semibold);
   letter-spacing: -0.02em;
   line-height: 1;
   text-transform: uppercase;

@@ -9,6 +9,24 @@
   box-sizing: border-box;
 }
 
+/*
+ * `hidden` means hidden.
+ *
+ * The UA stylesheet says `[hidden] { display: none }`, at the lowest possible specificity, so any
+ * rule of ours that sets `display` beats it. Every component in this product sets `display`, so
+ * `hidden` was quietly doing nothing on most of them, and the failures all looked like logic bugs:
+ * the pre-flight row (`display: flex`) stayed on screen repeating a message the prompt above it
+ * had already made; the first-visit tour offer could not be dismissed; the first-use break hint
+ * never retired.
+ *
+ * `!important` is right here and almost nowhere else. `hidden` is not a style, it is a statement
+ * that the element is not part of the page right now, and nothing about how a component chooses
+ * to lay itself out should be able to argue with that.
+ */
+[hidden] {
+  display: none !important;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -107,7 +125,7 @@ h3,
 h4,
 h5,
 h6 {
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   text-wrap: balance;
 }
 

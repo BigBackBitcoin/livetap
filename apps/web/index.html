@@ -349,16 +349,20 @@
                   </span>
                   <span class="ltp-stage__shape lt-num" data-lt-shape>16:9</span>
                 </div>
-                <div class="ltp-stage__source" data-lt-stage-source>
-                  <button class="lt-btn lt-btn--secondary lt-btn--sm lt-touch ltp-camerabtn" type="button" data-lt-camera-cta>
-                    <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-camera" /></svg>
-                    <span data-lt-camera-label>Use my camera</span>
-                  </button>
-                  <span class="ltp-stage__sourcenote" data-lt-camera-note>Sample picture. Your camera stays in this tab and is never uploaded.</span>
-                </div>
               </div>
             </div>
           </div>
+          <!--
+            The picture carries the production and nothing else.
+            A "Use my camera" button and a privacy caption used to sit ON the stage: a duplicate of
+            the control already in the hero above, and a caption over the exact pixels the product
+            exists to show. Controls and captions belong outside the output, so the note moved out
+            here and the duplicate button went away entirely - the hero's button is the one control,
+            and it already becomes "Stop my camera" when the camera is on.
+          -->
+          <p class="ltp-stage__source" data-lt-stage-source>
+            <span class="ltp-stage__sourcenote" data-lt-camera-note>Sample picture.</span>
+          </p>
           <p class="ltp-stage__state" data-lt-stateline>Nothing is connected yet.</p>
           <p class="ltp-stage__detail" data-lt-statedetail>Tap a destination to open its own connection.</p>
         </div>

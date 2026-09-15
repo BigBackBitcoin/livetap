@@ -343,3 +343,60 @@ test.describe('nothing invisible is ever on top', () => {
     expect(dead, 'a wheel tick over the stage produced no movement').toBe(0);
   });
 });
+
+/**
+ * `hidden` has to actually hide.
+ *
+ * The UA stylesheet's `[hidden] { display: none }` carries the lowest specificity there is, so any
+ * component rule that sets `display` silently beats it. Nearly every component here sets `display`,
+ * which meant `hidden` was doing nothing on most of them - and the resulting bugs never looked like
+ * a CSS problem. A pre-flight row kept repeating a message the prompt above it had already made;
+ * the first-visit tour offer could not be dismissed; the first-use hint on the break act never
+ * retired. All three read as broken logic, and all three were one missing line of reset.
+ *
+ * So this walks the real pages and asserts the property directly, on whatever happens to be hidden
+ * at the time, rather than trusting that the reset is still in the bundle.
+ */
+test.describe('hidden means hidden', () => {
+  for (const [name, path] of [
+    ['the landing page', '/'],
+    ['Studio', '/app'],
+    ['Destinations', '/app/destinations'],
+  ] as const) {
+    test(`nothing marked hidden takes up space on ${name}`, async ({ page }) => {
+      await page.goto(path);
+      await page.evaluate(() => {
+        localStorage.setItem('livetap.onboarding', 'true');
+        localStorage.setItem('livetap.intent', '"talking"');
+        localStorage.setItem('livetap.mode', '"simple"');
+      });
+      await page.reload();
+      await page.waitForTimeout(1500);
+
+      const showing = await page.evaluate(() =>
+        [...document.querySelectorAll('[hidden]')]
+          .filter((el) => {
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 || rect.height > 0;
+          })
+          .map((el) => `${el.tagName.toLowerCase()}.${el.className?.toString().slice(0, 40)}`),
+      );
+      expect(showing, 'these carry [hidden] and still occupy space').toEqual([]);
+    });
+  }
+
+  test('the reset is present, so a component cannot out-specify it', async ({ page }) => {
+    await page.goto('/app');
+    const beaten = await page.evaluate(() => {
+      // A flex element is the exact case that used to win against the UA rule.
+      const probe = document.createElement('div');
+      probe.style.display = 'flex';
+      probe.hidden = true;
+      document.body.append(probe);
+      const shown = getComputedStyle(probe).display;
+      probe.remove();
+      return shown;
+    });
+    expect(beaten, 'a display:flex element ignored its own hidden attribute').toBe('none');
+  });
+});

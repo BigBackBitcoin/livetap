@@ -219,7 +219,7 @@ body {
 }
 
 .ltp-rail__wordmark {
-  font-weight: var(--lt-weight-extrabold);
+  font-weight: var(--lt-weight-semibold);
   letter-spacing: -0.02em;
   font-size: var(--lt-text-16);
   text-transform: none;
@@ -640,7 +640,7 @@ body {
   font-size: var(--lt-text-22);
   line-height: var(--lt-leading-22);
   letter-spacing: var(--lt-tracking-22);
-  font-weight: var(--lt-weight-extrabold);
+  font-weight: var(--lt-weight-semibold);
   color: var(--lt-text-primary);
   text-align: center;
 }
@@ -693,7 +693,7 @@ body {
   font-size: var(--lt-text-28);
   line-height: var(--lt-leading-28);
   letter-spacing: var(--lt-tracking-28);
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   color: var(--lt-text-primary);
   text-align: center;
   text-wrap: balance;
@@ -977,7 +977,7 @@ body {
   position: relative;
   font-size: var(--lt-text-12);
   line-height: 1;
-  font-weight: var(--lt-weight-bold);
+  font-weight: var(--lt-weight-semibold);
   color: var(--lt-state-reconnecting);
 }
 

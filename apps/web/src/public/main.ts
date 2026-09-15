@@ -958,7 +958,9 @@ function paintCamera(line: string): void {
   surface.dataset.ltSource = picture.source;
   $$('[data-lt-camera-label]').forEach((l) => (l.textContent = on ? 'Stop my camera' : 'Use my camera'));
   $$('[data-lt-camera-cta]').forEach((b) => b.setAttribute('aria-pressed', String(on)));
-  cameraNote.textContent = on ? 'Live from your camera. Local only, never uploaded.' : line;
+  // Short, because it sits under the picture now rather than on it, and the hero already carries
+  // the trust line ("Runs on your machine. Nothing on this page is broadcast.") for the whole page.
+  cameraNote.textContent = on ? 'Your camera. Local only.' : line;
   say(sayDest, line);
   publish();
 }
@@ -1931,8 +1933,73 @@ const TOUR: Array<{ key: string; prompt: string; target: string }> = [
   { key: 'intent', prompt: 'Tell LIVETAP what you are making.', target: '#act-make' },
 ];
 
-const tourDoneKeys = new Set<string>();
+/*
+ * The tour's memory.
+ *
+ * Progress used to live only in this Set, so a visitor who completed five of seven steps and
+ * reloaded was shown all seven again as if they had done nothing - which is the "never keep
+ * repeating the instructions" rule broken by a page refresh. `livetap.tourAnswered` is separate
+ * from the step list on purpose: it records that the OFFER was answered, which stays true even
+ * for someone who said Skip and never took a step.
+ */
+const TOUR_STEPS_KEY = 'livetap.tourSteps';
+const TOUR_ANSWERED = 'livetap.tourAnswered';
+
+function readTourSteps(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TOUR_STEPS_KEY) ?? '[]') as unknown;
+    return new Set(Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+const tourDoneKeys = readTourSteps();
 let tourPanel: HTMLElement | null = null;
+
+function rememberTour(): void {
+  try {
+    localStorage.setItem(TOUR_STEPS_KEY, JSON.stringify([...tourDoneKeys]));
+  } catch {
+    /* Storage refused. The tour still works for this visit; it just will not be remembered. */
+  }
+}
+
+/** Record that the visitor has answered the offer, whichever way, and take it off the page. */
+function answerOffer(): void {
+  try {
+    localStorage.setItem(TOUR_ANSWERED, 'true');
+  } catch {
+    /* As above: worst case the offer is made again next visit. */
+  }
+  const offer = document.querySelector<HTMLElement>('[data-lt-offer]');
+  if (offer) offer.hidden = true;
+}
+
+/**
+ * Make the offer, once, to someone who has never answered it.
+ *
+ * It is an offer and not a tutorial: nothing starts on its own, nothing is covered, and the
+ * page behind it is fully usable while it is on screen. A visitor who ignores it entirely has
+ * lost nothing, which is the test of whether an interruption was worth making.
+ */
+function offerTour(): void {
+  const offer = document.querySelector<HTMLElement>('[data-lt-offer]');
+  if (!offer) return;
+  let answered = true;
+  try {
+    answered = localStorage.getItem(TOUR_ANSWERED) === 'true';
+  } catch {
+    answered = false;
+  }
+  if (answered) return;
+  offer.hidden = false;
+  offer.querySelector('[data-lt-offer-yes]')?.addEventListener('click', () => {
+    answerOffer();
+    openTour();
+  });
+  offer.querySelector('[data-lt-offer-no]')?.addEventListener('click', answerOffer);
+}
 
 function openTour(): void {
   if (tourPanel) {
@@ -1958,6 +2025,7 @@ function openTour(): void {
     </ul>
   `;
   interaction.append(tourPanel);
+  answerOffer();
   $('[data-lt-tour-close]', tourPanel)!.addEventListener('click', closeTour);
   $('[data-lt-tour-open]')!.setAttribute('aria-expanded', 'true');
   paintTour();
@@ -1981,6 +2049,7 @@ function paintTour(): void {
 function tourDone(key: string): void {
   if (tourDoneKeys.has(key)) return;
   tourDoneKeys.add(key);
+  rememberTour();
   paintTour();
   const step = TOUR.find((s) => s.key === key);
   if (step) say(sayTour, `Done: ${step.prompt}`);
@@ -2228,6 +2297,7 @@ async function boot(): Promise<void> {
   buildIntents();
   wire();
   restoreBreakHint();
+  offerTour();
 
   picture.mount(canvas);
   picture.onChange(() => {

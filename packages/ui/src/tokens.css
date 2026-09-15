@@ -59,11 +59,21 @@
   --lt-tracking-48: -0.022em;
 
   /* Weights */
+  /*
+   * Three weights. 400 reads, 500 labels, 600 commands.
+   *
+   * There were five. 700 and 800 existed to make display type feel expensive, and they did not:
+   * a heavier weight at 48px reads as shouting, while tightened tracking at the same weight
+   * reads as typeset. Every 700 and 800 in the product became 600 in one pass, and the type
+   * roles below carry the hierarchy through size and tracking instead - which is the thing that
+   * survives being rendered by a fallback font on a machine that does not have ours.
+   *
+   * A fourth weight is a distinction a reader has to learn. `type-roles.test.ts` fails if one
+   * comes back.
+   */
   --lt-weight-regular: 400;
   --lt-weight-medium: 500;
   --lt-weight-semibold: 600;
-  --lt-weight-bold: 700;
-  --lt-weight-extrabold: 800;
 
   /* Spacing — 4-based */
   --lt-space-0: 0px;
@@ -158,9 +168,6 @@
    * expensive, which is why tracking tightens as size grows - optical compensation, so 48px and
    * 14px look like the same typeface rather than two.
    */
-  --lt-w-regular: 400;
-  --lt-w-medium: 500;
-  --lt-w-strong: 600;
 }
 
 /*
@@ -184,35 +191,35 @@
   font-size: var(--lt-text-48);
   line-height: var(--lt-leading-48);
   letter-spacing: var(--lt-tracking-48);
-  font-weight: var(--lt-w-strong);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .lt-type-hero {
   font-size: var(--lt-text-36);
   line-height: var(--lt-leading-36);
   letter-spacing: var(--lt-tracking-36);
-  font-weight: var(--lt-w-strong);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .lt-type-h1 {
   font-size: var(--lt-text-28);
   line-height: var(--lt-leading-28);
   letter-spacing: var(--lt-tracking-28);
-  font-weight: var(--lt-w-strong);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .lt-type-h2 {
   font-size: var(--lt-text-22);
   line-height: var(--lt-leading-22);
   letter-spacing: var(--lt-tracking-22);
-  font-weight: var(--lt-w-strong);
+  font-weight: var(--lt-weight-semibold);
 }
 
 .lt-type-body {
   font-size: var(--lt-text-16);
   line-height: var(--lt-leading-16);
   letter-spacing: var(--lt-tracking-16);
-  font-weight: var(--lt-w-regular);
+  font-weight: var(--lt-weight-regular);
 }
 
 /* Controls, labels, and anything the hand is aimed at rather than the eye reading. */
@@ -220,14 +227,14 @@
   font-size: var(--lt-text-14);
   line-height: var(--lt-leading-14);
   letter-spacing: var(--lt-tracking-14);
-  font-weight: var(--lt-w-medium);
+  font-weight: var(--lt-weight-medium);
 }
 
 .lt-type-meta {
   font-size: var(--lt-text-13);
   line-height: var(--lt-leading-13);
   letter-spacing: var(--lt-tracking-13);
-  font-weight: var(--lt-w-regular);
+  font-weight: var(--lt-weight-regular);
 }
 
 /*
@@ -240,7 +247,7 @@
   font-size: var(--lt-text-12);
   line-height: var(--lt-leading-12);
   letter-spacing: 0.06em;
-  font-weight: var(--lt-w-strong);
+  font-weight: var(--lt-weight-semibold);
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
 }
@@ -249,7 +256,7 @@
   font-size: var(--lt-text-14);
   line-height: var(--lt-leading-14);
   letter-spacing: 0.01em;
-  font-weight: var(--lt-w-strong);
+  font-weight: var(--lt-weight-semibold);
 }
 
 /* Pro density: smaller, denser. Never below the touch floor on coarse pointers. */

@@ -47,11 +47,16 @@ describe('type roles', () => {
     }
   });
 
+  it('publishes exactly three weights, so a fourth cannot quietly come back', () => {
+    const declared = [...css.matchAll(/--lt-weight-([a-z]+):/g)].map((m) => m[1]);
+    expect(new Set(declared)).toEqual(new Set(['regular', 'medium', 'semibold']));
+  });
+
   it('uses exactly three weights, and always by name', () => {
     const weights = new Set<string>();
     for (const role of ROLES) {
       const weight = /font-weight:\s*([^;]+);/.exec(ruleFor(role))?.[1]?.trim();
-      expect(weight, `${role} must take its weight from a token`).toMatch(/^var\(--lt-w-[a-z]+\)$/);
+      expect(weight, `${role} must take its weight from a token`).toMatch(/^var\(--lt-weight-[a-z]+\)$/);
       weights.add(weight as string);
     }
     expect(weights.size, `weights in use: ${[...weights].join(', ')}`).toBeLessThanOrEqual(3);

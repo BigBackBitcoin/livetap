@@ -38,3 +38,6 @@ apps/mobile/www/
 
 # Working notes extracted from workflow results, not part of the product.
 .scratch/
+
+# Visual-inspection screenshots written by apps/web/scripts/look.mjs.
+lab/
