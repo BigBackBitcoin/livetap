@@ -81,6 +81,37 @@ export function isOnAir(phase: SessionPhase): boolean {
   return phase === 'live' || phase === 'ending';
 }
 
+/**
+ * The phase, DERIVED from state the store already holds — not stored a second time.
+ *
+ * A parallel `sessionPhase` field would be a second source of truth about whether a broadcast is
+ * running, and this product has already been bitten twice by exactly that: a pre-flight that
+ * filtered on READY while the orchestrator started READY-or-ENDED, and a band whose touchability
+ * was tracked separately from its opacity. Both were one state disagreeing with another. So the
+ * only thing recorded here is the one fact nothing else knows — that the visitor has deliberately
+ * ended the session — and everything before it is read off the machine that is already correct.
+ */
+export interface PhaseInput {
+  /** The store's `goLive` machine: idle | countdown | starting | live | stopping. */
+  readonly goLive: string;
+  /** Set while the END grace period is running and the stop can still be undone. */
+  readonly endingAt: number | null;
+  /** How many destinations the visitor has set up. Zero means setup is not done. */
+  readonly destinationCount: number;
+  /** True once `endSession` has run. The only phase fact that is stored. */
+  readonly ended: boolean;
+}
+
+export function derivePhase(input: PhaseInput): SessionPhase {
+  if (input.ended) return 'destroyed';
+  // `stopping` is still on air: the engine is tearing down and bytes may be in flight.
+  if (input.goLive === 'live' && input.endingAt !== null) return 'ending';
+  if (input.goLive === 'stopping') return 'ending';
+  if (input.goLive === 'live') return 'live';
+  if (input.goLive === 'countdown' || input.goLive === 'starting') return 'active';
+  return input.destinationCount > 0 ? 'active' : 'starting';
+}
+
 export interface DestroyInput {
   /** Destination ids whose stream keys are held in memory (or a desktop vault) for this session. */
   readonly destinationIds: readonly string[];
@@ -99,12 +130,35 @@ export interface DestroyReport {
    * Empty is the only acceptable answer; anything else must be surfaced, not swallowed.
    */
   readonly storageRemaining: readonly string[];
-  /** True only when storage came back empty. The UI must not promise more than this. */
+  /**
+   * False when storage could not be enumerated, so `storageRemaining` being empty proves nothing.
+   * The UI needs the honest third answer — "we could not confirm" — and cannot give it without
+   * being able to tell that case apart from a genuine empty.
+   */
+  readonly storageReadable: boolean;
+  /** True ONLY when storage was readable AND came back empty. Never promise more than this. */
   readonly clean: boolean;
 }
 
-function livetapKeysIn(storage: Pick<Storage, 'key' | 'length'> | null): string[] {
-  if (!storage) return [];
+interface StorageScan {
+  readonly keys: readonly string[];
+  /**
+   * False when the store could not be enumerated at all.
+   *
+   * THIS IS THE WHOLE POINT. An earlier version of this function caught the enumeration error and
+   * returned an empty array, which made "could not look" indistinguishable from "nothing there" —
+   * so a locked store, a browser with site data blocked, or a `SecurityError` on a partitioned
+   * origin produced `storageRemaining: []` and a report of `clean: true`. A store that could not
+   * be read was reporting as a store that had been emptied, which is precisely the unobserved
+   * privacy claim this module exists not to make. Absence of evidence was being returned as
+   * evidence of absence.
+   */
+  readonly readable: boolean;
+}
+
+function scanLivetapKeys(storage: Pick<Storage, 'key' | 'length'> | null): StorageScan {
+  // No storage at all is genuinely nothing to persist into, which is readable and empty.
+  if (!storage) return { keys: [], readable: true };
   const found: string[] = [];
   try {
     for (let i = 0; i < storage.length; i += 1) {
@@ -112,9 +166,9 @@ function livetapKeysIn(storage: Pick<Storage, 'key' | 'length'> | null): string[
       if (key && key.startsWith('livetap.')) found.push(key);
     }
   } catch {
-    /* A locked store reads as empty; the caller still gets `clean: false` only if it should. */
+    return { keys: [], readable: false };
   }
-  return found;
+  return { keys: found, readable: true };
 }
 
 function hostStorage(): Pick<Storage, 'key' | 'removeItem' | 'length'> | null {
@@ -169,7 +223,7 @@ export async function destroySession(input: DestroyInput): Promise<DestroyReport
    * removed here whether or not this module has ever heard of it.
    */
   const storage = input.storage ?? hostStorage();
-  for (const key of livetapKeysIn(storage)) {
+  for (const key of scanLivetapKeys(storage).keys) {
     try {
       storage?.removeItem(key);
     } catch {
@@ -177,11 +231,12 @@ export async function destroySession(input: DestroyInput): Promise<DestroyReport
     }
   }
 
-  const storageRemaining = livetapKeysIn(storage);
+  const after = scanLivetapKeys(storage);
   return {
     streamKeysForgotten,
     platformsSignedOut,
-    storageRemaining,
-    clean: storageRemaining.length === 0,
+    storageRemaining: after.keys,
+    storageReadable: after.readable,
+    clean: after.readable && after.keys.length === 0,
   };
 }

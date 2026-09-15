@@ -26,10 +26,15 @@ vi.mock('../state/tokens.js', () => ({
 vi.mock('../state/persist.js', () => ({ clearAll: vi.fn(() => undefined) }));
 
 /** A localStorage stand-in whose contents the test controls. */
-function fakeStorage(initial: Record<string, string>, opts: { refuseDelete?: boolean } = {}) {
+function fakeStorage(
+  initial: Record<string, string>,
+  opts: { refuseDelete?: boolean; refuseRead?: boolean } = {},
+) {
   const map = new Map(Object.entries(initial));
   return {
     get length() {
+      // A partitioned origin or a browser with site data blocked throws here, not on removeItem.
+      if (opts.refuseRead) throw new DOMException('denied', 'SecurityError');
       return map.size;
     },
     key: (i: number) => [...map.keys()][i] ?? null,
@@ -125,6 +130,27 @@ describe('destroying a guest session', () => {
     expect(report.storageRemaining).toEqual(['livetap.destinations']);
   });
 
+  it('NEVER reports clean when it could not read storage at all', async () => {
+    /*
+     * The defect this exists to prevent: enumeration throwing was caught and returned as an empty
+     * array, so "could not look" was indistinguishable from "nothing there" and a locked store
+     * reported `clean: true`. Absence of evidence returned as evidence of absence, in the one
+     * function whose entire job is not to do that.
+     */
+    const storage = fakeStorage({ 'livetap.destinations': '[]' }, { refuseRead: true });
+    const report = await destroySession({ destinationIds: [], platforms: [], storage });
+    expect(report.storageReadable).toBe(false);
+    expect(report.clean).toBe(false);
+    // Empty, but it means "unknown" — which is why `clean` must not be derived from it alone.
+    expect(report.storageRemaining).toEqual([]);
+  });
+
+  it('reports readable and clean when there is genuinely no storage to write to', async () => {
+    // Private mode with localStorage absent is not a failure to observe; there is nothing there.
+    const report = await destroySession({ destinationIds: [], platforms: [], storage: undefined });
+    expect(report.storageReadable).toBe(true);
+  });
+
   it('does not throw when a secret refuses to be forgotten, and counts it as not done', async () => {
     const { forgetStreamKey } = await import('../state/secrets.js');
     vi.mocked(forgetStreamKey).mockRejectedValueOnce(new Error('vault locked'));
@@ -132,5 +158,42 @@ describe('destroying a guest session', () => {
     const report = await destroySession({ destinationIds: ['d1', 'd2'], platforms: [], storage });
     expect(report.streamKeysForgotten).toBe(1);
     expect(report.clean).toBe(true);
+  });
+});
+
+describe('phase derivation', () => {
+  const base = { goLive: 'idle', endingAt: null, destinationCount: 0, ended: false };
+
+  it('is starting before anything is set up, active once something is', async () => {
+    const { derivePhase } = await import('../state/session.js');
+    expect(derivePhase(base)).toBe('starting');
+    expect(derivePhase({ ...base, destinationCount: 1 })).toBe('active');
+  });
+
+  it('treats the countdown and the start as active, not live', async () => {
+    const { derivePhase } = await import('../state/session.js');
+    // Nothing reaches a platform before the countdown ends; calling it live would be a lie.
+    expect(derivePhase({ ...base, goLive: 'countdown', destinationCount: 1 })).toBe('active');
+    expect(derivePhase({ ...base, goLive: 'starting', destinationCount: 1 })).toBe('active');
+  });
+
+  it('is live, then ending the moment the grace period starts', async () => {
+    const { derivePhase } = await import('../state/session.js');
+    expect(derivePhase({ ...base, goLive: 'live', destinationCount: 1 })).toBe('live');
+    expect(derivePhase({ ...base, goLive: 'live', endingAt: 1234, destinationCount: 1 })).toBe('ending');
+  });
+
+  it('counts stopping as still on air, because the engine is still tearing down', async () => {
+    const { derivePhase, isOnAir } = await import('../state/session.js');
+    const phase = derivePhase({ ...base, goLive: 'stopping', destinationCount: 1 });
+    expect(phase).toBe('ending');
+    expect(isOnAir(phase)).toBe(true);
+  });
+
+  it('reports destroyed only from the one fact that is actually stored', async () => {
+    const { derivePhase } = await import('../state/session.js');
+    // Even mid-broadcast state cannot fake destroyed, and `ended` cannot be un-set by it.
+    expect(derivePhase({ ...base, ended: true })).toBe('destroyed');
+    expect(derivePhase({ goLive: 'live', endingAt: null, destinationCount: 3, ended: true })).toBe('destroyed');
   });
 });
