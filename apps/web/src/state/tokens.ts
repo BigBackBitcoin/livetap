@@ -276,3 +276,60 @@ export async function revokeTokens(platform: PlatformId, options: TokenProviderO
   await forgetTokens(platform);
   return revoked;
 }
+
+/**
+ * A fetch that renews the sign-in once when the platform says 401, and tries again.
+ *
+ * `tokenProviderFor` refreshes on the CLOCK: it looks at `expiresAt` and renews inside the margin.
+ * That covers the ordinary case and misses the one that actually bites, because an access token
+ * can die well before it says it will — a revoke, a password change, and above all a Google
+ * project in Testing status, where the authorization expires seven days after consent whatever the
+ * token claims. The only signal is the 401 itself, and nothing was listening for it, so a creator
+ * came back on day eight, found themselves signed out, and had a perfectly good refresh token
+ * sitting in the vault the whole time. That is the classic multistreaming-tool bug and this is the
+ * two dozen lines that avoid it.
+ *
+ * Wrapped here, around the adapters' `fetch`, rather than inside each adapter: this is the one
+ * seam where a credential meets HTTP, so there is exactly one place to get it right.
+ */
+export function refreshingFetch(
+  platform: PlatformId,
+  doFetch: FetchLike,
+  options: TokenProviderOptions = {},
+): FetchLike {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const first = await doFetch(input, init);
+    if (first.status !== 401) return first;
+
+    // Only a request WE authorised can be retried: without an Authorization header a 401 is the
+    // platform's answer to something else, and re-sending it would be a pointless second call.
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const sent = headers['Authorization'] ?? headers['authorization'];
+    if (!sent?.startsWith('Bearer ')) return first;
+
+    const stored = await readTokens(platform);
+    if (!stored?.refreshToken) return first;
+
+    let renewed: StoredTokens;
+    try {
+      // The renewal goes through the SAME fetch, so a caller that injected one (a test, or a
+      // harness pointing at a local identity provider) does not find half the flow escaping to
+      // the real network.
+      renewed = await refreshTokens(platform, stored, { fetchImpl: doFetch, ...options });
+    } catch {
+      // The refresh token is dead too. Hand back the original 401 so the adapter reports the
+      // platform's own answer rather than a second, less informative failure of ours.
+      return first;
+    }
+    if (renewed.accessToken === stored.accessToken) return first;
+
+    // Rebuilt rather than spread-over: a lower-case `authorization` left beside the new
+    // `Authorization` is two auth headers, one of them the dead one.
+    const retryHeaders: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() !== 'authorization') retryHeaders[key] = value;
+    }
+    retryHeaders['Authorization'] = `Bearer ${renewed.accessToken}`;
+    return doFetch(input, { ...init, headers: retryHeaders });
+  };
+}

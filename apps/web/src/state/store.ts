@@ -48,6 +48,7 @@ import type { EngineHost } from './engine.js';
 import { createRegistry } from './registry.js';
 import type { RegistryKind } from './registry.js';
 import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
+import { revokeTokens } from './tokens.js';
 import { broadcastReality } from '../components/preflight.js';
 
 export type Mode = 'simple' | 'pro';
@@ -827,8 +828,23 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       },
 
       async disconnect(destinationId: string): Promise<void> {
+        const snap = runtime?.orchestrator.getDestination(destinationId);
         await runtime?.orchestrator.disconnect(destinationId);
         await forgetStreamKey(destinationId);
+        /*
+         * Actually disconnect. The confirmation this sits behind says "LIVETAP tells YouTube to
+         * forget it, deletes what it kept on this device", and until now BOTH halves were false:
+         * `revokeTokens` had no caller anywhere outside its own unit test, and nothing removed the
+         * vault entry either. So a creator who signed out kept a live grant on the platform and a
+         * usable refresh token on their disk. Measured end to end against a real OAuth server: zero
+         * calls to `/api/oauth/revoke`, zero grants revoked, the token still under `oauth:youtube`.
+         *
+         * `revokeTokens` forgets locally whether or not the platform's endpoint answers, which is
+         * the right order: a revoke that fails because the machine is offline must still not leave
+         * the credential behind.
+         */
+        const platform = snap?.config.platform;
+        if (platform && platform !== 'custom') await revokeTokens(platform);
       },
 
       async removeDestination(destinationId: string): Promise<void> {

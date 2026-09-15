@@ -43,10 +43,35 @@ export function configuredPlatformIds(body: OAuthConfigResponse | null | undefin
     .map(([id]) => id);
 }
 
-/** Where the broker lives. Empty on web (same origin); a real origin on desktop and mobile. */
+/**
+ * Where the token broker lives.
+ *
+ * Empty on web, where it is the same origin. On desktop and mobile there IS no origin — the
+ * renderer is a `file://` or `capacitor://` document — so an empty value means every broker call
+ * resolves against `file://` and fails, and the app can only ever tell the creator that sign-in is
+ * not set up. That is what was happening: `VITE_LIVETAP_BROKER_URL` was read here and set by no
+ * build in this repository, and the shipped bundle folded this function to `return ""`.
+ *
+ * So the native shells get a default rather than nothing. `DEFAULT_NATIVE_BROKER` is the public
+ * deployment, which is where the broker actually runs; it holds the client secrets that must never
+ * be in a binary, which is the whole reason a broker exists. A build can still override it, and a
+ * self-hoster must.
+ */
+export const DEFAULT_NATIVE_BROKER = 'https://livetap.vercel.app';
+
+function isNativeShell(): boolean {
+  const w = (globalThis as unknown as { window?: Record<string, unknown> }).window;
+  if (!w) return false;
+  if ('livetapHost' in w || 'Capacitor' in w) return true;
+  const protocol = (w.location as { protocol?: string } | undefined)?.protocol;
+  return protocol === 'file:' || protocol === 'capacitor:';
+}
+
 export function brokerBaseUrl(): string {
   const value = (import.meta.env as Record<string, string | undefined>).VITE_LIVETAP_BROKER_URL;
-  return (value ?? '').replace(/\/+$/, '');
+  const configured = (value ?? '').replace(/\/+$/, '');
+  if (configured !== '') return configured;
+  return isNativeShell() ? DEFAULT_NATIVE_BROKER : '';
 }
 
 /**

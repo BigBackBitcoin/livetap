@@ -43,7 +43,7 @@ import {
 } from '@livetap/adapters';
 import { AdapterRegistry, type PlatformId, type PlatformProfile } from '@livetap/core';
 import { brokerBaseUrl, configuredPlatformIds, type OAuthConfigResponse } from './mockMode.js';
-import { tokenProviderFor } from './tokens.js';
+import { refreshingFetch, tokenProviderFor } from './tokens.js';
 
 export type RegistryKind = 'mock' | 'real' | 'injected';
 
@@ -124,8 +124,18 @@ function registerApiAdapter(
   config: OAuthConfigResponse | undefined,
 ): boolean {
   const tokenProvider = tokenProviderFor(platform);
+  /*
+   * Every adapter's HTTP goes through a fetch that renews the sign-in once on a 401 and retries.
+   *
+   * `tokenProviderFor` renews on the clock, which covers the ordinary case and misses the one that
+   * actually bites: a Google project in Testing status expires its authorization seven days after
+   * consent, whatever the access token's own `expires_in` claimed. The only signal is the 401, so
+   * without this a creator comes back on day eight signed out, with a working refresh token in the
+   * vault the whole time.
+   */
+  const fetchImpl = refreshingFetch(platform, doFetch);
   if (platform === 'youtube') {
-    registry.register(new YouTubeAdapter({ fetch: doFetch, tokenProvider }));
+    registry.register(new YouTubeAdapter({ fetch: fetchImpl, tokenProvider }));
     return true;
   }
   if (platform === 'twitch') {
@@ -134,15 +144,15 @@ function registerApiAdapter(
     // an adapter that can only fail. Declining here hands Twitch to the paste path instead,
     // which needs no client id and works.
     if (!clientId) return false;
-    registry.register(new TwitchAdapter({ fetch: doFetch, tokenProvider, clientId }));
+    registry.register(new TwitchAdapter({ fetch: fetchImpl, tokenProvider, clientId }));
     return true;
   }
   if (platform === 'kick') {
-    registry.register(new KickAdapter({ fetch: doFetch, tokenProvider }));
+    registry.register(new KickAdapter({ fetch: fetchImpl, tokenProvider }));
     return true;
   }
   if (platform === 'facebook') {
-    registry.register(new FacebookAdapter({ fetch: doFetch, tokenProvider }));
+    registry.register(new FacebookAdapter({ fetch: fetchImpl, tokenProvider }));
     return true;
   }
   // Instagram, TikTok and X have OAuth that grants no live capability, and LinkedIn is

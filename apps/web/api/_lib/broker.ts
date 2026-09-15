@@ -577,11 +577,44 @@ export function errorResponse(err: unknown): Response {
  * future proxy strips `Origin`. Absent, it falls through to the Origin check.
  */
 export function assertSameOrigin(req: Request): void {
-  const fetchSite = req.headers.get('sec-fetch-site');
-  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
-    throw new BrokerError(403, 'Cross-origin requests are not allowed.', 'BAD_REQUEST');
-  }
   const origin = req.headers.get('origin');
+  const fetchSite = req.headers.get('sec-fetch-site');
+  /*
+   * The desktop and mobile shells are legitimately not same-origin with the broker, and there is
+   * no way for them to be.
+   *
+   * The renderer is a `file://` document (or `capacitor://localhost`), so Chromium sends
+   * `Sec-Fetch-Site: cross-site` and NO `Origin` on every broker call. Rejecting on the header
+   * alone gave a blanket 403 to the whole desktop app: a creator could sign in at the platform,
+   * approve the scopes, watch the callback land on the loopback listener, and then have the code
+   * exchange fail — the entire flow working right up to the last step, for a reason nothing in the
+   * UI could name. Found by driving the built app end to end against a real OAuth server.
+   *
+   * What the check is actually for is a BROWSER on another site making a request with the user's
+   * cookies. That attacker always has an `Origin`: a cross-origin fetch from a page cannot omit
+   * it. So the rule is: an `Origin` must match the host, and a request with no `Origin` at all is
+   * judged by the `Origin` check below rather than by the fetch metadata. This endpoint has no
+   * ambient authority — nothing here is cookie-authenticated, every call carries its own code or
+   * token — so a request from a non-browser client is not a CSRF risk in the first place.
+   */
+  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+    const mode = req.headers.get('sec-fetch-mode');
+    /*
+     * A page on another site always sends an `Origin` when it makes a cross-origin `fetch`, so an
+     * `Origin` here settles it immediately. The cases that arrive cross-site WITHOUT one are a
+     * top-level navigation and a subresource load (`<img>`, `<script>`) — both browser-driven,
+     * both still refused below.
+     *
+     * What is left is `mode: cors` with no `Origin`, and no page can produce that. The desktop and
+     * mobile shells can and do: their renderer is a `file://` or `capacitor://` document, so
+     * Chromium marks every broker call cross-site and sends no origin, and there is no way for
+     * them to do otherwise.
+     */
+    const browserDriven = Boolean(origin) || mode === 'navigate' || mode === 'no-cors';
+    if (browserDriven) {
+      throw new BrokerError(403, 'Cross-origin requests are not allowed.', 'BAD_REQUEST');
+    }
+  }
   if (!origin) return;
   const host = req.headers.get('host');
   let originHost = '';

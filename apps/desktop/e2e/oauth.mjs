@@ -53,9 +53,12 @@
  * WHAT IS NOT PROVEN HERE: that Google accepts these exact requests. Only a real Google client id
  * can prove that. This proves LIVETAP's half, end to end, through its own UI.
  *
- * Requires nothing running beforehand: it builds the app, generates a certificate (openssl), and
- * starts the fake IdP and the broker itself. It holds `infra/dev-harness/broadcast/runlock.mjs`
- * for the whole run because it launches Electron.
+ * Requires nothing running beforehand: it assembles its own copy of the app, generates a
+ * certificate (openssl), and starts the fake IdP and the broker itself. It reads
+ * `apps/desktop/dist` and writes there only in the one case where there is no build at all, since
+ * that directory belongs to the broadcast proof while that is running; and it holds
+ * `infra/dev-harness/broadcast/runlock.mjs` for the whole run because it launches Electron — the
+ * app takes a single-instance lock, so two of them on one host is one of them.
  *
  * Exit 0 on PASS, 1 on FAIL. One PASS/FAIL line at the end, and nothing above it is a claim that
  * was not measured.
@@ -68,6 +71,7 @@ import { acquire } from '../../../infra/dev-harness/broadcast/runlock.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +80,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(here, '..');
 const repoRoot = path.resolve(appDir, '..', '..');
 const idpDir = path.join(repoRoot, 'infra', 'dev-harness', 'fake-idp');
+/** This run's own copy of the application. Dot-prefixed so no tool walks into it; removed at the end. */
+const privateApp = path.join(here, '.oauth-app');
 
 const args = process.argv.slice(2);
 const readArg = (name) => {
@@ -84,10 +90,31 @@ const readArg = (name) => {
 };
 const keepBuild = args.includes('--keep-build');
 
-const IDP_PORT = Number(readArg('--idp-port') ?? 8789);
-const BROKER_PORT = Number(readArg('--broker-port') ?? 8790);
-const IDP_BASE = `http://127.0.0.1:${IDP_PORT}`;
-const BROKER_BASE = `https://127.0.0.1:${BROKER_PORT}`;
+/*
+ * Ports come from the OS, not from a constant.
+ *
+ * A fixed 8789/8790 means a harness process leaked by a killed run silently ADOPTS the next run:
+ * the new servers fail to bind, the driver talks to the old ones, and it then reports the old
+ * run's journal and the old run's certificate as though they were this run's. That produced two
+ * rounds of entirely fictional evidence while this file was being written — the same class of
+ * failure the run lock exists to prevent, reintroduced by a hardcoded port.
+ */
+let IDP_PORT = Number(readArg('--idp-port') ?? 0);
+let BROKER_PORT = Number(readArg('--broker-port') ?? 0);
+let IDP_BASE = '';
+let BROKER_BASE = '';
+
+/** A port nothing is listening on, from the OS. */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
 const CLIENT_ID = 'livetap-dev-client';
 const CLIENT_SECRET = 'livetap-dev-secret';
 /**
@@ -265,9 +292,9 @@ function makeCertificate(dir) {
 
 /* ------------------------------------------------------------------ the renderer build */
 
-/** Every JS chunk of the built renderer. Used to read constants Vite folded into the bundle. */
-function rendererChunks() {
-  const assets = path.join(appDir, 'dist', 'renderer', 'assets');
+/** Every JS chunk of a built renderer. Used to read constants Vite folded into the bundle. */
+function rendererChunks(rendererDir) {
+  const assets = path.join(rendererDir, 'assets');
   if (!fs.existsSync(assets)) return [];
   return fs
     .readdirSync(assets)
@@ -298,14 +325,48 @@ function foldedBrokerBase(chunks) {
   return null;
 }
 
-async function buildRenderer(env = {}) {
+/**
+ * A private copy of the application, so this run and a concurrent broadcast proof do not fight.
+ *
+ * `apps/desktop/dist` is shared: the broadcast harness builds into it and launches from it, and a
+ * renderer rebuilt underneath a running proof is how two harnesses produce two wrong answers. This
+ * run therefore assembles its own app directory — the built main process and preload, copied, plus
+ * its own renderer — inside `apps/desktop/e2e/`, where module resolution still reaches the app's
+ * node_modules. This function only reads `apps/desktop/dist`; it never writes to it.
+ */
+function prepareApp() {
+  fs.rmSync(privateApp, { recursive: true, force: true });
+  fs.mkdirSync(path.join(privateApp, 'dist'), { recursive: true });
+  fs.copyFileSync(path.join(appDir, 'package.json'), path.join(privateApp, 'package.json'));
+  // Everything the built app is except its renderer — main AND preload. Copying only `main` gives
+  // a window with no `window.livetap` at all, which the renderer reads as "this is the web", so the
+  // whole desktop branch of the sign-in silently does not run.
+  for (const part of fs.readdirSync(path.join(appDir, 'dist'))) {
+    if (part === 'renderer') continue;
+    const from = path.join(appDir, 'dist', part);
+    if (!fs.statSync(from).isDirectory()) continue;
+    fs.cpSync(from, path.join(privateApp, 'dist', part), { recursive: true });
+  }
+}
+
+/**
+ * Build the web app as the desktop renderer, into a given directory.
+ *
+ * This is `apps/desktop/scripts/build-renderer.mjs`'s own invocation — same entry, same flags, same
+ * `VITE_LIVETAP_MOCK_MODE=false` — with only `--outDir` changed, so that a concurrent run of any
+ * other harness is not building into the same place at the same time.
+ */
+async function buildRendererInto(outDir, env = {}) {
   const result = await run(
     process.execPath,
-    [path.join(appDir, 'scripts', 'build-renderer.mjs')],
-    { env: { ...process.env, ...env } },
+    [path.join(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--base', './', '--outDir', outDir, '--emptyOutDir'],
+    {
+      cwd: path.join(repoRoot, 'apps', 'web'),
+      env: { ...process.env, VITE_LIVETAP_MOCK_MODE: 'false', ...env },
+    },
   );
   if (result.code !== 0) {
-    throw new Error(`the renderer build failed (exit ${result.code}): ${result.stderr.slice(-400)}`);
+    throw new Error(`the renderer build failed (exit ${result.code}): ${(result.stderr || result.stdout).slice(-500)}`);
   }
 }
 
@@ -344,7 +405,7 @@ async function actAsTheBrowser(authorizeUrl) {
  */
 async function launchApp(spki) {
   const launchArgs = [
-    appDir,
+    privateApp,
     // Trust exactly one certificate: the one generated for this run, seconds ago.
     `--ignore-certificate-errors-spki-list=${spki}`,
     '--autoplay-policy=no-user-gesture-required',
@@ -352,7 +413,7 @@ async function launchApp(spki) {
   let last;
   for (let attempt = 1; attempt <= 6; attempt += 1) {
     try {
-      return await electron.launch({ args: launchArgs, cwd: appDir });
+      return await electron.launch({ args: launchArgs, cwd: privateApp });
     } catch (error) {
       last = error;
       note(`attempt ${attempt} to launch the app failed; another LIVETAP is probably still running. Waiting 20s.`);
@@ -372,7 +433,11 @@ async function gotoDestinations(win) {
   await win.evaluate(() => {
     location.hash = '#/app/destinations';
   });
-  await win.waitForTimeout(700);
+  // The screen, not a timer. A fixed wait here is how this harness spent three runs reporting that
+  // a button did not exist when the application had simply not finished mounting.
+  await win.waitForFunction(() => document.querySelector('.lt-screen h1')?.textContent === 'Destinations', undefined, {
+    timeout: 30_000,
+  });
 }
 
 /** Open the add sheet and tap one platform row, the way a creator does. */
@@ -380,11 +445,14 @@ async function tapConnect(win, displayName) {
   await gotoDestinations(win);
   try {
     await win.getByRole('button', { name: /Add destination|Add your first destination/i }).first().click();
-    await win.waitForTimeout(500);
+    await win.waitForSelector('.lt-addrow', { timeout: 15_000 });
     await win.locator('.lt-addrow', { hasText: displayName }).first().click();
+    // The sheet closes itself when a row is taken. Waiting for that is the only proof available
+    // that React ran the handler, rather than that Playwright hit some pixels.
+    await win.waitForFunction(() => document.querySelector('.lt-addrow') === null, undefined, { timeout: 15_000 });
   } catch (error) {
     const screen = firstLines(await screenText(win), 25).join(' / ');
-    throw new Error(`could not reach the ${displayName} row in the add sheet (${String(error).slice(0, 120)}). On screen: ${screen}`);
+    throw new Error(`could not reach the ${displayName} row in the add sheet (${String(error).slice(0, 160)}). On screen: ${screen}`);
   }
 }
 
@@ -411,24 +479,29 @@ async function main() {
     onWait: (holder) => process.stdout.write(`  waiting     pid ${holder.pid} is using the app\n`),
   });
 
+  IDP_PORT = IDP_PORT || (await freePort());
+  BROKER_PORT = BROKER_PORT || (await freePort());
+  IDP_BASE = `http://127.0.0.1:${IDP_PORT}`;
+  BROKER_BASE = `https://127.0.0.1:${BROKER_PORT}`;
+
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'livetap-oauth-'));
-  const snapshot = path.join(work, 'renderer-as-shipped');
   let app = null;
 
   try {
     /* ---------------------------------------------------------------- [1/10] */
-    step('[1/10] building the desktop app exactly as it ships, and reading what it was built to call');
-    const built = await run('npm', ['run', 'build', '-w', '@livetap/desktop'], { shell: process.platform === 'win32' });
-    if (built.code !== 0) throw new Error(`npm run build -w @livetap/desktop failed (exit ${built.code})\n${built.stdout.slice(-800)}`);
-    if (!fs.existsSync(path.join(appDir, 'dist', 'main', 'index.cjs'))) throw new Error('no built main process');
-    if (!fs.existsSync(path.join(appDir, 'dist', 'renderer', 'app.html'))) throw new Error('no built renderer');
-    fs.cpSync(path.join(appDir, 'dist', 'renderer'), snapshot, { recursive: true });
+    step('[1/10] reading what the desktop app as built in this tree was built to call');
+    const shippedRenderer = path.join(appDir, 'dist', 'renderer');
+    if (!fs.existsSync(path.join(shippedRenderer, 'app.html')) || !fs.existsSync(path.join(appDir, 'dist', 'main', 'index.cjs'))) {
+      note('no build in the tree; running npm run build -w @livetap/desktop once to make one');
+      const built = await run('npm', ['run', 'build', '-w', '@livetap/desktop'], { shell: process.platform === 'win32' });
+      if (built.code !== 0) throw new Error(`npm run build -w @livetap/desktop failed (exit ${built.code})\n${built.stdout.slice(-800)}`);
+    }
 
-    const shippedMode = JSON.parse(fs.readFileSync(path.join(appDir, 'dist', 'renderer', 'build-mode.json'), 'utf8'));
-    if (shippedMode.mockMode === false) ok('the shipped renderer is a REAL build: mock mode is compiled out');
-    else bad(`the shipped renderer is a DEMO build (build-mode.json says mockMode=${shippedMode.mockMode})`);
+    const shippedMode = JSON.parse(fs.readFileSync(path.join(shippedRenderer, 'build-mode.json'), 'utf8'));
+    if (shippedMode.mockMode === false) ok('the renderer in this tree is a REAL build: mock mode is compiled out');
+    else bad(`the renderer in this tree is a DEMO build (build-mode.json says mockMode=${shippedMode.mockMode})`);
 
-    const shippedBase = foldedBrokerBase(rendererChunks());
+    const shippedBase = foldedBrokerBase(rendererChunks(shippedRenderer));
     if (shippedBase === null) {
       bad('could not find the folded brokerBaseUrl() constant in the shipped bundle');
     } else if (shippedBase === '') {
@@ -441,7 +514,7 @@ async function main() {
       );
       bad('the app as built cannot reach a token broker at all');
     } else {
-      ok(`the shipped renderer calls the broker at ${shippedBase}`);
+      ok(`the renderer in this tree calls the broker at ${shippedBase}`);
     }
 
     /* ---------------------------------------------------------------- [2/10] */
@@ -486,9 +559,10 @@ async function main() {
       bad(`the broker does not report YouTube as configured: ${JSON.stringify(config).slice(0, 200)}`);
     }
     /* ---------------------------------------------------------------- [3/10] */
-    step('[3/10] rebuilding the renderer with the one variable an installed build is missing');
-    await buildRenderer({ VITE_LIVETAP_BROKER_URL: BROKER_BASE });
-    const harnessBase = foldedBrokerBase(rendererChunks());
+    step('[3/10] assembling a private copy of the app whose renderer has the one variable a build is missing');
+    prepareApp();
+    await buildRendererInto(path.join(privateApp, 'dist', 'renderer'), { VITE_LIVETAP_BROKER_URL: BROKER_BASE });
+    const harnessBase = foldedBrokerBase(rendererChunks(path.join(privateApp, 'dist', 'renderer')));
     if (harnessBase === BROKER_BASE) ok(`the seam works: this build calls the broker at ${harnessBase}`);
     else bad(`the rebuilt renderer calls ${harnessBase ?? '(unreadable)'}, expected ${BROKER_BASE}`);
 
@@ -529,10 +603,26 @@ async function main() {
          * before the app boots so the reference `createRegistry` captures is this one.
          */
         const real = window.fetch.bind(window);
-        window.fetch = (input, init) => {
+        /*
+         * Also a transport journal, for one reason: `clientIdFor` swallows every fetch failure and
+         * answers "this copy has no sign-in set up", which is indistinguishable on screen from a
+         * deployment that genuinely has no client id. Without this, a broken socket and a missing
+         * credential look identical, and the harness would have to guess which it had seen.
+         */
+        window.__harnessFetchLog = [];
+        window.fetch = async (input, init) => {
           const url = typeof input === 'string' ? input : input?.url;
-          if (typeof url === 'string' && url.startsWith(api)) return real(apiTarget + url.slice(api.length), init);
-          return real(input, init);
+          const moved = typeof url === 'string' && url.startsWith(api);
+          const target = moved ? apiTarget + url.slice(api.length) : input;
+          const watched = typeof url === 'string' && (url.includes('/api/oauth/') || moved);
+          try {
+            const response = await real(target, init);
+            if (watched) window.__harnessFetchLog.push(`${init?.method ?? 'GET'} ${url} -> ${response.status}`);
+            return response;
+          } catch (error) {
+            if (watched) window.__harnessFetchLog.push(`${init?.method ?? 'GET'} ${url} -> ${String(error).slice(0, 90)}`);
+            throw error;
+          }
         };
         /*
          * Did the creator ever get shown a stream key screen? A snapshot at the end cannot answer
@@ -559,9 +649,24 @@ async function main() {
       localStorage.setItem('livetap.mode', '"simple"');
       localStorage.removeItem('livetap.destinations');
       localStorage.removeItem('livetap.realBroadcastAck');
+      // Come back on Destinations rather than Studio. Nothing here is about the camera, and on a
+      // host this loaded the preview's getUserMedia negotiation is the slowest thing in the app.
+      location.hash = '#/app/destinations';
     });
     await win.reload();
-    await win.waitForTimeout(2500);
+    // Wait for the application shell to actually be on screen, not for a number of milliseconds.
+    const booted = await win
+      .waitForFunction(() => document.querySelector('.lt-shell__nav') !== null, undefined, { timeout: 90_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!booted) {
+      bad('the application never finished starting');
+      lines.push(`  what the app says: ${firstLines(await screenText(win), 10).join(' / ')}`);
+      lines.push(`  renderer console: ${consoleLines.slice(-10).join(' | ').slice(0, 600)}`);
+      await finish(app, work);
+      return;
+    }
+    await win.waitForTimeout(1500);
 
     const host = await win.evaluate(() => ({
       kind: window.livetapHost?.kind,
@@ -571,8 +676,22 @@ async function main() {
     if (host.kind === 'desktop' && host.oauth && host.vault) {
       ok('the renderer has the real desktop bridges: OAuth loopback and the encrypted vault');
     } else {
+      // Everything below is about the DESKTOP branch of the sign-in. Without the bridge the
+      // renderer takes the web branch instead, and every line after this would be measuring a
+      // different product.
       bad(`the preload bridge is incomplete (host=${host.kind}, oauth=${host.oauth}, vault=${host.vault})`);
+      await finish(app, work);
+      return;
     }
+
+    /*
+     * Which renderer is actually on screen? Every claim below is about a build, so the run has to
+     * know it is driving the build it made and not some other copy on this machine.
+     */
+    const loadedFrom = (await win.evaluate(() => location.href)).replace(/\\/g, '/');
+    const expectedFrom = privateApp.replace(/\\/g, '/');
+    if (loadedFrom.includes(expectedFrom)) ok('the window is running the renderer this run built');
+    else bad(`the window is running ${loadedFrom}, not the renderer this run built under ${expectedFrom}`);
 
     /*
      * Before anything is clicked: can this renderer reach the broker at all? A "Connect account"
@@ -603,13 +722,23 @@ async function main() {
       ok('the app asked the operating system to open a sign-in page');
     } catch {
       bad('the app never asked for a browser, so no sign-in was started at all');
+      const where = await win.evaluate(() => ({
+        hash: location.hash,
+        rows: [...document.querySelectorAll('.lt-addrow')].map((n) => n.textContent?.slice(0, 48)),
+        keyFormNow: Boolean(document.querySelector('.lt-keyform')),
+        keyFormEver: window.__harnessSawKeyForm === true,
+        destinations: document.querySelectorAll('.lt-destlist > li').length,
+      }));
+      lines.push(`  where the app is: ${JSON.stringify(where)}`);
+      lines.push('  what the renderer asked the network for:');
+      lines.push(...(await win.evaluate(() => window.__harnessFetchLog ?? [])).map((l) => `        ${l}`));
       lines.push('  what the app says:');
-      lines.push(...(await screenText(win)).split(/\r?\n/).slice(0, 25).map((l) => `        ${l}`));
+      lines.push(...firstLines(await screenText(win), 45).map((l) => `        ${l}`));
       lines.push('  the broker was asked for:');
       lines.push(...(await broker('/__harness/state')).calls.map((c) => `        ${c.method} ${c.path} -> ${c.status}`));
       lines.push('  renderer console:');
       lines.push(...consoleLines.slice(-15).map((l) => `        ${l.slice(0, 200)}`));
-      await finish(app, work, snapshot);
+      await finish(app, work);
       return;
     }
 
@@ -639,7 +768,7 @@ async function main() {
     if (wrongState === 400 && noState === 400) {
       ok('the loopback listener refused a forged callback and a callback with no state at all (HTTP 400 twice)');
     } else {
-      finding('CRITICAL', 'apps/desktop/src/main/oauth.ts:139 (LoopbackOAuthServer.handle)',
+      finding('CRITICAL', 'apps/desktop/src/main/oauth.ts:162 (LoopbackOAuthServer.handle)',
         `the loopback listener accepted a callback whose state did not match (wrong state -> ${wrongState}, no state -> ${noState}). ` +
         'Any local process that can guess the port can hand LIVETAP its own authorization code.');
       bad('the loopback state check did not hold');
@@ -661,7 +790,7 @@ async function main() {
     if (firstToken?.status === 403) {
       finding(
         'CRITICAL',
-        'apps/web/api/_lib/broker.ts:566 (assertSameOrigin) + apps/web/api/oauth/token.ts:26',
+        'apps/web/api/_lib/broker.ts:579 (assertSameOrigin) + apps/web/api/oauth/token.ts:26',
         'the broker refuses every request the desktop app makes. Chromium sends ' +
           '`Sec-Fetch-Site: cross-site` from the file:// renderer, and assertSameOrigin rejects ' +
           'anything that is not `same-origin` or `none`. The sign-in completes at the platform and ' +
@@ -703,7 +832,7 @@ async function main() {
       bad('no destination was created, so the sign-in did not complete');
       lines.push('  what the app says:');
       lines.push(...screen.split(/\r?\n/).slice(0, 30).map((l) => `        ${l}`));
-      await finish(app, work, snapshot);
+      await finish(app, work);
       return;
     }
     await win.waitForTimeout(2500);
@@ -715,6 +844,12 @@ async function main() {
       text: document.body.innerText,
       sawKeyForm: window.__harnessSawKeyForm === true,
     }));
+    const exchange = (await broker('/__harness/state')).calls.filter((c) => c.path === '/api/oauth/token');
+    if (exchange.some((c) => c.status === 200)) {
+      ok(`the real broker exchanged the authorization code for tokens (${exchange.map((c) => c.status).join(', ')})`);
+    } else {
+      bad(`no code exchange succeeded (${JSON.stringify(exchange)})`);
+    }
     if (shown.account === EXPECTED_ACCOUNT) ok(`the card names the account the identity provider issued: "${shown.account}"`);
     else bad(`the card says "${shown.account}", the identity provider issued "${EXPECTED_ACCOUNT}"`);
     if (/Ready/.test(shown.text)) ok('the destination reached READY');
@@ -800,7 +935,7 @@ async function main() {
       } else {
         finding(
           'HIGH',
-          'apps/web/src/state/tokens.ts:219 (tokenProviderFor) + packages/adapters/src/real/http.ts:112 (request)',
+          'apps/web/src/state/tokens.ts:227 (tokenProviderFor) + packages/adapters/src/real/http.ts:98 (request)',
           'an access token that dies before its stated expiry is never renewed. tokenProviderFor ' +
             'refreshes on the clock only, and nothing retries a 401 with a fresh token — although the ' +
             'doc comment on that function says "and again on the retry after the platform refuses one ' +
@@ -857,9 +992,16 @@ async function main() {
       const afterDisconnect = await idp();
       const revokedNow = (afterDisconnect.revokedTokenIds ?? []).length;
       const revokeCalls = (await broker('/__harness/state')).calls.filter((c) => c.path === '/api/oauth/revoke');
+      /*
+       * Ask the vault itself, through the same bridge the product uses, and normalise its answer
+       * the way `valueOf` in apps/web/src/state/secrets.ts does: Electron's preload replies with
+       * `{ ok, secret }`, and a check that expected a string would report "the token is gone"
+       * about a vault that still holds it.
+       */
       const stillInVault = await win.evaluate(async () => {
-        const raw = await window.livetap.vault.get('oauth:youtube');
-        return typeof raw === 'string' && raw.length > 0;
+        const answer = await window.livetap.vault.get('oauth:youtube');
+        if (typeof answer === 'string') return answer.length > 0;
+        return answer?.ok === true && typeof answer.secret === 'string' && answer.secret.length > 0;
       });
 
       if (revokeCalls.length > 0 && revokedNow > 0) {
@@ -867,17 +1009,23 @@ async function main() {
       } else {
         finding(
           'CRITICAL',
-          'apps/web/src/state/store.ts:788 (disconnect) — revokeTokens() in apps/web/src/state/tokens.ts:248 has no caller outside its own test',
-          'Disconnect account revokes nothing and deletes nothing. The store\'s disconnect() calls the ' +
+          'apps/web/src/state/store.ts:800 (disconnect) — revokeTokens() in apps/web/src/state/tokens.ts:252 has no caller outside its own test',
+          'Disconnect account does not revoke the grant. The store\'s disconnect() calls the ' +
             'orchestrator and forgetStreamKey(destinationId); it never calls revokeTokens(platform), so ' +
-            `the OAuth grant stays live at the platform (${liveGrants} grant(s) before, ${revokedNow} revoked after, ` +
-            `${revokeCalls.length} calls to /api/oauth/revoke) and the access and refresh tokens stay in the ` +
-            'device vault. The confirmation the creator reads says "LIVETAP tells YouTube to forget it, ' +
-            'deletes what it kept on this device". Both halves of that sentence are false.',
+            `the OAuth grant stays live at the platform (${liveGrants} live grant(s) before, ${revokedNow} revoked ` +
+            `after, ${revokeCalls.length} calls to /api/oauth/revoke). The confirmation the creator reads says ` +
+            '"LIVETAP tells YouTube to forget it", and nothing was told anything. A creator who disconnects ' +
+            'because they no longer trust this app leaves it holding a working key to their channel.',
         );
         bad('Disconnect account does not disconnect the account');
       }
       if (stillInVault) {
+        finding(
+          'CRITICAL',
+          'apps/web/src/state/store.ts:800 (disconnect) — forgetTokens() in apps/web/src/state/tokens.ts:106 is never called on this path',
+          'the access and refresh tokens are still in the device vault after Disconnect, under the key ' +
+            '`oauth:youtube`. The confirmation says "deletes what it kept on this device".',
+        );
         bad('the OAuth token is still in the device vault after Disconnect');
       } else {
         ok('the token is gone from the device vault');
@@ -921,11 +1069,11 @@ async function main() {
     if (rendererErrors.length === 0) ok('no uncaught renderer errors during the whole run');
     else bad(`renderer errors: ${rendererErrors.slice(0, 3).join(' | ')}`);
 
-    await finish(app, work, snapshot);
+    await finish(app, work);
   } catch (error) {
     lines.push(`  FAIL  ${error instanceof Error ? error.message : String(error)}`);
     failed = true;
-    await finish(app, work, snapshot);
+    await finish(app, work);
   }
 }
 
@@ -933,17 +1081,17 @@ function redirectUriOf(authorizeUrl) {
   return new URL(authorizeUrl).searchParams.get('redirect_uri');
 }
 
-async function finish(app, work, snapshot) {
+async function finish(app, work) {
   if (app) await app.close().catch(() => undefined);
   for (const child of children) child.kill();
 
-  if (!keepBuild && snapshot && fs.existsSync(snapshot)) {
-    // Put back the renderer this repository actually ships, so the next run of any other harness
-    // is not quietly testing a build that points at a development identity provider.
-    fs.rmSync(path.join(appDir, 'dist', 'renderer'), { recursive: true, force: true });
-    fs.cpSync(snapshot, path.join(appDir, 'dist', 'renderer'), { recursive: true });
+  if (!keepBuild) {
+    // The private app carries a renderer pointed at a development identity provider. It must not
+    // outlive the run that built it, and nothing else in the tree was touched.
+    fs.rmSync(privateApp, { recursive: true, force: true });
+  } else {
     lines.push('');
-    lines.push('  note  the renderer built with the harness broker URL was replaced with the as-shipped build');
+    lines.push(`  note  --keep-build: the harness copy of the app is still at ${privateApp}`);
   }
   if (work) fs.rmSync(work, { recursive: true, force: true });
 

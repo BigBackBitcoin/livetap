@@ -124,13 +124,63 @@ describe('assertSameOrigin', () => {
 
 describe('SEC-W1 Sec-Fetch-Site', () => {
   const url = 'https://livetap.app/api/oauth/token';
-  it('refuses a browser request that declares itself cross-site even without an Origin header', () => {
+  it('refuses a cross-site request that carries an Origin, which every page does', () => {
     expect(() =>
-      assertSameOrigin(new Request(url, { headers: { host: 'livetap.app', 'sec-fetch-site': 'cross-site' } })),
+      assertSameOrigin(
+        new Request(url, {
+          headers: { host: 'livetap.app', origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
+        }),
+      ),
     ).toThrow(BrokerError);
     expect(() =>
-      assertSameOrigin(new Request(url, { headers: { host: 'livetap.app', 'sec-fetch-site': 'same-site' } })),
+      assertSameOrigin(
+        new Request(url, {
+          headers: { host: 'livetap.app', origin: 'https://other.livetap.app', 'sec-fetch-site': 'same-site' },
+        }),
+      ),
     ).toThrow(BrokerError);
+  });
+
+  /**
+   * The two browser-driven ways to arrive cross-site with no Origin: a top-level navigation, and a
+   * subresource load such as an <img> or a <script>. Both are still refused.
+   */
+  it('refuses a cross-site navigation or subresource load, which send no Origin', () => {
+    for (const mode of ['navigate', 'no-cors']) {
+      expect(() =>
+        assertSameOrigin(
+          new Request(url, {
+            headers: { host: 'livetap.app', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': mode },
+          }),
+        ),
+        mode,
+      ).toThrow(BrokerError);
+    }
+  });
+
+  /**
+   * And the case that made this whole check wrong for the product it serves.
+   *
+   * The desktop renderer is a `file://` document and the phone's is `capacitor://`, so Chromium
+   * marks every broker call cross-site and sends no Origin — there is no way for either to do
+   * otherwise. Refusing on the header alone gave a blanket 403 to the entire desktop app: a
+   * creator could sign in at the platform, approve the scopes, watch the callback land on the
+   * loopback listener, and then have the code exchange fail, with the flow working right up to the
+   * last step for a reason nothing in the UI could name. Found by driving the built app against a
+   * real OAuth server; not visible from reading the code.
+   *
+   * No page can produce this shape: a cross-origin `fetch` from a document always carries an
+   * Origin. And nothing here is cookie-authenticated — every call brings its own code or token —
+   * so a request from a non-browser client was never a CSRF risk to begin with.
+   */
+  it('accepts a CORS-mode request with no Origin, which is what a native shell sends', () => {
+    expect(() =>
+      assertSameOrigin(
+        new Request(url, {
+          headers: { host: 'livetap.app', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors' },
+        }),
+      ),
+    ).not.toThrow();
   });
   it('still accepts same-origin browser requests and header-less non-browser clients', () => {
     expect(() =>
