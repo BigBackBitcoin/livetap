@@ -63,7 +63,45 @@ Conditions established before it started, each verified rather than assumed:
 | Server | started by Playwright itself, from `07e51b9`-or-later code |
 | Bundle | built by Playwright's own `npm run build`, not reused |
 
-RESULT_PLACEHOLDER
+```
+333 passed · 3 skipped · 0 failed · 32.0 min · exit 0
+```
+
+**This is the run this release is signed on.** Every condition above was
+established and verified before it started, and nothing was running on the host
+but the suite and the server it started for itself.
+
+Two commits landed on main while it was in flight, both from the session building
+the guest-session lifecycle in a separate worktree: `6b55bb3` added
+`apps/web/src/state/session.ts` and its tests, and `a25cd5f` fixed a privacy
+defect in it. **Neither can move this result**, and that was checked rather than
+assumed:
+
+```
+grep -rn "state/session" apps/web/src   (excluding its own tests)   → nothing
+```
+
+Nothing imports the module, so it is not reachable from any route the suite
+walks. It ships dormant. The defect `a25cd5f` fixes is worth recording here
+because it was found by review of code already committed to main and heading for
+the push: `livetapKeysIn` caught its enumeration error and returned an empty
+array, so a `localStorage` whose `length` getter throws — a locked store, site
+data blocked, a `SecurityError` on a partitioned origin — reported
+`storageRemaining: []` and `clean: true`. A store that could not be READ reported
+as a store that had been EMPTIED.
+
+### What was different from run 1
+
+| | Run 1 | Run 2 |
+|---|---|---|
+| Server | a peer session's, started 05:13:15 — six minutes older than its own crash fix | started by Playwright, from `07e51b9`-or-later code |
+| Build | skipped; the bundle happened to be correct and it was checked | Playwright's own `npm run build` |
+| Other load | a peer's broadcast harness at 12:36 and 12:42 | none |
+| Result | 333 / 3 / 0 | 333 / 3 / 0 |
+
+The numbers agree. That is a happy accident rather than a vindication — run 1 was
+one uncaught `ENOENT` away from a hundred-failure cascade, and the point of run 2
+is that its number means something, not that it came back the same.
 
 ---
 
