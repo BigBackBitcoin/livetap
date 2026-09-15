@@ -1,17 +1,28 @@
 # LIVETAP — everything the owner has to do, once, in order
 
-Written 2026-09-14. This is the whole list. It exists so nobody has to ask you
-anything again mid-build.
+Written 2026-09-14, revised 2026-09-15. This is the whole list. It exists so
+nobody has to ask you anything again mid-build.
 
-Nothing in the engineering plan is blocked on any of it. The alpha's first real
-broadcast goes to a Custom RTMP destination on your own machine, which needs no
-platform account, no certificate and no review. What this list buys is the
-second thing you asked for: connecting your real accounts and going live on
-them without ever seeing a stream key.
+**Read this first, because it changed.** You do not need any of it to go live on
+a real platform. Every platform on your priority list shows you an ingest URL and
+a stream key in its own studio page, and LIVETAP now asks for exactly that when
+it has no other way in: open Destinations, tap YouTube, paste the key from
+YouTube Studio's Stream settings, press Connect. That destination is a real
+YouTube destination — YouTube's aspect ratios, YouTube's bitrate ceiling, and
+YouTube's own warning that it will not publish until you press Go live in Studio
+— and it puts real bytes on the real wire. Thirty seconds, nothing registered
+anywhere.
+
+So the list below is not the road to your first broadcast any more. What it buys
+is the better version of it: **LIVETAP fetching the key itself, so you never see
+one**, setting your title, reading health from the platform's own API, and
+telling you why a stream was rejected when only the API knows. That is the
+product you asked for; the paste path is the honest fallback underneath it.
 
 **Total time: about two and a half hours at a laptop, plus waiting on other
-people's review queues afterwards.** Do part 0 first; it takes five minutes and
-it is the only item that is urgent.
+people's review queues afterwards.** Do part 0 first; it takes five minutes, it
+is the only item that is urgent, and it is the only one that is about safety
+rather than capability.
 
 ---
 

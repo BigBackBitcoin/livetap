@@ -299,10 +299,10 @@ async function stageBroadcast(driver) {
   });
   const verdict = lastVerdict(result.stdout) || `the driver exited ${String(result.code)} without a verdict line`;
   if (result.code === 0) {
-    record('real broadcast, two shapes, isolation, reconnect, END', 'PASS', verdict);
+    record('real broadcast, three shapes, isolation, reconnect, END', 'PASS', verdict);
     return true;
   }
-  record('real broadcast, two shapes, isolation, reconnect, END', 'FAIL', verdict);
+  record('real broadcast, three shapes, isolation, reconnect, END', 'FAIL', verdict);
   if (result.stderr.trim()) log(indent(result.stderr));
   return false;
 }

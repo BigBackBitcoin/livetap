@@ -36,6 +36,68 @@ tokens, serves YouTube-shaped and Twitch-shaped API responses including
 proves LIVETAP's half of the conversation is correct. It cannot prove the other
 half. Those cells are UNVERIFIED with a note, never PASS.
 
+### Proven against the harness — the desktop sign-in, end to end, 2026-09-15
+
+`node apps/desktop/e2e/oauth.mjs` (`npm run e2e:oauth -w @livetap/desktop`) is the
+first run in this repository's history in which the **built desktop application**
+was launched, the **YouTube row of its own Add destination sheet** was tapped, and
+a destination reached READY carrying an account name, with no stream key typed and
+nothing simulated. Read that file's header before quoting anything from here: it
+lists, link by link, what was real and what was redirected.
+
+**Real in that run.** The `window.livetap.oauth` contextBridge IPC; the main
+process's RFC 8252 loopback listener and its state check; `generatePkce`,
+`buildAuthorizeUrl` and the authorize URL's entire query string; the fake IdP's
+own consent page and `/authorize/decision`; the **real** Vercel handlers from
+`apps/web/api/oauth/*.ts` and `apps/web/api/_lib/broker.ts`, bundled from source
+and executed unmodified; constant-time S256 PKCE verification; the Electron
+`safeStorage` vault; `tokenProviderFor`'s renewal; `YouTubeAdapter.validate`'s
+account lookup; and the real Destinations screen, store and orchestrator, with no
+test hooks and no injected registry.
+
+**Redirected, and only this.** (1) `shell.openExternal` was replaced in the main
+process so the harness could play the human who opens a browser and presses
+Approve — the renderer bridge, the IPC and main's own `isHttpsUrl` /
+`isExternallyOpenable` guards all still ran. (2) `accounts.google.com` and
+`www.googleapis.com/youtube/v3` were pointed at the harness, the second by a
+`window.fetch` wrapper because `apps/web/src/state/registry.ts` gives
+`YouTubeAdapter` no `apiBase` seam. (3) The broker spoke TLS on loopback with a
+certificate generated for the run and pinned by SPKI, because the renderer is a
+`file://` document under the production CSP and that CSP refuses plain http —
+measured, not assumed. (4) `Sec-Fetch-Site` was dropped for the second half of the
+run, after the first half had measured what happens when it is not.
+
+**What the run measured, with the identity provider's own control surface as the
+authority rather than the UI:** exactly one authorization code issued and
+exchanged exactly once; the code bound to a PKCE challenge and to the loopback
+redirect the app actually opened; the state the IdP received identical to the one
+the main process generated; the loopback listener refusing both a forged state and
+a missing one (HTTP 400 twice); one live grant with a refresh token; the account
+name on the card matching the one the IdP issued; the token renewed on its own when
+it aged into the 60 s margin, with the refresh token rotated and the new one kept;
+and no access token, refresh token, authorization code or PKCE verifier anywhere in
+the renderer console, the main process output, the page text or `localStorage` —
+checked against the exact strings the broker saw in transit.
+
+**It still cannot prove Google accepts these requests.** Every YouTube cell below
+stays UNVERIFIED.
+
+**And it fails.** The run ends FAIL, on four defects it measured rather than
+inferred. They belong to other workstreams' files and are recorded here, not fixed:
+
+| Severity | Where | What |
+|---|---|---|
+| CRITICAL | `apps/web/src/state/mockMode.ts:48`; `VITE_LIVETAP_BROKER_URL` is set by no build in this repo | The shipped desktop renderer folds `brokerBaseUrl()` to `""`, so every broker call resolves against `file://`. On an installed build, Connect account can only answer "no sign-in set up" and drop the creator on the paste-a-key form. `apps/web/.env.example` documents the variable and leaves it empty; `apps/desktop/scripts/build-renderer.mjs` passes only `VITE_LIVETAP_MOCK_MODE`. The Android build has the same gap |
+| CRITICAL | `apps/web/api/_lib/broker.ts:579` (`assertSameOrigin`) | Chromium sends `Sec-Fetch-Site: cross-site` from a `file://` renderer, so the broker answers 403 to every desktop request. The sign-in completes at the platform and dies at the code exchange. The `Origin` half of that function is already documented as deliberately permissive for the desktop app; the `Sec-Fetch-Site` half was not given the same exemption |
+| CRITICAL | `apps/web/src/state/store.ts:800` (`disconnect`) | Disconnect account revokes nothing: `revokeTokens()` has no caller outside its own test, so the grant stays live at the platform. Measured: 0 calls to `/api/oauth/revoke`, 0 grants revoked |
+| CRITICAL | `apps/web/src/state/store.ts:800` (`disconnect`) | …and deletes nothing: the access and refresh tokens are still in the device vault under `oauth:youtube` afterwards. The confirmation the creator reads says "LIVETAP tells YouTube to forget it, deletes what it kept on this device" |
+| HIGH | `apps/web/src/state/tokens.ts:227` (`tokenProviderFor`) + `packages/adapters/src/real/http.ts:98` | A token that dies *before* its stated expiry is never renewed: renewal is on the clock only and nothing retries a 401 with a fresh token, though the doc comment says it does. That is Google's Testing-status behaviour every seven days — the creator is signed out with a valid refresh token sitting in the vault |
+
+Re-run it with `npm run e2e:oauth -w @livetap/desktop`. It needs nothing running
+beforehand, assembles its own copy of the app rather than writing to
+`apps/desktop/dist`, and takes the broadcast run lock because the app holds a
+single-instance lock.
+
 ---
 
 ## The matrix

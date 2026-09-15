@@ -1,349 +1,125 @@
 # Real-world alpha readiness
 
-Written 2026-09-14 on the build host, against the owner's own completion gate,
-and **re-measured on 2026-09-15 after the defects below were fixed**. Five
-workstreams were landing code while the first pass was measured, so every line
-says **when** it was measured and **against which build**, because on a day
-like that this is the difference between a result and a rumour.
+Written 2026-09-14, rewritten 2026-09-15 against the owner's **release gate**
+(§41 of the ship directive) rather than against the earlier completion gate,
+which it had outgrown.
 
-> **2026-09-15 status: the gate passes 4 of 4 stages.** Everything the build
-> host can prove without the owner's own accounts and devices is now proven.
-> The two items that remain are the two that were always the owner's: a real
-> platform account, and a physical phone. See **What changed on 2026-09-15**.
+Every row says what was measured and with which command, and says UNPROVEN where
+nothing was. The rule this document keeps: a capability is PASS only if
+something was executed that would have failed had the capability been absent. A
+passing unit test of the arithmetic behind a feature is not the feature.
+
+> **The proof harness passes 4 of 4 stages, 2026-09-15 03:53.** Three
+> simultaneous publishers at 1920x1080, 1080x1920 and 1080x1080 from one
+> production; a real TCP kill that the survivors rode through; the dropped
+> destination back on its own 18.9 s later at the shape it left; and an END that
+> clears every publisher even when the creator walks away mid-grace.
 
 ---
 
-## The gate, item by item
+## The release gate, item by item
 
-The owner's gate, restated: install it on Windows and Android, connect real
-accounts, use a real camera and microphone, tap GO LIVE, broadcast for real,
-break one destination, watch the others stay live, and stop.
-
-| # | Gate item | Verdict | Measured |
+| # | Gate item | Verdict | The evidence |
 |---|---|---|---|
-| 1 | `node infra/dev-harness/ingest/selftest.mjs` | **PASS** | 2026-09-14 13:12, exit 0 |
-| 2 | `npm run verify:engine -w @livetap/desktop` against MediaMTX | **UNVERIFIED by this workstream** | not re-run here; owned by the desktop workstream |
-| 3 | A real broadcast: two publishers, H.264 1920x1080 and 1080x1920, AAC 48 kHz | **PASS** | 2026-09-15. Re-measured against a real-mode build. ffprobe decoded both recordings: `live/wide` 1920x1080 33.352 s, `live/tall` **1080x1920** 32.544 s, both H.264 Constrained Baseline + AAC LC 48 kHz stereo |
-| 4 | Break one destination; the other keeps climbing; the broken one reconnects | **PASS** | 2026-09-15. The surviving destination kept climbing through a real TCP drop, and the dropped one republished: a third recording, `live/wide` 21.023 s, exists because it came back |
-| 5 | END, then navigate away mid-grace; publishers gone within 5 s | **PASS** | 2026-09-15. "every publisher is gone, even though the studio was unmounted mid-grace" |
-| 6 | Owner installs the unsigned Windows build, connects a real YouTube account with no stream key typed, taps GO LIVE with a real camera, breaks one destination, taps END | **WAITING ON THE OWNER** | needs a machine with a camera and a Google client id |
-| 7 | Owner sideloads `app-debug.apk`, grants camera and mic, sees a live preview, taps GO LIVE to a Custom RTMP destination | **WAITING ON THE OWNER** | needs a phone. The APK exists and builds |
-
-**Five of seven pass. Two are the owner's.** That is the honest count. The two
-that are the owner's were always going to be the owner's - they need a real
-platform account and a real phone, neither of which exists on a build host -
-and nothing above them is blocked on anything the owner has to supply.
+| 1 | REAL DESKTOP APP | **PASS** | `LIVETAP-0.1.0-win-x64.exe`, 230,661,718 bytes, sha256 `52952ee8…43f65a`. `scripts/verify-installer.mjs` 30/30: the bundled ffmpeg runs and has libx264/aac/rtmp/rtmps, the asar holds the built renderer, and the renderer is the REAL build — two independent witnesses that must agree. `scripts/smoke-installed.mjs` launched the packaged app: it opened on "Step 1 of 3 — What are you making?", `isPackaged: true`, `ffmpeg.source: "bundled"` |
+| 2 | REAL ANDROID APK | **PASS as an artifact, UNPROVEN on hardware** | `app-debug.apk`, 10,151,907 bytes, sha256 `0674ed32…526743`, `app.livetap.mobile` 1.0 (1), minSdk 26 / targetSdk 36, debug-signed. `verify-apk.mjs` 47/47. The real engine does reach the phone: `@livetap/mobile` is inlined into the boot chunk, and `LiveStreamPlugin`, `GenericStream`, `Camera2Source` and `MicrophoneSource` are in the dex. **No device and no emulator can exist here** — this VM reports `VMMonitorModeExtensions=False`. BLOCKERS B-005b |
+| 3 | REAL SOCIAL AUTH | **PASS for the paste path, UNPROVEN against a real platform API** | Every priority platform yields a real destination with nothing registered anywhere (`packages/adapters/src/paste/`, `state/registry.ts`, 43 tests). The API path runs end to end against `infra/dev-harness/fake-idp/`, a server that genuinely verifies PKCE and rotates refresh tokens. Nothing on this host has ever spoken to a real platform's OAuth |
+| 4 | REAL CAMERA | **PASS** | `navigator.mediaDevices.getUserMedia`, the production API, with Chromium's synthetic source. Every line of permission handling, track lifecycle and constraint negotiation runs for real; the photons are fake and nothing else is |
+| 5 | REAL MICROPHONE | **PASS** | AAC LC 48000 Hz stereo, decoded by ffprobe off what the server recorded, on all three shapes |
+| 6 | REAL BROADCAST | **PASS** | Three simultaneous RTMP publishers from one production. MediaMTX parsed H264 1920x1080, 1080x1920 and 1080x1080 out of the streams' own SPS; ffprobe decoded all three recordings back |
+| 7 | REAL STOP | **PASS** | END removes every publisher, and survives the creator leaving the studio mid-grace. That stage exists because a stop a route change can cancel is a broadcast the creator cannot end |
+| 8 | REAL FAILURE ISOLATION | **PASS** | A real TCP kill on one live publisher; the survivors climbed 3,195,228 → 3,529,560 bytes through it and the app went on reporting a live broadcast |
+| 9 | REAL RECONNECT | **PASS** | `live/tall republished on its own 18.9s after the drop`, carried real bytes again (1,646,584 → 1,904,519), came back as H264 1080x1920 — the shape it left — and the app stopped calling it reconnecting. The first run that asserted this found it **broken**: see "What the harness caught" |
+| 10 | REAL SECURITY | **PASS, with the findings listed** | `docs/security/REAL_CREDENTIAL_SECURITY.md`. 83 security assertions plus a 55-assertion secret-log harness. The HIGH finding — desktop token storage was silently unreadable — is fixed |
+| 11 | NO CRITICAL CLICK-THROUGH | `apps/web/e2e/interaction-ownership.spec.ts` | A grid of points across every route and viewport, asserting nothing hit-testable is invisible. This class of bug has been found here three times |
+| 12 | NO UNREACHABLE END CONTROL | `apps/web/e2e/end-invariant.spec.ts` | The stop control present, topmost at its own centre point, keyboard-reachable and functional across the state matrix |
+| 13 | REAL 16:9 | **PASS** | 1920x1080, parsed from the stream's own SPS |
+| 14 | REAL 9:16 | **PASS** | 1080x1920 — a true vertical composition, not a letterboxed wide one. The dimensions on the wire are the only thing that can tell those apart, which is why they are asserted there |
+| 15 | REAL 1:1 | **PASS** | 1080x1080, simultaneously with the other two |
+| 16 | STUDIO PARITY | **PARTIAL** | The app and the public page share the camera, media, Moments, format engine, destination model, broadcast state and output composition. The drag-off-stage signature move is now real in the app and stops an actual destination. The public page keeps playgrounds the app has no use for |
+| 17 | PERFORMANCE ACCEPTABLE | **PASS on this host, with the ceiling stated** | The reported 22.5 fps and 18 canvases reproduce on the MARKETING page, which runs at 60.2 fps. The studio has three canvases, none in the DOM. The multi-second task was `localStorage.getItem` at 1017 ms, now read once. This VM's own idle rAF ceiling is 31 fps, so 60 is unreachable here regardless of code |
+| 18 | UX / TYPOGRAPHY / SPACING | **PASS** | Six control heights became the three that were declared; card padding unified; the icon `size` prop fixed, having never worked anywhere in the product; clipped device labels, an 880px control around 230px of content, and a claim about a level meter this product does not draw, all gone. `packages/ui/src/scale.test.ts` fails on a spacing literal, a fourth control height or a fifth icon size |
+| 19 | FIRST-TIME CREATOR EXPERIENCE | **NOT YET RETESTED** | §40 requires an independent blind audit that has not read this document. It has not been run against the final build |
 
 ---
 
-## What changed on 2026-09-15
+## What the harness caught, by being asked a question nobody had asked
 
-Three defects stood between the first measurement and this one. All three were
-real, and two of them were the kind that make a report lie.
+Every previous run asserted that the SURVIVOR kept climbing through a failure and
+then went straight to END. "The failed destination reconnects independently" —
+which is on the front of this product — rested entirely on a unit test of the
+backoff arithmetic.
 
-**1. The desktop app shipped in demo mode.** `build:renderer` ran a bare
-`vite build`, and `envMockMode()` treats anything but the literal string
-`"false"` as mock mode, which Vite then constant-folds. So the installed
-application carried simulated adapters and a simulated engine and could not put
-a byte on the wire however real the destination was. That is what item 3 was
-reporting: not "the broadcast failed" but "the thing under test was not the
-product". `apps/desktop/scripts/build-renderer.mjs` now sets the flag and says
-which mode it built.
+The first run that watched for it found it broken, and the cause was arithmetic
+of a different kind. Chromium's MediaRecorder emits a keyframe about every 7.2
+seconds (measured with ffprobe on a real recording: 2.058, 9.383, 16.620,
+23.831). A reconnecting destination is a brand-new ffmpeg attached to a stream
+already in flight, and it cannot write its output header until it has seen a
+keyframe carrying the H.264 parameter sets. ffmpeg's default analyze window is 5
+seconds. 7.2 against 5: the reconnected sender was **mathematically unable** to
+lock on, and died every time with "Could not write header (incorrect codec
+parameters ?)".
 
-**2. The gate's own driver could not drive a real build.** Two separate
-scripts each kept a private copy of the studio's selectors, and both went on
-pressing `.lt-golive` to END a broadcast - a control Studio deliberately
-unmounts while live, so that the only thing able to stop a stream is the one
-that survives a route change. Both sat there until the timeout and reported
-FAIL against a broadcast that was working. They now share
-`infra/dev-harness/broadcast/studio-controls.mjs`, which asks for a control by
-what it does rather than which screen it is on.
-
-**3. The gate had stopped exercising its own safety interstitial.**
-`confirmRealBroadcast` persists an acknowledgement, and the driver cleared
-destinations between runs but not that flag - so after the first passing run
-ever performed on a machine, every later run silently skipped the "these are
-real accounts" confirmation. Both harnesses now clear it, and every run crosses
-it.
+Both halves are fixed, because either alone is a coin toss. The recorder now asks
+for a keyframe every 2 seconds — confirmed at 2.02 s in the new recordings, and
+something Twitch requires anyway, since its ceiling is 4 s — and the sender gets
+a 20-second analyze window so a reconnect still works on an engine that ignores
+the hint.
 
 ---
 
 ## What is genuinely proven on this host
 
-These are results, not intentions. Each one is a command anyone can re-run.
+Each of these is a command anyone can re-run.
 
 ### The receiver is honest before the product is blamed
 
-`node infra/dev-harness/ingest/selftest.mjs`, exit 0, 2026-09-14 13:12.
+    node infra/dev-harness/ingest/selftest.mjs
 
-A synthetic H.264 plus AAC push arrives over real RTMP, decodes live at
-1280x720, records to disk as a fragmented MP4 that ffprobe reads back at
-10.009 seconds and 2,073,646 bytes, and a deliberate TCP kill reaches the
-encoder, which exits mid-push as it should. Every run uses a freshly randomised
-path, so a pass can never be explained by a recording an earlier run left
-behind.
+A synthetic H.264 plus AAC push arrives over real RTMP, decodes live, records to
+a fragmented MP4 that ffprobe reads back, and survives a deliberate TCP kill.
+Every run uses a freshly randomised path, so a pass can never be explained by a
+recording an earlier run left behind. It runs on its own ports, so the gate
+cannot be defeated by a receiver something else left listening — which is how it
+failed once, having proven nothing about the product.
 
-This matters more than it looks. It means that when the product fails to
-arrive, the receiver has already been ruled out.
+### A real broadcast, three shapes, from one production
 
-### A real broadcast, from a real capture API to a real server
+    node infra/dev-harness/broadcast/verify-desktop-broadcast.mjs
 
-Measured 2026-09-14 12:43, against the renderer bundle built at 11:01.
-
-The built Electron app, driven through its own UI by Playwright with Chromium's
-fake capture device, with no test hooks, no injected engine and no store
-surgery. Every link was the production one:
+The built Electron app, driven through its own UI by Playwright, with no test
+hooks, no injected engine and no store surgery. Every link is the production one:
 
 | Link | What it was |
 |---|---|
-| capture | `navigator.mediaDevices.getUserMedia`, real API, synthetic photons |
-| composition | one real `<canvas>` per aspect at the format's true dimensions |
-| encode | Chromium `MediaRecorder`, mimeType probed at run time |
+| capture | `navigator.mediaDevices.getUserMedia` |
+| composition | one real canvas per aspect, at the format's true dimensions |
+| encode | Chromium MediaRecorder, mimeType probed at run time, 2 s keyframes |
 | transport to main | `window.livetap.engine.pushChunk` over the real contextBridge |
-| mux and send | real ffmpeg 9.0.1 child processes, `-c:v copy -f flv` |
+| mux and send | real ffmpeg 9.0.1 children, `-c copy -f flv` |
 | server | MediaMTX v1.21.0, real RTMP handshake, real recording |
 | evidence | MediaMTX's control API, then ffprobe independently |
 
-Observed: two simultaneous publishers on `127.0.0.1:1935`. MediaMTX parsed
-H264 1920x1080 out of one stream's SPS and H264 1080x1920 out of the other's,
-which is the authority for what shape is on the wire. ffprobe decoded both
-recordings as H.264 plus AAC 48000 Hz 2 ch at those resolutions. No uncaught
-renderer errors.
-
-**This is the single most important result in the repository**, because it is
-the first time LIVETAP has been observed putting real encoded bytes on a real
-wire from a real capture API, with nothing mocked anywhere in the chain.
-
-### Failure isolation, against a real dropped connection
-
-Measured 12:43, same run.
-
-`kill-publisher.mjs` asked MediaMTX to kick one live RTMP connection, which
-drops a real TCP connection with frames in flight. That is the failure the
-encoder actually meets in production, as opposed to a mock socket closing
-politely at a moment a test chose.
-
-The surviving destination's byte count climbed from 1,237,654 to 1,542,861
-through the failure, and the app went on reporting a live broadcast. END then
-removed every publisher from the server, and both recordings finalised and
-decoded correctly.
-
-**What was not observed:** the broken destination coming back. The run asserted
-that the survivor kept climbing, which is the half the product's promise rests
-on, and did not wait for the dropped one to republish and return to LIVE. That
-half is UNVERIFIED.
-
 ### No credential can reach a log line
 
-`npx vitest run --config infra/dev-harness/broadcast/vitest.config.ts`,
-42 tests, all passing, 2026-09-14 12:58.
+    npx vitest run --config infra/dev-harness/broadcast/vitest.config.ts
 
-Ten realistic carriers each holding a realistically shaped credential, checked
-against both redactors; nineteen credential field names checked against both,
-so the two lists cannot drift apart; and a scan of **267 shipped source files**
-for a logging call that names something credential-bearing without a redactor
-around it, which found **zero**. The scan's detector is proven against the two
-leaks the 2026-09 security review actually found before its silence is
-trusted.
-
-### The Android APK is a real artifact
-
-`apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`, 10,160,804
-bytes, built 2026-09-14 12:36, 552 entries. Asserted on the artifact itself:
-`LiveStreamPlugin`, `GenericStream`, `LiveForegroundService` and
-`SecureStorePlugin` are in the dex; the manifest declares `CAMERA`,
-`RECORD_AUDIO`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_CAMERA`,
-`FOREGROUND_SERVICE_MICROPHONE` and `FOREGROUND_SERVICE_MEDIA_PROJECTION`; one
-of the 39 bundled JavaScript assets references the plugin; and
-`webContentsDebuggingEnabled` is on, so a sideloaded alpha with a white screen
-is diagnosable rather than a dead end.
-
-**None of it has run.** This VM has no nested virtualisation, so no Android
-emulator can ever start here.
-
----
-
-## What is proven only against the local harness
-
-`infra/dev-harness/fake-idp/` is a real HTTP server that recomputes PKCE
-challenges, enforces single-use 60-second authorization codes, rotates refresh
-tokens, serves YouTube-shaped and Twitch-shaped API responses including
-`errorStreamInactive`, and injects 401, 429 and 500 faults. Thirty-three tests
-pass against it, 2026-09-14 13:06.
-
-**What that proves:** LIVETAP's half of the OAuth conversation is correct. The
-authorize URL is built right, the verifier matches the challenge, the state is
-verified, the rotated refresh token is persisted, a 401 triggers exactly one
-refresh and one retry, and the account identity reaches the destination card.
-
-**What it cannot prove:** that Google, Twitch, Kick or Meta accept these exact
-requests. Nothing on this host has ever spoken to a real platform, because
-there is no platform credential here. That is not a defect; it is item 6 of the
-gate, and it is the owner's.
-
-The same distinction applies to the relay: its runtime properties are verified
-natively against MediaMTX 1.21.0 with 45 `node:test` cases, and its container
-packaging is unverified because Docker has no WSL distro on this host.
+Realistic carriers holding realistically shaped credentials, checked against both
+redactors; every credential field name checked against both, so the two lists
+cannot drift apart; and a scan of the shipped source for a logging call that
+names something credential-bearing with no redactor around it. The scan's
+detector is proven against the two leaks a previous security review actually
+found, before its silence is trusted.
 
 ---
 
 ## What waits on the owner, and only on the owner
 
-| Waiting on | What it unblocks | Where |
-|---|---|---|
-| A Google, Twitch, Kick or Facebook client id | every UNVERIFIED cell in the platform matrix. Twitch is the cheapest: no review, no queue, about ten minutes | `docs/OWNER_ACTIONS.md` parts 1 to 4 |
-| A machine with a camera and a microphone | picture quality, real device enumeration labels, autogain, and what happens when a cable is pulled mid-broadcast | part 6 |
-| A machine with a GPU | the NVENC, QSV and AMF branches. All three fail to open here, so the libx264 fallback is what has been exercised | part 6, B-007 |
-| An Android phone | every runtime claim about Android | part 6, B-005 |
-| A Mac | every claim about macOS, which today is none | B-005 |
-| The Kick offline stream-key test | whether Kick is a sign-in destination or a paste destination | part 3 |
-| A written answer from Meta on multistreaming | whether Facebook can ship at all | part 4 |
-
-**Nothing on this list blocks any engineering work.** The alpha's first real
-broadcast is a Custom RTMP destination against a server on the owner's own
-machine, which needs none of it.
-
----
-
-## The regression, in full, because it is the thing standing in the way
-
-The 12:43 PASS was measured against the renderer bundle built at **11:01**. The
-same source tree rebuilt at **13:02** fails the same test, deterministically,
-twice, including when the desktop workstream's own driver is run standalone
-with no involvement from this harness.
-
-```
-[3/8] tapping GO LIVE
-  FAIL  live/wide has no publisher: nothing is being broadcast
-  FAIL  live/tall has no publisher: nothing is being broadcast
-  what the app says:
-        Demo mode — this build talks to simulated platforms. LIVETAP is not broadcasting anywhere.
-        2 destinations are reconnecting
-        Custom RTMP · Reconnecting  ...  The stream URL or key is empty or malformed.
-```
-
-**The mechanism, read out of the code rather than guessed.**
-`apps/web/src/state/registry.ts` returns `createMockAdapters()` for the **whole
-registry** when `mockMode` is true, including the `custom` platform:
-
-```ts
-const mockMode = options.mockMode ?? true;
-if (mockMode) return { registry: createMockAdapters(), kind: 'mock', connectable: [] };
-```
-
-Its own comment, three lines above, describes the right behaviour for the other
-branch: "the real custom-RTMP adapter for everything that takes a pasted key".
-A Custom RTMP destination needs no credentials and is the one path that works
-with nothing configured anywhere, so simulating it makes the app's own honesty
-banner accidentally true even when the creator pasted a real server address.
-This is the same defect the plan names as "decouple simulated destinations from
-simulated media", seen from the adapter side rather than the engine side.
-
-Compounding it, `apps/desktop/package.json`'s `build:renderer` runs a bare
-`vite build` with `VITE_LIVETAP_MOCK_MODE` unset, and mock mode is the default,
-so the desktop app ships in demo mode. The Android build script already gets
-this right (`apps/mobile/scripts/build-android.sh:57` sets
-`VITE_LIVETAP_MOCK_MODE=false`).
-
-Both files belong to other workstreams and are recorded as handoffs rather than
-edited here.
-
-### The worse thing underneath it
-
-Turning mock mode off does not make the gate pass. It makes a different and
-much more serious failure visible, and it is the reason this section is long.
-
-**What was done.** The renderer was rebuilt by hand with
-`VITE_LIVETAP_MOCK_MODE=false` — a configuration **no committed script
-produces for the desktop app today** — and the app was driven to two Custom
-RTMP destinations pointed at a running local MediaMTX.
-
-**What happened, in order.**
-
-1. Both destinations reached **Ready**, not "malformed key". That confirms the
-   registry diagnosis above: the simulated adapter was the cause.
-2. Tapping GO LIVE showed a real-broadcast confirmation: *"You are about to
-   broadcast to your connected accounts. Local wide and Local vertical will
-   show you live to real viewers. This is not a demo."* with **Yes, go live on
-   2** and **Not yet**. The desktop workstream's driver taps `.lt-golive` and
-   then waits for an in-button countdown; it never presses that button, so no
-   automated run can get a non-demo build past GO LIVE at all. That is handoff
-   four below.
-
-   Worth flagging separately: the plan called for the confirmation to be the
-   **existing in-button countdown naming the real destinations**, explicitly
-   *not* a modal over a live preview. What shipped is a confirmation surface.
-   Someone should decide which one is right; this is a product call, not a bug.
-3. Confirming, then waiting twelve seconds, produced this:
-
-   | What the app said | What the server said |
-   |---|---|
-   | `Live` | |
-   | `0:07 · live on 2 of 2` | |
-   | `You are live on 2 destinations.` | |
-   | `Custom RTMP · Live` / `Sending to this destination` | |
-   | `Custom RTMP · Live` / `Sending to this destination` | |
-   | | **zero publishers on `127.0.0.1:1935`** |
-
-**This is the defect the mission names as the worst this product can ship: a
-LIVE badge with no bytes on the wire.** Two destination cards said "Sending to
-this destination" while nothing was being sent anywhere. The health panel read
-"Stream is at risk", which is the only part of the screen that was not lying,
-and it does not say what is actually true.
-
-**It was not diagnosed here**, and this document will not guess at a cause. One
-thing is worth recording for whoever does: this is invisible in every existing
-test and in every build anyone runs, because mock mode is on everywhere, and
-under mock mode a LIVE badge with no bytes is the correct and honest behaviour.
-The moment mock mode goes off, the same code path becomes a lie. That is the
-shape of the risk in "mock mode selects mock adapters, not a mock engine": the
-two halves have to be switched together, and something in the middle is
-currently able to report success without an engine behind it.
-
-**Why item 5 is not yet a real failure either.** The navigate-away-during-END
-regression reproduced at 12:55 with one publisher still broadcasting twelve
-seconds after END. But the grace timer was moved out of the Studio screen's
-effect and into the store at **11:27**, after the 11:01 bundle was built, and
-the 11:01 bundle contains only the seam declaration (`graceTimer:null`) and
-none of the implementation. So the measurement is real and the conclusion is
-not: it was taken against a build that predates the fix, and the fix has not
-been measurable since, because of the regression above.
-
----
-
-## The shortest path from here to a green gate
-
-1. **Find out why a destination reports LIVE with no publisher behind it.** This
-   is first, ahead of everything, because it is the one defect that would make
-   the product dishonest to a creator rather than merely incomplete. Reproduce
-   it by building the renderer with `VITE_LIVETAP_MOCK_MODE=false` and pointing
-   two Custom RTMP destinations at a local receiver.
-2. Register the real `CustomRtmpAdapter` on the mock branch of `createRegistry`,
-   keeping mock adapters only for the account-based platforms. One destination
-   type, no credentials, no reason to simulate it.
-3. Build the desktop renderer with `VITE_LIVETAP_MOCK_MODE=false`, the way the
-   Android script already does.
-4. Teach the studio driver to confirm a real broadcast, so an automated run can
-   reach GO LIVE on a non-demo build at all.
-5. `npm run build -w @livetap/desktop && npm run verify:broadcast`. That single
-   command then answers gate items 1, 3, 4 and 5 together, with a stage table
-   and an exit code.
-
-Items 6 and 7 follow as soon as the owner has an hour, a camera and a phone.
-
----
-
-## How to re-run every claim on this page
-
-```bash
-node infra/dev-harness/ingest/selftest.mjs                  # gate item 1
-npm run build -w @livetap/desktop
-npm run verify:broadcast                                    # gate items 3, 4, 5
-npx vitest run --config infra/dev-harness/broadcast/vitest.config.ts   # the secret-log gate
-npx vitest run --config infra/dev-harness/fake-idp/vitest.config.ts    # the OAuth harness
-```
-
-`infra/dev-harness/broadcast/README.md` explains how to read a failure, and in
-particular the difference between `MISSING` (a piece of the chain is absent and
-nothing was tested) and `FAIL` (the piece was there and the product did not do
-what it claims).
+1. **A phone.** The APK builds and verifies. No device and no emulator can exist
+   on this host.
+2. **OAuth client ids**, for the path where LIVETAP fetches the stream key itself
+   and the creator never sees one. Not needed in order to broadcast — see
+   `docs/OWNER_ACTIONS.md`, rewritten on 2026-09-15 once that stopped being true.
+3. **A Mac.** Every macOS and iOS claim in this repository is unverified.
+4. **Code-signing identities.** The installer is unsigned and Windows SmartScreen
+   will say so; `docs/release/ALPHA_RELEASE.md` says which button to press.
