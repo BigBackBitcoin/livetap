@@ -1,4 +1,16 @@
 import { expect, test } from '@playwright/test';
+
+/**
+ * Whichever button currently offers the add-destination flow.
+ *
+ * The Destinations screen shows ONE of two: "+ Add destination" in the header once a destination
+ * exists, and a larger "Add your first destination" in the empty-state card when none does. They
+ * were both on screen at once until the duplicate was removed - one action gets one control - and
+ * these tests matched `/Add destination/`, which the empty-state label does not contain, so they
+ * began timing out on a screen that was working. Every other driver in this repo already spells
+ * it this way.
+ */
+const ADD_DESTINATION = /Add destination|Add your first destination/i;
 import type { Page } from '@playwright/test';
 import {
   auditInteractionOwnership,
@@ -116,6 +128,18 @@ test.describe('the start of a broadcast, under abuse', () => {
     await button.click();
     await expect(page.locator('.lt-golive--countdown')).toBeVisible();
 
+    /*
+     * Past the stray-tap window first.
+     *
+     * `GoLiveButton` ignores a click within DOUBLE_TAP_MS (450 ms) of the countdown appearing,
+     * because the Cancel control takes over the exact pixels the GO LIVE label just occupied and
+     * the second tap of a nervous double-tap would otherwise land on it and silently kill the
+     * broadcast - audit 3, defect 2. A cancel at fifty milliseconds is indistinguishable from
+     * that second tap, so a test that cancels instantly is measuring the guard rather than the
+     * cancel. What has to hold is that the control CAN stop what it started, which is what this
+     * now checks.
+     */
+    await page.waitForTimeout(600);
     await page.locator('.lt-golive--countdown').click();
     await page.waitForTimeout(8_000);
     expect(
@@ -434,7 +458,7 @@ test.describe('the end of a broadcast, under abuse', () => {
       .getByRole('navigation', { name: 'LIVETAP' })
       .getByRole('link', { name: 'Destinations', exact: true })
       .click();
-    await expect(page.getByRole('button', { name: /Add destination/ }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: ADD_DESTINATION }).first()).toBeVisible();
 
     await page.goBack();
     await page.waitForTimeout(400);
@@ -509,7 +533,7 @@ test.describe('the layout, under abuse', () => {
         .getByRole('navigation', { name: 'LIVETAP' })
         .getByRole('link', { name: 'Destinations', exact: true })
         .click();
-      await page.getByRole('button', { name: /Add destination/ }).first().click();
+      await page.getByRole('button', { name: ADD_DESTINATION }).first().click();
       await expect(page.locator('.lt-sheet')).toBeVisible();
       await expect(page.locator('.lt-sheet__scrim')).toBeVisible();
       await page.waitForTimeout(400);
@@ -542,7 +566,7 @@ test.describe('the layout, under abuse', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await seedApp(page, { destinations: 2 });
     await page.goto('/app/destinations');
-    await page.getByRole('button', { name: /Add destination/ }).first().click();
+    await page.getByRole('button', { name: ADD_DESTINATION }).first().click();
     await expect(page.locator('.lt-sheet')).toBeVisible();
 
     await page.setViewportSize({ width: 320, height: 568 });
@@ -604,7 +628,7 @@ test.describe('the destinations, under abuse', () => {
       page.getByText('A destination added now lands ready and joins your next stream, not this one.'),
     ).toBeVisible();
 
-    await page.getByRole('button', { name: /Add destination/ }).first().click();
+    await page.getByRole('button', { name: ADD_DESTINATION }).first().click();
     await expect(page.locator('.lt-sheet')).toBeVisible();
     await page.locator('.lt-sheet').getByRole('button', { name: /Twitch/ }).first().click();
     await page.waitForTimeout(3_000);
