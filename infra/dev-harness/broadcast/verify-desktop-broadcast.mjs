@@ -74,6 +74,8 @@ verify-desktop-broadcast.mjs - the LIVETAP alpha completion gate, as one command
   --quick             skip stage 1, the receiver self-test
   --skip-grace        skip stage 4, the navigate-away-during-END regression
   --keep              leave MediaMTX running afterwards
+  --own-receiver      refuse to reuse a receiver this run did not start. Use it when the
+                      run has to be ISOLATED evidence rather than merely a green result
   --help              this text
 
 Requires, and checks for, before it claims anything:
@@ -83,7 +85,9 @@ Requires, and checks for, before it claims anything:
   apps/desktop/e2e/broadcast.mjs.
 `.trim();
 
-const { opts } = parseArgs(process.argv.slice(2), { booleans: ['quick', 'keep', 'skip-grace', 'help'] });
+const { opts } = parseArgs(process.argv.slice(2), {
+  booleans: ['quick', 'keep', 'skip-grace', 'own-receiver', 'help'],
+});
 if (opts.help) {
   process.stdout.write(`${USAGE}\n`);
   process.exit(0);
@@ -462,6 +466,48 @@ async function receiverIsUp() {
   }
 }
 
+/**
+ * How long the listening receiver has been up, in words, or null if it will not say.
+ *
+ * MediaMTX does not report its own start time, so this asks the oldest path it is tracking —
+ * which for an orphan that has been collecting publishers all day is the right number anyway:
+ * it is the age of the evidence, not of the process.
+ */
+async function receiverAge() {
+  try {
+    const res = await fetch(`${cfg.apiBase}/v3/paths/list`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const started = (body.items ?? [])
+      .map((item) => Date.parse(item.readyTime ?? ''))
+      .filter((t) => Number.isFinite(t));
+    if (started.length === 0) return null;
+    const minutes = Math.round((Date.now() - Math.min(...started)) / 60000);
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  } catch {
+    return null;
+  }
+}
+
+/** How many recordings are already on disk, i.e. how much history this run would be mixed into. */
+function countRecordings() {
+  const root = path.join(REPO_ROOT, 'infra', 'dev-harness', 'ingest', 'recordings');
+  try {
+    let n = 0;
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) walk(path.join(dir, entry.name));
+        else n += 1;
+      }
+    };
+    walk(root);
+    return n;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   log('LIVETAP alpha completion gate');
   /*
@@ -492,8 +538,39 @@ async function main() {
   log('[2/4] starting the receiver');
   let server = null;
   if (await receiverIsUp()) {
-    log('  ok    a receiver is already listening; using it, and leaving it running afterwards');
-    record('receiver running', 'PASS', 'an existing receiver was reused');
+    /*
+     * A receiver this run did not start is not a passing condition, and recording it as one
+     * is how contaminated evidence becomes proof.
+     *
+     * This branch said PASS, 'an existing receiver was reused'. It was reached by an orphan
+     * MediaMTX that had been accepting publishers for nine hours across an unknown number of
+     * runs, with 62 recordings already under `live/wide`, and the gate reported a clean PASS
+     * on top of it. Two sessions then disagreed about whether `live on 1 of 3` was a product
+     * defect or contention, and neither could tell, because the one thing that would have
+     * separated them — whether the receiver and its recordings belonged to the run — was
+     * being reported as fine.
+     *
+     * So it is a WARN, it says how old the receiver is and how much history it is carrying,
+     * and `--own-receiver` turns it into a refusal for a run that has to be isolated.
+     */
+    const age = await receiverAge();
+    const carried = countRecordings();
+    const detail =
+      `an existing receiver was reused — this run did not start it` +
+      (age === null ? '' : `, it has been up ${age}`) +
+      (carried === null ? '' : `, and ${carried} recording(s) predate this run`);
+
+    if (opts['own-receiver']) {
+      log('  FAIL  a receiver is already listening and --own-receiver was passed');
+      log(`        ${detail}`);
+      log('        stop it, or drop --own-receiver and accept that this run is not isolated');
+      record('receiver running', 'FAIL', `${detail}; --own-receiver refuses to share it`);
+      return finish();
+    }
+
+    log('  warn  a receiver is already listening; using it, and leaving it running afterwards');
+    log(`        ${detail}`);
+    record('receiver running', 'WARN', detail);
   } else {
     server = startMediaMtx(cfg);
     await server.ready();
@@ -527,6 +604,7 @@ async function main() {
 
 function finish() {
   const failed = results.filter((r) => r.status === 'FAIL');
+  const warned = results.filter((r) => r.status === 'WARN');
   const width = Math.max(...results.map((r) => r.stage.length), 10);
   log('');
   log('  ---------------------------------------------------------------------------');
@@ -549,6 +627,17 @@ function finish() {
   if (skipped.length > 0) {
     log('');
     log(`      ${skipped.length} stage(s) were skipped and prove nothing: ${skipped.map((s) => s.stage).join(', ')}.`);
+  }
+  /*
+   * A PASS with a warning on it is not isolated evidence, and it has to say so in the same
+   * breath as the PASS — a caveat three lines above the verdict is a caveat nobody reads.
+   */
+  if (warned.length > 0) {
+    log('');
+    log(`      NOT ISOLATED. ${warned.length} warning(s):`);
+    for (const w of warned) log(`        ${w.stage}: ${w.detail}`);
+    log('      This run shares state it did not create, so it is evidence about this host, not');
+    log('      about this build alone. Re-run with --own-receiver for evidence that stands alone.');
   }
 }
 
