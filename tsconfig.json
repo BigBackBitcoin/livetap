@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "packages/bond" },
     { "path": "packages/core" },
     { "path": "packages/adapters" },
     { "path": "packages/media" },

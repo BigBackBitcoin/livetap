@@ -62,6 +62,15 @@ export interface Picture {
   videoFor(kind: 'camera' | 'guest'): HTMLVideoElement;
   /** Draw the current composition into a 2D context, for the output previews. */
   compose(ctx: CanvasRenderingContext2D, w: number, h: number, layers: ComposedLayer[]): void;
+  /**
+   * Start a new draw pass, discarding the shared downscale of the previous one.
+   *
+   * Call it once before a batch of `compose` calls. Every consumer in that batch then reads one
+   * rescaled copy of the current frame instead of rescaling the video itself, and they are all
+   * guaranteed to be showing the same instant - a thumbnail one frame behind the one beside it
+   * is the bug this ordering exists to prevent.
+   */
+  beginFrame(): void;
 }
 
 /* ------------------------------------------------------------------- constants */
@@ -208,8 +217,88 @@ function ready(v: HTMLVideoElement): boolean {
   return v.videoWidth > 0 && v.videoHeight > 0 && (v.readyState ?? 0) >= 2;
 }
 
-function drawable(demo: Demo): { src: CanvasImageSource; w: number; h: number } | null {
+/* ------------------------------------------------------- shared frame source */
+/*
+ * One production, many destinations, one resample.
+ *
+ * Every consumer used to call `drawImage` straight from the <video>, so a single camera frame
+ * was decoded and rescaled once per thumbnail per pass: six destination tiles, six Moment rail
+ * cards, the stage. A CPU profile of the page at four-times slowdown put 55.7% of all
+ * main-thread time inside `drawImage`, at 10.6 ms a call, and the reason every call was that
+ * expensive is that every one of them was resampling a full-resolution video frame down to a
+ * 352x198 thumbnail, from scratch, independently.
+ *
+ * So the frame is rescaled ONCE per pass into a scratch canvas, and every consumer smaller than
+ * the scratch reads from that instead. The expensive resample happens once; the rest become
+ * near-1:1 copies of a small image. This is the same shape as the real broadcast pipeline, where
+ * one composed picture fans out to many encoders rather than each encoder compositing its own.
+ *
+ * Nothing above the scratch size is touched: the stage still reads the video directly, so the
+ * biggest picture on the page keeps full quality. 512px is comfortably above the 352px widest
+ * thumbnail, so no consumer of the scratch is ever upscaling.
+ */
+const SCRATCH_W = 512;
+let scratch: HTMLCanvasElement | null = null;
+let scratchCtx: CanvasRenderingContext2D | null = null;
+let scratchSource: HTMLVideoElement | null = null;
+let scratchFilled = false;
+
+/**
+ * Drop the cached downscale.
+ *
+ * Called once per draw pass by whoever owns the loop. It is explicit rather than time-based
+ * because a pass is a batch of composes, and the one thing that must never happen is a thumbnail
+ * showing a frame older than the one beside it.
+ */
+export function beginFrame(): void {
+  scratchFilled = false;
+}
+
+/** The shared downscale of this frame, or null when there is no cheaper source than the video. */
+function scaled(video: HTMLVideoElement): { src: CanvasImageSource; w: number; h: number } | null {
+  if (typeof document === 'undefined') return null;
+  // Nothing to gain when the source is already at or below the scratch size.
+  if (video.videoWidth <= SCRATCH_W) return null;
+
+  const h = Math.max(1, Math.round((SCRATCH_W * video.videoHeight) / video.videoWidth));
+  if (!scratch) {
+    scratch = document.createElement('canvas');
+    scratchCtx = scratch.getContext('2d', { alpha: false });
+    if (scratchCtx) {
+      /*
+       * The scratch is only ever read by consumers smaller than it is, and they do their own
+       * filtering on the way down. Paying for high-quality filtering twice buys nothing at 352px.
+       */
+      scratchCtx.imageSmoothingQuality = 'low';
+    }
+  }
+  if (!scratchCtx) return null;
+  if (scratch.width !== SCRATCH_W || scratch.height !== h) {
+    scratch.width = SCRATCH_W;
+    scratch.height = h;
+    scratchFilled = false;
+  }
+  if (!scratchFilled || scratchSource !== video) {
+    scratchCtx.drawImage(video, 0, 0, SCRATCH_W, h);
+    scratchFilled = true;
+    scratchSource = video;
+  }
+  return { src: scratch, w: SCRATCH_W, h };
+}
+
+function drawable(
+  demo: Demo,
+  destWidth?: number,
+): { src: CanvasImageSource; w: number; h: number } | null {
   if (ready(demo.video)) {
+    /*
+     * Only consumers that are actually smaller get the scratch. A destination wider than the
+     * scratch would be upscaling a downscale, which is visibly worse than one honest resample.
+     */
+    if (destWidth !== undefined && destWidth <= SCRATCH_W) {
+      const shared = scaled(demo.video);
+      if (shared) return shared;
+    }
     return { src: demo.video, w: demo.video.videoWidth, h: demo.video.videoHeight };
   }
   const p = demo.poster;
@@ -379,7 +468,7 @@ export function createPicture(assets: PictureAssets, opts: { reduced: boolean })
     radius: number,
   ): void {
     const clipped = clipRounded(ctx, x, y, w, h, radius);
-    const src = drawable(demo);
+    const src = drawable(demo, w);
     if (!src) {
       ctx.fillStyle = PANEL;
       ctx.fillRect(x, y, w, h);
@@ -498,5 +587,6 @@ export function createPicture(assets: PictureAssets, opts: { reduced: boolean })
       return kind === 'guest' ? guestDemo.video : creator.video;
     },
     compose,
+    beginFrame,
   };
 }

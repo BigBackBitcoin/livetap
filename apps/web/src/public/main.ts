@@ -416,6 +416,7 @@ function buildTiles(): void {
       tension: 0,
     };
     rows.push(row);
+    watchThumb(row.thumb);
 
     row.tile.addEventListener('click', () => {
       interrupt();
@@ -483,6 +484,8 @@ function buildMoments(): void {
       interrupt();
       setMoment(m.id);
     });
+    const railThumb = $<HTMLCanvasElement>('[data-lt-railthumb]', card);
+    if (railThumb) watchThumb(railThumb);
     momentRail.insertBefore(card, $('.ltp-lane__trail', momentRail));
   });
 }
@@ -1728,18 +1731,60 @@ function sizeThumb(row: DestRow, fmt: Format): void {
 
 let thumbRaf = 0;
 let thumbLast = 0;
+
+/*
+ * Which thumbnails are actually on screen.
+ *
+ * `hidden` was the only cull here, and `hidden` answers "is this row switched off", not "can
+ * anyone see it". A profile of the page at four-times CPU slowdown - a mid-range laptop, or any
+ * laptop that is also encoding video - put 55.7% of ALL main-thread time in `drawImage`, at
+ * 10.6 ms per call, while nine of the eighteen canvases on the page were scrolled out of sight
+ * and being composited ten times a second for nobody.
+ *
+ * An IntersectionObserver rather than `getBoundingClientRect`: the rect would be read twelve
+ * times per pass and each read flushes layout, which is trading one waste for another.
+ */
+const onScreenThumbs = new WeakSet<Element>();
+const thumbWatcher =
+  typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) onScreenThumbs.add(entry.target);
+            else onScreenThumbs.delete(entry.target);
+          }
+        },
+        /* A margin of one viewport, so a thumbnail is already painted when it scrolls in. */
+        { rootMargin: '100% 0px' },
+      )
+    : null;
+
+/** True when a canvas is worth the 10 ms. With no observer, everything is: never draw less than before. */
+function worthDrawing(canvas: HTMLCanvasElement): boolean {
+  if (!thumbWatcher) return true;
+  return onScreenThumbs.has(canvas);
+}
+
+function watchThumb(canvas: HTMLCanvasElement): void {
+  thumbWatcher?.observe(canvas);
+}
+
 function drawThumbs(once = false): void {
   const due = performance.now() - thumbLast > 1000 / 10;
   if (!once && !due) return;
   thumbLast = performance.now();
+  // One downscale of the camera for this pass, shared by every thumbnail in it.
+  picture.beginFrame();
   rows.forEach((row, i) => {
     if (row.thumb.hidden) return;
+    if (!once && !worthDrawing(row.thumb)) return;
     const ctx = row.thumb.getContext('2d');
     if (!ctx) return;
     picture.compose(ctx, row.thumb.width, row.thumb.height, layersFor(aspectFor(DESTINATIONS[i]!)));
   });
   if (railVisible || once) {
     $$<HTMLCanvasElement>('[data-lt-railthumb]', momentRail).forEach((c) => {
+      if (!once && !worthDrawing(c)) return;
       const ctx = c.getContext('2d');
       const mid = (c.parentElement as HTMLElement).dataset.ltMomentMirror ?? momentId;
       if (ctx) picture.compose(ctx, c.width, c.height, layersFor('16:9', mid));
