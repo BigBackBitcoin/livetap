@@ -1,6 +1,9 @@
 # The owner's machine cannot broadcast, and nobody had tested it
 
-**Status: OPEN. Reproducible, controlled, root cause narrowed but not found.**
+**Status: FIXED in `fc84167`.** The cause and the measurement that named it are at the
+bottom, under "Root cause: found". Everything above it is the investigation as it
+stood, kept because the eight suspects it ruled out are why the ninth was
+findable.
 
 The owner's build host has no camera. It has no microphone either — it is a
 Windows Server VM. Every broadcast this product has ever proven was captured from
@@ -131,3 +134,72 @@ The desktop app is the only surface that puts real bytes on a real wire — the
 deployed website is in mock mode with no relay, and Android has never run on
 hardware. If the desktop app cannot broadcast on the owner's own machine, then on
 that machine the product has no working path to air at all.
+
+
+---
+
+# Root cause: FOUND, and fixed in `fc84167`
+
+**Silence that was not there.**
+
+`buildAudioMix` in `packages/media/src/sources/LocalSources.ts` connects a gain
+node for the microphone and one for system audio. With neither present — a
+server, a disabled mic, or a creator who picked "No microphone" — **nothing at
+all is connected to the mix destination**, and a WebAudio graph with no input to
+its destination has no reason to render.
+
+Its track still reports `readyState: "live"`. That is what made this invisible,
+and why the eight suspects above were ruled out first: every observable in the
+renderer was byte-for-byte identical under both conditions. But the track
+delivers no audio frames, and `MediaRecorder` will not emit a chunk until every
+track in its stream has produced data. So the recorder stalled before the first
+chunk, the encoder ffmpeg received nothing, and the sender ffmpeg never had
+enough input to write a header.
+
+## The observable that named it
+
+Six ffmpeg processes spawned — three encoders, three senders, the expected
+topology — and **not one opened a TCP connection to the server.** The receiver's
+log carries no `[RTMP] conn opened` line for the whole run.
+
+That is the difference between "the publish failed" and "the publish never
+happened", and it points upstream with no ambiguity: a sender that cannot write a
+header never dials.
+
+## The fix
+
+A `ConstantSourceNode` at offset 0 is exactly silence, costs one node, and gives
+the graph a reason to pull forever. It is also precisely what the product already
+told the creator it was doing — *"LIVETAP is streaming silence rather than
+stopping your broadcast"* — which until now was a claim rather than a
+description.
+
+Guarded three ways: built once however many times the mix is rebuilt, stopped and
+disconnected with the graph, and an engine without `createConstantSource` keeps
+the old behaviour rather than failing.
+
+## Measured after, on the host with no camera and no microphone
+
+```
+node apps/desktop/e2e/broadcast.mjs --no-fake-camera     exit 0
+    live/wide    H264 1920x1080 + AAC   128,900 bytes decoded by ffprobe
+    live/tall    H264 1080x1920 + AAC   153,541 bytes
+    live/square  H264 1080x1080 + AAC   134,726 bytes
+
+node apps/desktop/e2e/broadcast.mjs                      exit 0, unchanged
+```
+
+Three regression tests in `LocalSources.test.ts`, confirmed load-bearing: with the
+guard reverted to `if (false)` all three fail, the first naming the cause. They
+pin that the heartbeat is started and connected, that its offset is **zero** — a
+non-zero offset would put a DC tone on every broadcast this product ever makes —
+that exactly one exists however often the mix is rebuilt, and that it stops with
+the graph it belongs to.
+
+## What remains open from this investigation
+
+`CAMERA_LOST` and `MIC_LOST` still misdiagnose a machine that never had a device
+as one whose device was "unplugged, disabled, or taken by another app". The
+broadcast now works, so the `doing:` lines are no longer false — but the `why:`
+lines are still three wrong guesses on a server, and there is no
+`NO_CAPTURE_DEVICE` case to raise instead.
