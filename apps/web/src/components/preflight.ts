@@ -5,6 +5,7 @@
  * consequences rather than issuing verdicts. Only two conditions are red, because only two
  * make a stream impossible: nothing is READY, or the device is offline. Amber never blocks.
  */
+import { isStartable } from '@livetap/core';
 import type { DestinationSnapshot } from '@livetap/core';
 
 export type PreflightLevel = 'green' | 'amber' | 'red';
@@ -191,7 +192,20 @@ function notReadyReason(input: PreflightInput): PreflightItem {
 
 export function evaluatePreflight(input: PreflightInput): Preflight {
   const enabled = input.destinations.filter((d) => d.config.enabled);
-  const ready = enabled.filter((d) => d.state === 'READY');
+  /*
+   * "Ready" means what the ORCHESTRATOR will start, not the single state named READY.
+   *
+   * `isStartable` is READY or ENDED, and ENDED is where every destination sits after a normal
+   * stop — deliberately, so the next GO LIVE can start them again without a manual reset. This
+   * function asked for READY alone, so the moment a creator ended their first broadcast the
+   * pre-flight went red, GO LIVE greyed out, and Studio said "None of your 2 destinations is
+   * ready yet" while the Destinations screen, reading the same snapshots, said Ready.
+   *
+   * Nobody could stream twice without reloading. It is on the golden path — everybody who ends a
+   * stream meets it — and it was invisible to every test here because the harnesses each go live
+   * exactly once.
+   */
+  const ready = enabled.filter((d) => isStartable(d.state));
   const failed = enabled.filter((d) => d.state === 'FAILED');
   const demos = enabled.filter((d) =>
     input.simulatedIds ? input.simulatedIds.has(d.config.id) : d.config.mock,

@@ -146,3 +146,52 @@ describe('why nothing is ready', () => {
     expect(p.readyCount).toBe(1);
   });
 });
+
+/**
+ * You have to be able to stream twice.
+ *
+ * After a normal END every destination sits at ENDED — deliberately, so the next GO LIVE can start
+ * them again without a manual reset; `isStartable` is READY **or** ENDED. This function asked for
+ * READY alone, so the moment a creator ended their first broadcast the pre-flight went red, GO LIVE
+ * greyed out, and Studio said "None of your 2 destinations is ready yet" while the Destinations
+ * screen, reading the very same snapshots, said Ready.
+ *
+ * It is on the golden path. Everyone who ends a stream meets it, and no test here caught it because
+ * every harness in this repository goes live exactly once.
+ */
+describe('after a broadcast has ended', () => {
+  it('is ready to go live again, with no reload and no manual reset', () => {
+    const p = evaluatePreflight({
+      ...HEALTHY,
+      destinations: [
+        destination({ id: 'd1', label: 'YouTube', state: 'ENDED' }),
+        destination({ id: 'd2', label: 'Twitch', state: 'ENDED' }),
+      ],
+    });
+
+    expect(p.level).toBe('green');
+    expect(p.readyCount).toBe(2);
+    expect(p.headline).toBe('Ready to go live');
+  });
+
+  it('counts a mix of ended and ready as all of them', () => {
+    const p = evaluatePreflight({
+      ...HEALTHY,
+      destinations: [
+        destination({ id: 'd1', label: 'YouTube', state: 'ENDED' }),
+        destination({ id: 'd2', label: 'Twitch', state: 'READY' }),
+      ],
+    });
+
+    expect(p.readyCount).toBe(2);
+  });
+
+  it('still refuses when the destinations genuinely failed rather than ended', () => {
+    const p = evaluatePreflight({
+      ...HEALTHY,
+      destinations: [destination({ id: 'd1', label: 'YouTube', state: 'FAILED' })],
+    });
+
+    expect(p.level).toBe('red');
+  });
+});

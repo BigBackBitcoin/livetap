@@ -69,16 +69,42 @@ function safeDecode(value) {
   }
 }
 
+/**
+ * Send a file, or a 404 — but never throw out of the request handler.
+ *
+ * `statSync` on a file that has just disappeared throws ENOENT, and a throw inside a
+ * `createServer` callback is an uncaught exception that takes the whole process down. Any
+ * concurrent `npm run build` empties `dist` for a moment, so a request that lands in that window
+ * killed the server and every Playwright run attached to it. Observed repeatedly: a suite that had
+ * been green would report a dozen unrelated specs failing on "Cannot navigate", and the cause was
+ * a build in another terminal.
+ *
+ * A test server that dies when the thing it serves is rebuilt makes every result it produced
+ * before that moment suspect, which is a worse failure than a 404.
+ */
 function send(res, status, file) {
+  let size;
+  try {
+    size = statSync(file).size;
+  } catch {
+    if (!res.headersSent) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    res.end('Not found (the file went away — a build is probably running)');
+    return;
+  }
   const type = MIME.get(extname(file).toLowerCase()) ?? 'application/octet-stream';
   const immutable = file.includes(`${sep}assets${sep}`);
   res.writeHead(status, {
     'Content-Type': type,
-    'Content-Length': statSync(file).size,
+    'Content-Length': size,
     // Hashed assets are immutable; documents must never be cached during a test run.
     'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-store',
   });
-  createReadStream(file).pipe(res);
+  const stream = createReadStream(file);
+  // The file can also vanish BETWEEN the stat and the read, which is the same race one tick later.
+  stream.on('error', () => res.end());
+  stream.pipe(res);
 }
 
 const server = createServer((req, res) => {

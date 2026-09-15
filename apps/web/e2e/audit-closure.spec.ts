@@ -516,7 +516,7 @@ test.describe('P1 the page does not promise a build', () => {
 
     /* What the page offers instead is the truth, in words, plus somewhere to be told. */
     await expect(page.locator('.ltp-foot__note').first()).toContainText(
-      'There is no download yet: desktop and mobile builds are not published.',
+      'The first Windows build exists and is not published yet',
     );
     await expect(page.locator('[data-lt-watch]')).toHaveAttribute(
       'href',
@@ -543,9 +543,7 @@ test.describe('P1 the camera is the visitor own', () => {
       timeout: 15_000,
     });
     await expect(page.locator('[data-lt-camera-label]').first()).toHaveText('Stop my camera');
-    await expect(page.locator('[data-lt-camera-note]')).toContainText(
-      'Local only, never uploaded.',
-    );
+    await expect(page.locator('[data-lt-camera-note]')).toContainText('Local only.');
 
     /* A real MediaStream, on the element the stage shows. */
     expect(
@@ -560,17 +558,34 @@ test.describe('P1 the camera is the visitor own', () => {
     await expect(page.locator('[data-lt-camera-label]').first()).toHaveText('Use my camera');
   });
 
-  test('P1 camera: the button on the stage does the same thing as the one in the hero', async ({
+  /*
+   * This used to assert that the camera button ON the stage behaved like the one in the hero,
+   * because there were two of them and they had to agree. There is one now, and the reason is
+   * worth keeping as a test rather than as a memory: the program output carries the production
+   * and nothing else, so a control cannot live on the picture - and one action gets one control,
+   * so a second copy of it cannot live anywhere.
+   */
+  test('P1 camera: there is exactly one camera control, and it is not on the picture', async ({
     page,
   }) => {
     await ownTheSurface(page);
-    await page.locator('[data-lt-stage-source] [data-lt-camera-cta]').click();
+
+    const controls = page.locator('[data-lt-camera-cta]');
+    await expect(controls).toHaveCount(1);
+
+    const onThePicture = await page.evaluate(() => {
+      const frame = document.querySelector('.ltp-stage__frame');
+      const button = document.querySelector('[data-lt-camera-cta]');
+      return !!frame && !!button && frame.contains(button);
+    });
+    expect(onThePicture, 'the camera control is inside the stage frame').toBe(false);
+
+    /* And the one that exists still works. */
+    await controls.click();
     await expect(page.locator('[data-lt-surface]')).toHaveAttribute('data-lt-source', 'camera', {
       timeout: 15_000,
     });
-    /* Both copies of the label change together, because they are the same control twice. */
-    const labels = await page.locator('[data-lt-camera-label]').allTextContents();
-    expect(labels).toEqual(labels.map(() => 'Stop my camera'));
+    await expect(page.locator('[data-lt-camera-label]')).toHaveText('Stop my camera');
   });
 
   test('P1 camera: a refused camera keeps the demo picture and names the reason', async ({

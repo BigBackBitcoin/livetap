@@ -287,6 +287,43 @@ Everything below is about your own machine.
 
 ---
 
+## 6b. Publish the Windows installer, so the page can stop apologising for it
+
+Audit 3 scored **Desire to Download 3 / 10**, the lowest of fifteen categories,
+and the reason is not a design problem. `apps/desktop/release/` holds
+`LIVETAP-0.1.0-win-x64.exe` at about 230 MB, with its `.blockmap` beside it.
+(The exact byte count moves on every rebuild, so check the file rather than
+quoting a figure from a report.) An installable Windows build exists.
+The public page still spends a paragraph explaining that it does not:
+
+> "There is no download yet: desktop and mobile builds are not published."
+
+That sentence was honest when it was written and is now the last thing a
+visitor reads after an entire page arguing they could be live in a minute.
+
+Only you can fix it, because only you can publish under your own account:
+
+1. Create a **GitHub release** on `BigBackBitcoin/livetap` tagged `v0.1.0-alpha`,
+   marked **pre-release**.
+2. Attach `apps/desktop/release/LIVETAP-0.1.0-win-x64.exe` and its `.blockmap`,
+   plus `latest.yml` if electron-builder emitted one for this run. The latter two
+   are what let the app update itself later; without them the first installed
+   build can never offer an update.
+3. Tell whoever is editing the page the release URL, and the footer copy at
+   `apps/web/index.html` changes from "there is no download yet" to the link.
+
+Two things to expect and not be alarmed by. The binary is **unsigned**, so
+SmartScreen will show "Windows protected your PC" and the visitor has to choose
+*More info -> Run anyway*; that is normal for an unsigned alpha and the page
+should say so rather than let it surprise people. And 230 MB is large because
+ffmpeg is bundled — that is deliberate, and it is why a creator never has to
+install an encoder.
+
+Do not attach the Android APK to the same release unless you want strangers
+sideloading it. It is a debug build signed with the SDK's debug key.
+
+---
+
 ## 7. The order to do it in, and why
 
 ```

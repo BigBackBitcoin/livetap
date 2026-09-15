@@ -4,6 +4,15 @@ import { Spinner } from './Spinner.js';
 
 export type GoLiveState = 'idle' | 'countdown' | 'starting' | 'live' | 'stopping';
 
+/**
+ * How long after the countdown appears a click is treated as a stray second tap.
+ *
+ * Long enough to cover a comfortable double-tap (Windows' default double-click time is 500 ms and
+ * most people are far quicker), short enough that a person who genuinely changes their mind never
+ * notices it. They still have the rest of the countdown, and Escape, and the LiveBar.
+ */
+const DOUBLE_TAP_MS = 450;
+
 export interface GoLiveButtonProps {
   state: GoLiveState;
   /** Fired when an idle button is activated. The app then sets `state="countdown"`. */
@@ -106,6 +115,24 @@ export function GoLiveButton({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [state, onCancel]);
 
+  /*
+   * Has the Cancel settled, or did it appear a moment ago? See `handleClick`.
+   *
+   * A timer rather than a `Date.now()` comparison, because a timer is the thing a clock-driven
+   * test can advance and a timestamp read at click time is not — and an interaction guard nobody
+   * can test is an interaction guard that quietly stops working.
+   */
+  const [cancelSettled, setCancelSettled] = useState(false);
+  useEffect(() => {
+    if (state !== 'countdown') {
+      setCancelSettled(false);
+      return undefined;
+    }
+    setCancelSettled(false);
+    const timer = setTimeout(() => setCancelSettled(true), DOUBLE_TAP_MS);
+    return () => clearTimeout(timer);
+  }, [state]);
+
   const shown = Math.max(1, remaining);
   const cancellableStart = state === 'starting' && onCancelStart !== undefined;
   const busy = state === 'starting' || state === 'stopping';
@@ -125,6 +152,20 @@ export function GoLiveButton({
         onGoLive?.();
         break;
       case 'countdown':
+        /*
+         * A second tap 150 ms after the first is the tail of a double-tap, not a change of mind.
+         *
+         * Pressing GO LIVE turns this control into Cancel in the same pixels, which is the right
+         * design — the way out is where the way in was — and it means an anxious first-timer who
+         * double-taps cancels their own stream. Measured: 150 ms after the first click,
+         * elementFromPoint at that pixel returns the cancel label. Ten seconds later everything is
+         * back to Ready and nothing on the page says why.
+         *
+         * So the control ignores a click inside the settle window. Escape still cancels
+         * immediately, and so does a deliberate tap a moment later; what is refused is only the
+         * one that arrived too fast to have been aimed at a button that did not exist yet.
+         */
+        if (!cancelSettled) return;
         onCancel?.();
         break;
       case 'live':

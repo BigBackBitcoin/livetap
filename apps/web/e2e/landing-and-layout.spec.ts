@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { Taps, freshFirstRun, hasHorizontalOverflow, reachStudio } from './helpers.js';
+import {
+  Taps,
+  auditInteractionOwnership,
+  freshFirstRun,
+  hasHorizontalOverflow,
+  reachStudio,
+} from './helpers.js';
 
 const VIEWPORTS = [
   { name: 'mobile', width: 375, height: 812 },
@@ -270,38 +276,23 @@ test('the theme choice survives a reload', async ({ page }) => {
 test.describe('nothing invisible is ever on top', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  /*
+   * The walk itself now lives in `helpers.ts`, because this page was never the only place the
+   * bug could live — it had already happened on two other surfaces by the time this test was
+   * written. `interaction-ownership.spec.ts` runs the same function over every app route at two
+   * viewports under both motion preferences; this call is the landing page's cell of that matrix,
+   * kept here because `/` is the surface all three historical failures were found on.
+   *
+   * The grid is denser than the six-by-five it replaced (48px rather than 200x120), and it also
+   * sweeps for ghost layers a grid can step straight over, which is what two of the three
+   * historical bugs were.
+   */
   test('no transparent element is hit-testable anywhere on the page', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('html.sc-ready');
     await page.waitForTimeout(1000);
 
-    const offenders = await page.evaluate(async () => {
-      const found: Array<{ y: number; blocked: number; who: string }> = [];
-      const max = document.documentElement.scrollHeight - innerHeight;
-      for (let y = 0; y <= max; y += 100) {
-        scrollTo({ top: y, behavior: 'instant' });
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        let blocked = 0;
-        let who = '';
-        for (let gx = 0; gx < 6; gx += 1) {
-          for (let gy = 0; gy < 5; gy += 1) {
-            const el = document.elementFromPoint(200 + gx * 200, 180 + gy * 120);
-            if (!el) continue;
-            /* Walk up: a transparent ancestor makes its children untouchable too. */
-            for (let node: Element | null = el; node; node = node.parentElement) {
-              if (Number.parseFloat(getComputedStyle(node).opacity) <= 0.05) {
-                blocked += 1;
-                who = node.className.toString().slice(0, 60);
-                break;
-              }
-            }
-          }
-        }
-        if (blocked > 0) found.push({ y, blocked, who });
-      }
-      return found;
-    });
-
+    const offenders = await auditInteractionOwnership(page, { step: 48, scrollStep: 100 });
     expect(offenders, 'an invisible element is taking pointer events').toEqual([]);
   });
 
@@ -398,5 +389,53 @@ test.describe('hidden means hidden', () => {
       return shown;
     });
     expect(beaten, 'a display:flex element ignored its own hidden attribute').toBe('none');
+  });
+});
+
+/**
+ * The offer is made once.
+ *
+ * "Store the completion/skip state locally" is easy to write and easy to get subtly wrong, and the
+ * failure mode is the one the brief is most against: a visitor who has already answered being
+ * asked again, forever. Three things have to hold - it appears for someone who has not answered,
+ * either answer retires it permanently, and taking the tour by any other route counts as an
+ * answer - and none of them is observable without reloading the page, which is exactly why they
+ * were worth testing rather than trusting.
+ */
+test.describe('the quick-tour offer', () => {
+  test('is offered to a first-time visitor', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('[data-lt-offer]')).toBeVisible();
+  });
+
+  test('Skip retires it, and a reload does not bring it back', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('[data-lt-offer-no]').click();
+    await expect(page.locator('[data-lt-offer]')).toBeHidden();
+
+    await page.reload();
+    await page.waitForTimeout(800);
+    await expect(page.locator('[data-lt-offer]')).toBeHidden();
+  });
+
+  test('taking the tour counts as an answer', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('[data-lt-offer-yes]').click();
+    await expect(page.locator('.ltp-tour')).toBeVisible();
+
+    await page.reload();
+    await page.waitForTimeout(800);
+    await expect(page.locator('[data-lt-offer]')).toBeHidden();
+  });
+
+  test('opening the tour from the rail also retires the offer', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('[data-lt-offer]')).toBeVisible();
+    await page.locator('[data-lt-tour-open]').click();
+    await expect(page.locator('.ltp-tour')).toBeVisible();
+
+    await page.reload();
+    await page.waitForTimeout(800);
+    await expect(page.locator('[data-lt-offer]')).toBeHidden();
   });
 });

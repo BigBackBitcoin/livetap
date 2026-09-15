@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { STOP_CONTROL, assertStopReachable, hitTestStop, seedApp } from './helpers.js';
 
 /**
  * THE STOP CONTROL, MEASURED.
@@ -49,117 +50,31 @@ const VIEWPORTS = [
 const FORMATS = ['16:9', '9:16', '1:1'] as const;
 const MODES = ['simple', 'pro'] as const;
 
-/** Every control that can act on the broadcast, in whichever state the production is in. */
-const STOP = '[data-lt-stop], .lt-golive';
-
-interface HitReport {
-  found: number;
-  /** The one visible candidate's box, or null when none is visible. */
-  box: { x: number; y: number; width: number; height: number } | null;
-  /** Is the element at the centre of that box this control? */
-  onTop: boolean;
-  /** Is the whole control inside the window, not merely intersecting it? */
-  inView: boolean;
-  /** What the hit test actually reached, for a failure message that names the culprit. */
-  hitBy: string;
-}
-
-/**
- * Hit-test the one control that can act on the broadcast right now.
+/*
+ * The measurement itself lives in `helpers.ts`.
  *
- * "Visible" means a real box on the screen. The selector matches more than one element on
- * purpose: Studio's in-flow GO LIVE and the shell's live bar are the same control at different
- * points in the broadcast's life, and exactly one of them is ever rendered.
+ * It was written here first, and then `end-invariant.spec.ts` needed exactly the same question
+ * asked of a wider matrix — which is the moment a second copy gets made and the two begin to
+ * disagree about what "reachable" means. `infra/dev-harness/broadcast/studio-controls.mjs` was
+ * written after that had already happened once to the studio selectors, and its argument holds
+ * here: there must be one set of these in the repo, because the day two of them disagree is the
+ * day the evidence stops being evidence. `hitTestStop` and `assertStopReachable` are that one
+ * set; `STOP_CONTROL` is the selector both halves of the bargain use.
  */
-async function hitTestStop(page: Page): Promise<HitReport> {
-  return page.evaluate((selector) => {
-    const all = Array.from(document.querySelectorAll<HTMLElement>(selector));
-    const visible = all.filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.width > 1 && r.height > 1;
-    });
-    const el = visible[0];
-    if (!el) return { found: 0, box: null, onTop: false, inView: false, hitBy: 'nothing' };
-    const r = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-    const describe = (node: Element | null): string => {
-      if (!node) return 'nothing (outside the window)';
-      const id = node.id ? `#${node.id}` : '';
-      const cls = typeof node.className === 'string' ? `.${node.className.split(/\s+/).join('.')}` : '';
-      return `${node.tagName.toLowerCase()}${id}${cls}`;
-    };
-    return {
-      found: visible.length,
-      box: { x: r.x, y: r.y, width: r.width, height: r.height },
-      onTop: Boolean(hit && (hit === el || el.contains(hit) || hit.contains(el))),
-      inView:
-        r.top >= 0 &&
-        r.left >= 0 &&
-        r.bottom <= window.innerHeight + 0.5 &&
-        r.right <= window.innerWidth + 0.5,
-      hitBy: describe(hit),
-    };
-  }, STOP);
-}
-
-function assertReachable(report: HitReport, where: string): void {
-  expect(report.found, `${where}: no stop control is on the screen at all`).toBeGreaterThan(0);
-  expect(
-    report.inView,
-    `${where}: the stop control is clipped or off-screen, box ${JSON.stringify(report.box)}`,
-  ).toBe(true);
-  expect(
-    report.onTop,
-    `${where}: a tap at the centre of the stop control reaches ${report.hitBy} instead`,
-  ).toBe(true);
-}
 
 /**
  * Open Studio already set up, so a 48-cell matrix does not pay for onboarding 48 times.
  *
- * Nothing here is a test fixture standing in for the product: these are the same `livetap.*`
- * keys the app writes for itself, read by the same `persist.ts`, and the destinations come back
- * through the real restore path and connect through the real mock adapters.
+ * Nothing here is a test fixture standing in for the product: `seedApp` writes the same
+ * `livetap.*` keys the app writes for itself, they are read by the same `persist.ts`, and the
+ * destinations come back through the real restore path and connect through the real mock
+ * adapters.
  */
 async function openStudio(
   page: Page,
   options: { format: (typeof FORMATS)[number]; mode: (typeof MODES)[number] },
 ): Promise<void> {
-  await page.addInitScript(
-    ({ format, mode }) => {
-      window.localStorage.clear();
-      window.sessionStorage.clear();
-      window.localStorage.setItem('livetap.intent', JSON.stringify('talking'));
-      window.localStorage.setItem('livetap.onboarding', JSON.stringify(true));
-      window.localStorage.setItem('livetap.mode', JSON.stringify(mode));
-      window.localStorage.setItem(
-        'livetap.settings',
-        JSON.stringify({ quality: 'auto', recordEveryStream: false, aspect: format }),
-      );
-      window.localStorage.setItem(
-        'livetap.destinations',
-        JSON.stringify([
-          {
-            id: 'yt-matrix',
-            platform: 'youtube',
-            label: 'YouTube',
-            aspectRatio: format,
-            enabled: true,
-            mock: true,
-          },
-          {
-            id: 'tt-matrix',
-            platform: 'tiktok',
-            label: 'TikTok',
-            aspectRatio: format,
-            enabled: true,
-            mock: true,
-          },
-        ]),
-      );
-    },
-    { format: options.format, mode: options.mode },
-  );
+  await seedApp(page, { format: options.format, mode: options.mode, destinations: 2 });
   await page.goto('/app/studio');
   await expect(page.getByRole('button', { name: 'Go live' })).toBeVisible();
   await expect(page.getByLabel('Where this stream is going').getByText('YouTube · Ready')).toBeVisible();
@@ -180,7 +95,7 @@ for (const viewport of VIEWPORTS) {
           await openStudio(page, { format, mode });
 
           // IDLE. GO LIVE is the control, and P0-3 is the assertion that it is on the screen.
-          assertReachable(await hitTestStop(page), `${cell} · idle`);
+          assertStopReachable(await hitTestStop(page), `${cell} · idle`);
 
           /*
            * Sample the whole transition rather than trying to stop inside it. STARTING lasts
@@ -216,14 +131,14 @@ for (const viewport of VIEWPORTS) {
               requestAnimationFrame(sample);
             };
             requestAnimationFrame(sample);
-          }, STOP);
+          }, STOP_CONTROL);
 
           await page.getByRole('button', { name: 'Go live', exact: true }).click();
 
           // LIVE.
           const end = page.getByRole('button', { name: /End broadcast/ });
           await expect(end, `${cell}: never reached LIVE`).toBeVisible({ timeout: 25_000 });
-          assertReachable(await hitTestStop(page), `${cell} · live`);
+          assertStopReachable(await hitTestStop(page), `${cell} · live`);
 
           const samples = await page.evaluate(() => {
             const w = window as unknown as { __ltStopSamples?: Array<Record<string, unknown>> };
@@ -242,7 +157,7 @@ for (const viewport of VIEWPORTS) {
           await end.click();
           const undo = page.getByRole('button', { name: /UNDO/ });
           await expect(undo).toBeVisible();
-          assertReachable(await hitTestStop(page), `${cell} · mid-grace`);
+          assertStopReachable(await hitTestStop(page), `${cell} · mid-grace`);
           await undo.click();
           await expect(page.getByRole('button', { name: /End broadcast/ })).toBeVisible();
         });
@@ -281,7 +196,7 @@ test.describe('the stop control outranks everything that can appear over it', ()
         page.getByRole('button', { name: /End broadcast/ }),
         `${label} has no way to stop the broadcast`,
       ).toBeVisible();
-      assertReachable(await hitTestStop(page), `${label} while live`);
+      assertStopReachable(await hitTestStop(page), `${label} while live`);
     }
   });
 
@@ -346,7 +261,7 @@ test.describe('the stop control outranks everything that can appear over it', ()
 
     await tapNav(page, 'Studio');
     await expect(chips.getByText('TikTok · Live')).toBeVisible();
-    assertReachable(await hitTestStop(page), 'Studio after visiting Destinations while live');
+    assertStopReachable(await hitTestStop(page), 'Studio after visiting Destinations while live');
   });
 
   /**
@@ -435,7 +350,7 @@ test.describe('the stop control outranks everything that can appear over it', ()
     await expect(page.locator('.lt-sheet')).toBeVisible();
     await expect(page.locator('.lt-sheet__scrim')).toBeVisible();
 
-    assertReachable(await hitTestStop(page), 'with a Sheet open over the screen');
+    assertStopReachable(await hitTestStop(page), 'with a Sheet open over the screen');
   });
 
   /** A tooltip explains a control; it must never be the thing a tap at that control reaches. */

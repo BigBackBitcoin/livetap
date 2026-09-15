@@ -319,19 +319,35 @@ function DeviceStep({
   onBack: () => void;
   onOpenStudio: () => void | Promise<void>;
 }): ReactElement {
-  const { cameras, microphones, probed, unsupported, refresh } = useDevices();
+  const { cameras, microphones, probed, unsupported, permission, refresh } = useDevices();
   const aspect = useAppStore((s) => s.aspect);
   const setCameraDevice = useAppStore((s) => s.setCameraDevice);
   const setMicDevice = useAppStore((s) => s.setMicDevice);
-  const noCamera = probed && cameras.length === 0;
-  const noMic = probed && microphones.length === 0;
+  /*
+   * Blocked is not the same as absent, and neither is the same as a usable choice.
+   *
+   * `enumerateDevices` returns an entry per device even when the permission is refused, with no
+   * label and no id, so a picker built straight from it offered "Camera 1" and "Microphone 1" as
+   * though they were selectable — the app claiming a camera it could not open. Found by blocking
+   * the permission and looking at the screen.
+   */
+  const blocked = probed && permission === 'denied';
+  const noCamera = probed && (cameras.length === 0 || blocked);
+  const noMic = probed && (microphones.length === 0 || blocked);
 
   return (
     <>
       <div className="lt-devicestep">
         <div className="lt-devicestep__preview">
           <PreviewCanvas aspect={aspect} live={false} muted={false} />
-          {noCamera ? <p className="lt-devicestep__hint">{COPY.noCamera}</p> : null}
+          {blocked ? (
+            <p className="lt-devicestep__hint">
+              Your browser is blocking the camera and microphone for LIVETAP. Allow them in the
+              address bar or in your system privacy settings, then tap Look again.
+            </p>
+          ) : noCamera ? (
+            <p className="lt-devicestep__hint">{COPY.noCamera}</p>
+          ) : null}
         </div>
 
         <div className="lt-devicestep__pickers">
@@ -344,30 +360,43 @@ function DeviceStep({
           <Select
             label="Camera"
             hint={
-              noCamera
-                ? 'Nothing to choose yet — plug a camera in and tap Look again.'
-                : 'This is your Main Camera Moment.'
+              blocked
+                ? 'Blocked by your browser, so there is nothing to choose yet.'
+                : noCamera
+                  ? 'Nothing to choose yet — plug a camera in and tap Look again.'
+                  : 'This is your Main Camera Moment.'
             }
             onChange={(event) => setCameraDevice(event.currentTarget.value)}
             options={
-              cameras.length > 0
+              cameras.length > 0 && !blocked
                 ? cameras.map((c) => ({ value: c.deviceId, label: c.label }))
-                : [{ value: 'none', label: unsupported ? 'Test pattern' : 'No camera' }]
+                : [
+                    {
+                      value: 'none',
+                      label: blocked ? 'Blocked' : unsupported ? 'Test pattern' : 'No camera',
+                    },
+                  ]
             }
           />
 
           <Select
             label="Microphone"
+            /*
+             * "Say something - the level should move" promised a level meter this screen does not
+             * draw, and promised it hardest in the state where there is no microphone to move it.
+             */
             hint={
-              noMic
-                ? 'No microphone found — viewers will hear nothing.'
-                : 'Say something — the level should move.'
+              blocked
+                ? 'Blocked by your browser, so there is nothing to choose yet.'
+                : noMic
+                  ? 'No microphone found — viewers will hear nothing.'
+                  : 'Whatever you pick here is what your audience will hear.'
             }
             onChange={(event) => setMicDevice(event.currentTarget.value)}
             options={
-              microphones.length > 0
+              microphones.length > 0 && !blocked
                 ? microphones.map((m) => ({ value: m.deviceId, label: m.label }))
-                : [{ value: 'none', label: 'No microphone' }]
+                : [{ value: 'none', label: blocked ? 'Blocked' : 'No microphone' }]
             }
           />
 
