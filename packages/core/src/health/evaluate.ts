@@ -112,13 +112,70 @@ function evaluateEngineHealth(m: EngineMetrics | undefined, now: number): Health
   }
 
   const copy = COPY[level];
-  return {
-    level,
-    headline: copy.headline,
-    detail: networkIssue ? copy.network : encoderIssue ? copy.encoder : copy.generic,
-    reasons: reasons.length ? reasons : ['all metrics within target'],
-    suggestion,
-  };
+  return applyConnectionHealth(
+    {
+      level,
+      headline: copy.headline,
+      detail: networkIssue ? copy.network : encoderIssue ? copy.encoder : copy.generic,
+      reasons: reasons.length ? reasons : ['all metrics within target'],
+      suggestion,
+    },
+    m,
+  );
+}
+
+/**
+ * Let Bond's judgment of the network override the inference made from bitrate and dropped frames.
+ *
+ * Everything above is a PROXY: a stream running under target might be a congested uplink or an
+ * encoder that cannot keep up, and the evaluator has to guess from the shape of the numbers. Bond
+ * measures the path itself, so when it has an opinion it is evidence rather than inference — and
+ * it carries the one thing this function could never produce before, a bitrate the network has
+ * actually been shown to carry.
+ *
+ * ONLY EVER MAKES THE ASSESSMENT WORSE OR MORE SPECIFIC. A healthy path does not clear an encoder
+ * that is dropping frames, and an excellent bond over a stalling encoder is still a bad broadcast.
+ * Bond knows about the network and nothing else, so it is given authority over exactly that.
+ */
+function applyConnectionHealth(base: HealthAssessment, m: EngineMetrics): HealthAssessment {
+  if (!m.connectionHealth) return base;
+  const ceiling = m.recommendedKbps;
+  // "Try 2500 kbps" is something a person can act on. "Lower your bitrate" is a homework
+  // assignment, and the number was never available to this function until Bond supplied it.
+  const advice = ceiling && ceiling > 0 ? ` Try about ${ceiling} kbps.` : '';
+
+  switch (m.connectionHealth) {
+    case 'offline':
+      return {
+        ...base,
+        level: 'critical',
+        headline: 'Your connection dropped',
+        detail: 'Nothing is reaching LIVETAP. Check your network — the broadcast resumes by itself once it is back.',
+        reasons: [...base.reasons, 'no usable network path'],
+        suggestion: 'none',
+      };
+    case 'insufficient':
+      return {
+        ...base,
+        level: worseOf(base.level, 'poor'),
+        headline: 'Your connection cannot keep up',
+        detail: `There is not enough upload bandwidth for this quality.${advice}`,
+        reasons: [...base.reasons, ceiling ? `network carries about ${ceiling} kbps` : 'network below stream bitrate'],
+        suggestion: 'lowerBitrate',
+      };
+    case 'degraded':
+      return {
+        ...base,
+        level: worseOf(base.level, 'fair'),
+        headline: 'Your connection is unsteady',
+        detail: `Viewers may see stutter.${advice}`,
+        reasons: [...base.reasons, 'network path degraded'],
+        suggestion: base.suggestion === 'none' ? 'lowerBitrate' : base.suggestion,
+      };
+    default:
+      // 'excellent' and 'protected': the network is fine, which says nothing about the encoder.
+      return base;
+  }
 }
 
 function scoreToLevel(score: number): HealthLevel {

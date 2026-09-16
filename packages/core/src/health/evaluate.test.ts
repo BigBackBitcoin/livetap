@@ -63,3 +63,69 @@ describe('evaluateHealth with destination state', () => {
     expect(evaluateHealth(base(), 1000, { reconnecting: 0, degraded: 0, failed: 0 }).level).toBe('excellent');
   });
 });
+
+/**
+ * BOND'S JUDGMENT REACHES THE CREATOR.
+ *
+ * Everything else in this evaluator is a proxy: a stream under target might be a congested uplink
+ * or an encoder that cannot keep up, and it has to guess from the shape of the numbers. Bond
+ * measures the path, so when it has an opinion it is evidence — and it carries the one thing this
+ * function could never produce on its own, a bitrate the network has actually been shown to hold.
+ */
+describe('connection health from Bond', () => {
+  const healthy = (over: Partial<EngineMetrics> = {}): EngineMetrics => ({
+    encodedKbps: 6000,
+    targetKbps: 6000,
+    encoderDroppedPct: 0,
+    networkDroppedPct: 0,
+    renderFps: 30,
+    targetFps: 30,
+    updatedAt: 1_000,
+    ...over,
+  });
+
+  it('says the connection dropped, rather than leaving a healthy-looking readout', () => {
+    const h = evaluateHealth(healthy({ connectionHealth: 'offline' }), 1_000);
+    expect(h.level).toBe('critical');
+    expect(h.headline).toMatch(/connection dropped/i);
+  });
+
+  /* The number is the point: "try about 2500 kbps" is actionable, "lower your bitrate" is homework. */
+  it('names a bitrate the network can actually carry', () => {
+    const h = evaluateHealth(
+      healthy({ connectionHealth: 'insufficient', recommendedKbps: 2500 }),
+      1_000,
+    );
+    expect(h.level).toBe('poor');
+    expect(h.detail).toMatch(/2500 kbps/);
+    expect(h.suggestion).toBe('lowerBitrate');
+  });
+
+  it('does not promise a number it does not have', () => {
+    const h = evaluateHealth(healthy({ connectionHealth: 'insufficient' }), 1_000);
+    expect(h.detail).not.toMatch(/kbps\./);
+    expect(h.suggestion).toBe('lowerBitrate');
+  });
+
+  /*
+   * Bond knows about the network and nothing else. An excellent path over a stalling encoder is
+   * still a bad broadcast, and clearing it would be the exact "LIVE with nothing working" lie the
+   * product keeps designing against.
+   */
+  it('never clears an encoder problem just because the network is fine', () => {
+    const struggling = healthy({
+      connectionHealth: 'excellent',
+      encoderDroppedPct: 9,
+      renderFps: 12,
+    });
+    const h = evaluateHealth(struggling, 1_000);
+    expect(['poor', 'critical']).toContain(h.level);
+    expect(h.suggestion).not.toBe('none');
+  });
+
+  it('leaves the assessment alone when Bond has no opinion', () => {
+    const withBond = evaluateHealth(healthy({ connectionHealth: 'excellent' }), 1_000);
+    const without = evaluateHealth(healthy(), 1_000);
+    expect(withBond).toEqual(without);
+  });
+});
