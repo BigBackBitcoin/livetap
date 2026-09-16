@@ -314,6 +314,50 @@ describe('stream keys on the relay path', () => {
 });
 
 /**
+ * SELECTION IS PER ACCOUNT, ALL THE WAY TO THE RELAY.
+ *
+ * This is the seam where multi-account support would most plausibly be undone: a GO LIVE selector
+ * that groups two YouTube channels under one heading could just as easily toggle the PLATFORM, and
+ * everything below it would keep working perfectly while broadcasting to the wrong set. The store
+ * offers no platform-level enable at all -- `setDestinationEnabled` takes a destination id and
+ * there is no sibling that takes a platform -- so the collapse is structurally impossible rather
+ * than merely absent. This asserts the consequence end to end, because "there is no such function"
+ * is a fact about today and this is a guard for tomorrow.
+ */
+describe('choosing where to go live', () => {
+  it('sends only the selected account, and leaves its sibling on the same platform alone', async () => {
+    const { calls, impl } = relayFetch();
+    vi.stubGlobal('fetch', impl);
+
+    const { store } = build(false);
+    await store.getState().init();
+    await twoYouTubeChannels(store);
+
+    const gaming = store.getState().destinations.find((d) => d.config.label === 'Carter Gaming')!;
+    store.getState().setDestinationEnabled(gaming.config.id, false);
+    await store.getState().commitGoLive();
+
+    const sent = (calls.find((c) => c.method === 'POST')!.body as { destinations: Array<{ streamKey?: string }> })
+      .destinations;
+    expect(sent, 'deselecting one channel took its sibling off air too').toHaveLength(1);
+    expect(sent[0]!.streamKey).toBe('key-for-live');
+  });
+
+  it('will not open a relay session at all when every account is deselected', async () => {
+    const { calls, impl } = relayFetch();
+    vi.stubGlobal('fetch', impl);
+
+    const { store } = build(false);
+    await store.getState().init();
+    await twoYouTubeChannels(store);
+    for (const d of store.getState().destinations) store.getState().setDestinationEnabled(d.config.id, false);
+    await store.getState().commitGoLive();
+
+    expect(calls).toHaveLength(0);
+  });
+});
+
+/**
  * A PHONE REACHING MORE THAN ONE DESTINATION.
  *
  * Android has one encoder and one RTMP socket, so the second push was refused with a

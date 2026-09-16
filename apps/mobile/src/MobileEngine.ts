@@ -22,9 +22,11 @@
  *
  * Verification: the mapping logic below is unit-tested against a fake plugin, including the
  * permission gate, the aspect refusal, the relay fan-out and every event translation. The native
- * RTMP auth the relay path depends on (`setAuthorization`, confirmed present in RootEncoder 2.8.1)
- * is NOT compiled or run here -- this host has no JDK and no Android SDK -- so the relay path is
- * proven up to the plugin boundary and UNVERIFIED beyond it. The Android native side behind
+ * RTMP auth the relay path depends on (`getStreamClient().setAuthorization`, RootEncoder 2.8.1)
+ * COMPILES and ships in the debug APK's dex, built on this host with the portable JDK 21 and
+ * Android SDK under `tools/` -- so the call site is real rather than plausible. What is still
+ * unproven is everything only a handset can show: that the relay accepts the publish, that camera
+ * frames reach it, and that a platform receives the fan-out. See docs/release/ANDROID_MANUAL_TEST.md. The Android native side behind
  * it compiles and ships in the debug APK's dex on this host but has never been RUN (no emulator
  * image, no nested virtualisation, no handset); the iOS side has not been compiled at all. See
  * docs/release/ANDROID_MANUAL_TEST.md.
