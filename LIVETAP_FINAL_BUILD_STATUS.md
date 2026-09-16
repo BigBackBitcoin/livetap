@@ -108,6 +108,14 @@ two `app-debug.apk` files on this machine at the same relative path in different
 checkouts, with different hashes. A reader who hashes the wrong one would
 conclude this document is lying, and would be reasonable to.
 
+**A demo build must never be written to `app-debug.apk`.** Mock mode is
+first-class and a demo APK is a legitimate thing to build, but it has to carry a
+different filename — `app-demo-mock.apk` — because the in-app banner that makes
+a demo honest is a property of the running app, not of the file. A file cannot
+say what it is until it is opened, and a demo sitting at the path this document
+names would both invalidate the hash above and leave the banner as the only
+thing between an owner and believing they hold the real build.
+
 **The end-session fix is not covered by the E2E run, and that is stated rather
 than glossed.** The 334-test Playwright run validates the END take-back fix; the
 end-session confirmation fix landed after that run started. It is a Settings
