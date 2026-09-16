@@ -50,6 +50,17 @@ asked a question about a boundary rather than about a file.
 Nothing about this is finished by inspection. If a fifth seam exists, it will
 look exactly like the four that did.
 
+The tell is not an error. In every one of these the wrong answer was the
+*comfortable* one: no camera reported "streaming silence", an unreadable store
+reported `clean: true`, a missing `java` reported a machine that could not do the
+job, and a platform-keyed token reported a working sign-in. None of them threw.
+What to watch for is a cheerful answer from something that never looked — an
+error gets investigated, while a confident wrong answer gets believed and built
+on, which is what happened four times here. It is also why the gates caught what
+they caught and missed what they missed: `tsc`, `eslint` and 1837 tests all check
+that code does what it says, and every one of these bugs had code doing exactly
+what it said.
+
 ## The two things worth knowing before the validation phase
 
 **The build toolchain is here, and looked absent to both sessions.** `tools/`
