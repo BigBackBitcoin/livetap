@@ -19,7 +19,7 @@ Two sessions built this. Lines marked **(2b)** are owned by session
 | **SESSION CLEANUP** | COMPLETE | `destroySession` reports what it actually observed, distinguishes "emptied" from "could not be read", sweeps LIVETAP keys nothing registered, and refuses while on air. |
 | **UX CONSISTENCY** | COMPLETE | Destinations read as accounts under platforms — one section per platform, one card per account, "Add another YouTube account" at the foot of each group **(2b)**. All three surfaces share one mental model and one definition of connection health. Selection is per account by construction: there is no platform-level enable anywhere, asserted end to end. |
 | **PRODUCTION CONFIG** | COMPLETE | Web, staged mobile bundle and finished APK each have a gate proving demo mode is compiled out and that the relay and broker origins reached the build. Each verified in both directions. |
-| **WINDOWS ARTIFACT** | _pending this run_ | — |
+| **WINDOWS ARTIFACT** | COMPLETE | `LIVETAP-0.1.0-win-x64.exe`, 230,778,945 bytes, sha256 `7340dca6…`, built from current source on this host. 32/32 `verify-installer` checks, including that the installer is newer than the renderer it contains and that both witnesses agree demo mode was compiled out. Ships a verified ffmpeg 9.0.1 that actually runs and speaks rtmps. |
 | **ANDROID ARTIFACT** | COMPLETE | `app-debug.apk`, 10,151,511 bytes, built from current source on this host with the portable JDK 21 + Android SDK. 49/49 checks. Debug-signed: sideloadable, not Play-ready (needs an upload key the repo must never contain). |
 
 ## What is external validation only
@@ -51,6 +51,11 @@ Nothing about this is finished by inspection. If a fifth seam exists, it will
 look exactly like the four that did.
 
 ## The two things worth knowing before the validation phase
+
+**Both artifacts correspond to current HEAD.** They were built after the last
+code change in this branch, not carried over. The installer verifier checks that
+specifically, because a packaging step that fails halfway leaves the previous
+installer in place looking newly built.
 
 **Android multi-destination is compiled, not exercised.** The device encodes
 once and publishes once to the relay, which fans out. `setAuthorization` ships
