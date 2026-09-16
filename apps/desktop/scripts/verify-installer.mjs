@@ -37,7 +37,61 @@ const UNPACKED = join(RELEASE, 'win-unpacked');
 
 const version = JSON.parse(readFileSync(join(DESKTOP, 'package.json'), 'utf8')).version;
 const DEFAULT_INSTALLER = join(RELEASE, `LIVETAP-${version}-win-x64.exe`);
-const installerPath = process.argv[2] ? resolve(process.argv[2]) : DEFAULT_INSTALLER;
+const argv = process.argv.slice(2);
+const flags = argv.filter((a) => a.startsWith('--'));
+const positional = argv.filter((a) => !a.startsWith('--'));
+const installerPath = positional[0] ? resolve(positional[0]) : DEFAULT_INSTALLER;
+
+/*
+ * `--expect <sha>` is the OPERATOR's claim about which commit should be inside this artifact.
+ *
+ * The check below deliberately does NOT compare the recorded commit to HEAD. HEAD moves for
+ * reasons that have nothing to do with the artifact, and routinely moves BECAUSE of it: package
+ * from a clean tree, read the hashes, write them into the release notes, commit — and now HEAD is
+ * one ahead of an artifact that is perfectly identified and perfectly current. A check no correct
+ * release sequence can satisfy is a check somebody deletes.
+ *
+ * Worse, equality with HEAD is a coincidence detector. An artifact built ninety minutes ago from
+ * a tree that has since been reset and rebuilt has the same HEAD and different bytes, and `==
+ * HEAD` calls it fine. It fails the correct case and passes the incorrect one.
+ *
+ * So the script answers the question it can answer from the artifact alone — WHICH COMMIT IS THIS
+ * FROM — and refuses to guess at the one only a person has: IS THAT THE COMMIT I WANT. `--expect`
+ * is where that person says so.
+ */
+const expectCommit = (() => {
+  const flag = flags.find((f) => f.startsWith('--expect='));
+  if (flag) return flag.slice('--expect='.length);
+  const i = argv.indexOf('--expect');
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
+})();
+
+/*
+ * `--unversioned` narrows the CLAIM rather than switching the check off, exactly like
+ * `--own-receiver` on the broadcast gate. A build from a source tarball with no `.git` genuinely
+ * has no commit to name; the honest record of that is "unidentifiable", not a silent PASS that
+ * reads as if identification had happened. A warning would not do: a PASS carries a claim, and
+ * this script has already once reported 30/30 on a ninety-minute-old installer while everybody
+ * believed it.
+ */
+const unversioned = flags.includes('--unversioned');
+
+/*
+ * Paths the BUILD ITSELF writes into the tree, which therefore say nothing about which code is
+ * inside the artifact.
+ *
+ * This list is fail-CLOSED and that polarity is the whole point. Everything tracked is fatal
+ * unless it is here. A new generated-and-tracked file that nobody adds makes the gate refuse a
+ * correct build — somebody then looks, understands, and adds it deliberately. The opposite
+ * polarity, a list of paths that MATTER, silently passes every path anybody forgets, and the set
+ * of files that can change an artifact's bytes is unbounded: source, `vite.config.ts`,
+ * `electron-builder.yml`, `tsup.config.ts`, `tsconfig*.json`, `package.json`. Annoying when wrong
+ * beats quiet when wrong.
+ */
+const BUILD_WRITES = [
+  // `acquire-ffmpeg` rewrites its `recorded:` timestamp on every packaging run.
+  'apps/desktop/resources/ffmpeg/BUILD_INFO.txt',
+];
 
 /*
  * An installer WITHOUT ffmpeg measured 94 MB on this host (docs/release/DESKTOP_RELEASE.md §2);
@@ -93,6 +147,9 @@ function readAsar(file) {
 
 const results = [];
 let failed = 0;
+
+/* Facts the report prints whether or not anything failed: WHICH tree this artifact came from. */
+const provenance = [];
 
 function check(label, ok, detail) {
   results.push({ label, ok, detail });
@@ -319,6 +376,50 @@ if (existsSync(asarPath)) {
           'renderer it claims to carry. The packaging run did not finish; the artifact in release/ ' +
           'is the previous one.',
       );
+
+      /*
+       * C: WHICH TREE THIS ARTIFACT CAME FROM.
+       *
+       * A and B are both anchored to `dist/renderer` on disk — they compare the artifact to the
+       * renderer, never the renderer to its source. So they catch a repack that died between
+       * `win-unpacked/` and the `.exe`, and they are blind to a renderer that is itself stale.
+       * Both artifacts shipped today were internally consistent all the way down and described a
+       * tree that had moved on. Three checks, three different failures: repack died, renderer
+       * stale, renderer from another tree.
+       */
+      const recorded = mode.commit ?? null;
+      const dirty = Array.isArray(mode.dirty) ? mode.dirty : null;
+
+      if (recorded === null) {
+        check(
+          'the renderer records the commit it was built from',
+          unversioned,
+          'build-mode.json has no `commit`. Either it predates this check, or git was unavailable ' +
+            'at build time. Rebuild, or pass --unversioned to record this artifact as ' +
+            'UNIDENTIFIABLE — which is what it is.',
+        );
+      } else {
+        const fatal = (dirty ?? []).filter((path) => !BUILD_WRITES.includes(path));
+        check(
+          'the renderer was not built from uncommitted source',
+          fatal.length === 0,
+          `built with uncommitted changes to ${fatal.join(', ')}. This artifact cannot be ` +
+            'identified by anyone, including whoever built it, because the code inside it exists ' +
+            'in no commit. There is no flag for this: commit first.',
+        );
+        if (expectCommit !== null) {
+          check(
+            `the renderer was built from ${expectCommit}`,
+            recorded.startsWith(expectCommit) || expectCommit.startsWith(recorded),
+            `this artifact is from ${recorded}, and you asked for ${expectCommit}.`,
+          );
+        }
+        provenance.push(
+          `built from commit ${recorded}${
+            (dirty ?? []).length > 0 ? ` (with ${dirty.join(', ')} uncommitted)` : ' (clean tree)'
+          }`,
+        );
+      }
     }
   }
 
@@ -369,7 +470,9 @@ console.log(
     `  artifact : ${installerPath}\n` +
     `  version  : ${version}\n` +
     `  bytes    : ${installerBytes.length.toLocaleString()}\n` +
-    `  sha256   : ${installerSha}`,
+    `  sha256   : ${installerSha}` +
+    provenance.map((line) => `
+  from     : ${line}`).join(''),
 );
 console.log(
   '[verify-installer] NOTE: this proves what was PACKAGED. It does not prove that running the ' +

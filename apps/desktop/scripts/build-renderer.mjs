@@ -70,6 +70,50 @@ if (result.status !== 0) {
  *
  * It is written after Vite, not before, so it can never describe a build that did not happen.
  */
+/*
+ * WHICH TREE THIS RENDERER CAME FROM, recorded rather than inferred.
+ *
+ * `builtAt` says WHEN, and the verifier used to reason about freshness from timestamps alone —
+ * which is a proxy, and it leaks. A `git checkout` stamps every source mtime without changing a
+ * line, so a timestamp check fires correctly for a reason nobody can see in its message, and a
+ * check whose true positives look like false alarms gets switched off. Worse, two artifacts built
+ * ninety minutes apart from a tree that was reset in between have the same everything a timestamp
+ * can see, and different bytes.
+ *
+ * A commit is exact. An artifact that names its commit can be traced to the code inside it by
+ * anybody, at any later date, without the tree it was built in still existing.
+ *
+ * `-C root` on both commands, not cwd: these artifacts are routinely built from a git WORKTREE
+ * rather than the main checkout, and a script that resolves the wrong tree would confidently
+ * record the cleanliness of a repository that had nothing to do with this build.
+ */
+function gitFacts() {
+  const run = (args) => {
+    const out = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+    return out.status === 0 ? out.stdout.trim() : null;
+  };
+  const commit = run(['rev-parse', 'HEAD']);
+  const porcelain = run(['status', '--porcelain']);
+  if (commit === null || porcelain === null) return { commit: null, dirty: null };
+  /*
+   * The DIRTY LIST, not a dirty boolean.
+   *
+   * A boolean here cannot pass: packaging rewrites `resources/ffmpeg/BUILD_INFO.txt` on every
+   * run, so the act of building the artifact dirties the tree, and a build would never be able
+   * to satisfy its own gate. A gate no correct run can pass is a gate somebody deletes.
+   *
+   * Untracked files are excluded: they are not in the artifact and never were.
+   */
+  const dirty = porcelain
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('??'))
+    .map((line) => line.replace(/^\S+\s+/, ''));
+  return { commit, dirty };
+}
+
+const git = gitFacts();
+
 const outDir = resolve(root, 'apps', 'desktop', 'dist', 'renderer');
 writeFileSync(
   join(outDir, 'build-mode.json'),
@@ -78,6 +122,8 @@ writeFileSync(
       mockMode: demo,
       viteEnv: { VITE_LIVETAP_MOCK_MODE: demo ? 'true' : 'false' },
       builtAt: new Date().toISOString(),
+      commit: git.commit,
+      dirty: git.dirty,
       builtBy: 'apps/desktop/scripts/build-renderer.mjs',
       note: demo
         ? 'DEMO build: every adapter and the engine are simulated. Do not ship this.'
