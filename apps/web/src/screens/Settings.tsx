@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router';
 import { Card, Toggle, useTheme } from '@livetap/ui';
+import { EndSession } from './EndSession.js';
 import type { QualityPreset } from '@livetap/core';
 import type { ThemePreference } from '@livetap/ui';
 import { useAppStore } from '../state/store.js';
@@ -149,6 +150,8 @@ function Segmented({
           {option.label}
         </button>
       ))}
+      <EndSession />
+
     </div>
   );
 }
