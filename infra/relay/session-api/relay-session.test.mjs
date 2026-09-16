@@ -147,6 +147,51 @@ test('hook fans out to every destination through one tee', () => {
   assert.equal((cmd.match(/-f tee/g) || []).length, 1, 'one output group for flat destinations');
 });
 
+/*
+ * TWO ACCOUNTS ON ONE PLATFORM, THROUGH ONE SESSION.
+ *
+ * Two YouTube channels are the same ingest URL with two different stream keys. Every layer above
+ * this one has already had a bug of exactly this shape: the store reconnected the first channel
+ * instead of authorizing a second, the token store answered Carter Live's request with Carter
+ * Gaming's token, and a refresh renewed the wrong grant. In each case the identity stopped at a
+ * seam and the collapse looked completely correct from outside — two rows, two labels, both green,
+ * one channel receiving video.
+ *
+ * The relay is the last seam, and the one where a collapse would be hardest to see: the forward
+ * list is an ffmpeg tee argument that nobody reads. So it is asserted here rather than assumed
+ * from the fact that `.map()` was used.
+ */
+test('hook forwards to two accounts on one platform as two separate targets', () => {
+  const twoChannels = [
+    { protocol: 'rtmps', url: 'rtmps://a.rtmp.youtube.com/live2', streamKey: 'gaming-key', aspectRatio: '16:9' },
+    { protocol: 'rtmps', url: 'rtmps://a.rtmp.youtube.com/live2', streamKey: 'live-key', aspectRatio: '16:9' },
+  ];
+  const cmd = buildHookCommand('sess1', twoChannels, cfg);
+
+  assert.match(cmd, /rtmps:\/\/a\.rtmp\.youtube\.com\/live2\/gaming-key/);
+  assert.match(cmd, /rtmps:\/\/a\.rtmp\.youtube\.com\/live2\/live-key/);
+  assert.equal(
+    (cmd.match(/onfail=ignore/g) || []).length,
+    2,
+    'the two channels collapsed into one forward target: one of them receives nothing',
+  );
+});
+
+/* The same case must survive validation, which is where a dedupe would most plausibly be added. */
+test('two accounts on one platform are accepted, not deduplicated by URL', () => {
+  const res = validateRequest(
+    {
+      destinations: [
+        { protocol: 'rtmps', url: 'rtmps://a.rtmp.youtube.com/live2', streamKey: 'gaming-key' },
+        { protocol: 'rtmps', url: 'rtmps://a.rtmp.youtube.com/live2', streamKey: 'live-key' },
+      ],
+    },
+    cfg,
+  );
+  assert.equal(res.ok, true, res.errors.join('; '));
+  assert.equal(res.destinations.length, 2);
+});
+
 test('hook reads back over loopback RTSP with the hook credential', () => {
   const cmd = buildHookCommand('sess1', twoFlat, cfg);
   assert.match(cmd, /rtsp:\/\/relayhook:hook-secret@127\.0\.0\.1:\$RTSP_PORT\/\$MTX_PATH/);
