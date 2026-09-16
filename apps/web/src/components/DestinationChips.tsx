@@ -66,17 +66,54 @@ export function DestinationList(): ReactElement | null {
    */
   if (enabled.length === 0) return null;
 
+  /*
+   * GROUPED ONLY WHERE GROUPING SAYS SOMETHING.
+   *
+   * The Destinations screen groups unconditionally: it is a library, and a heading that appears
+   * only sometimes teaches nobody where a second account will go. This is not that screen. It is
+   * the live dock, it is narrow, and it answers one question — where is this going right now. A
+   * platform heading above every single-account row would double its height to repeat a word the
+   * row already says.
+   *
+   * So a heading appears exactly where it disambiguates: above two or more accounts on the same
+   * platform. Everywhere else the row stands alone and reads as it always did.
+   */
+  const perPlatform = new Map<string, number>();
+  for (const d of enabled) {
+    perPlatform.set(d.config.platform, (perPlatform.get(d.config.platform) ?? 0) + 1);
+  }
+
+  const rows: ReactElement[] = [];
+  const headed = new Set<string>();
+  for (const snap of enabled) {
+    const platform = snap.config.platform;
+    if ((perPlatform.get(platform) ?? 0) > 1 && !headed.has(platform)) {
+      headed.add(platform);
+      rows.push(
+        <li className="lt-chiprow__group" key={`head-${platform}`} aria-hidden="true">
+          {PLATFORM_PROFILES[platform].displayName}
+        </li>,
+      );
+    }
+    rows.push(
+      <DestinationRow
+        key={snap.config.id}
+        snapshot={snap}
+        now={now}
+        live={live}
+        demo={simulated.has(snap.config.id)}
+      />,
+    );
+  }
+
+  /*
+   * `aria-hidden` on the heading, deliberately. It is a visual grouping cue for a scanning eye;
+   * a screen reader gets the platform from each row's own status text, so announcing "YouTube"
+   * between rows would be a third reading of the same word rather than a landmark.
+   */
   return (
     <ul className="lt-chiprow" aria-label="Where this stream is going">
-      {enabled.map((snap) => (
-        <DestinationRow
-          key={snap.config.id}
-          snapshot={snap}
-          now={now}
-          live={live}
-          demo={simulated.has(snap.config.id)}
-        />
-      ))}
+      {rows}
     </ul>
   );
 }
@@ -147,7 +184,19 @@ function DestinationRow({
         ) : null}
         <StatusChip
           state={snap.state}
-          label={`${PLATFORM_PROFILES[snap.config.platform].displayName} · ${chipLabel(snap.state)}`}
+          /*
+           * THE ACCOUNT, NOT JUST THE PLATFORM.
+           *
+           * This read `${displayName} · ${chipLabel(state)}`, so a creator broadcasting to Carter
+           * Gaming and Carter Live saw two rows both reading "YouTube · Live" — in the one place
+           * that answers "where is this going right now", and next to a control that stops one of
+           * them. Every layer beneath was already per account; this line was where the distinction
+           * disappeared for the person watching.
+           *
+           * The platform name is kept when the destination has no name of its own, which is the
+           * default for a single account and for every paste-key row.
+           */
+          label={`${accountName(snap)} · ${chipLabel(snap.state)}`}
           status={statusText(snap, now)}
         />
         {demo ? <Badge tone="info">{COPY.demo}</Badge> : null}
@@ -229,6 +278,19 @@ export function chipLabel(state: DestinationState): string {
     case 'ENDED':
       return 'Ended';
   }
+}
+
+/**
+ * What to call this destination on screen: its own name, or the platform's when it has none.
+ *
+ * `config.label` defaults to the platform's display name at connect time and is replaced with the
+ * account's own title once the platform says who it is, so this is "YouTube" for a lone
+ * unidentified connection and "Carter Gaming" as soon as there is something better.
+ */
+export function accountName(snap: DestinationSnapshot): string {
+  const platform = PLATFORM_PROFILES[snap.config.platform].displayName;
+  const label = snap.config.label.trim();
+  return label.length > 0 ? label : platform;
 }
 
 /** The second line: a consequence in words, never a bare metric. */
