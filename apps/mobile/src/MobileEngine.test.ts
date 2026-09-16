@@ -793,3 +793,69 @@ describe('MobileEngine publishing through a relay', () => {
     expect(seen.find((e) => e.type === 'outputLost')?.destinationId).toBe('twitch');
   });
 });
+
+/**
+ * BOND IS A PARTICIPANT ON ANDROID TOO.
+ *
+ * The phone cannot measure round trip, jitter or RTP loss — the native encoder does not report
+ * them — so those go in as zero rather than being derived from a dropped-frame count, which is
+ * backpressure and not packet loss. What Bond does here is the thing that actually matters on a
+ * handset: the encoder is asked for a bitrate, the radio delivers less, and the decision layer
+ * says so and names one the network can carry.
+ */
+describe('MobileEngine connection health', () => {
+  it('says nothing about connection health before anything is publishing', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await primed(plugin);
+    const metrics: Array<{ connectionHealth?: string; recommendedKbps?: number }> = [];
+    engine.on('metrics', (m) => metrics.push(m));
+
+    await engine.start(startRequest([]));
+
+    for (const m of metrics) expect(m.connectionHealth).toBeUndefined();
+  });
+
+  it('reports health and a recommended bitrate once the radio has carried something', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await primed(plugin);
+    await engine.start(startRequest([output('yt')]));
+    const metrics: Array<{ connectionHealth?: string; recommendedKbps?: number }> = [];
+    engine.on('metrics', (m) => metrics.push(m));
+
+    plugin.fire('streamState', { id: 'native-1', state: 'connected', bitrateKbps: 6000 });
+
+    const last = metrics[metrics.length - 1]!;
+    expect(last.connectionHealth, 'Bond never saw the publish').toBeDefined();
+    expect(last.connectionHealth).not.toBe('offline');
+    expect(last.recommendedKbps).toBeGreaterThan(0);
+  });
+
+  /* The case a phone actually hits: asked for 4500, the radio gives 400. */
+  it('calls the connection insufficient when the radio cannot carry the encoder', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await primed(plugin);
+    await engine.start(startRequest([output('yt')]));
+    const metrics: Array<{ connectionHealth?: string; recommendedKbps?: number }> = [];
+    engine.on('metrics', (m) => metrics.push(m));
+
+    plugin.fire('streamState', { id: 'native-1', state: 'connected', bitrateKbps: 4000 });
+    plugin.fire('streamState', { id: 'native-1', state: 'degraded', bitrateKbps: 400, droppedFrames: 120 });
+
+    const last = metrics[metrics.length - 1]!;
+    expect(['degraded', 'insufficient']).toContain(last.connectionHealth);
+  });
+
+  it('forgets the previous broadcast health rather than carrying it into the next', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await primed(plugin);
+    await engine.start(startRequest([output('yt')]));
+    plugin.fire('streamState', { id: 'native-1', state: 'connected', bitrateKbps: 6000 });
+
+    await engine.stop();
+    const metrics: Array<{ connectionHealth?: string }> = [];
+    engine.on('metrics', (m) => metrics.push(m));
+    await engine.start(startRequest([output('yt')]));
+
+    for (const m of metrics) expect(m.connectionHealth).toBeUndefined();
+  });
+});

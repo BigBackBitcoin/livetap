@@ -93,6 +93,12 @@ export {
   type BondPathTelemetry,
 } from './net/BondClient.js';
 
+export {
+  BondMonitor,
+  type BondMonitorOptions,
+  type PathIdentity,
+} from './monitor/BondMonitor.js';
+
 export { BondSink, type BondSinkOptions } from './net/BondSink.js';
 
 export {

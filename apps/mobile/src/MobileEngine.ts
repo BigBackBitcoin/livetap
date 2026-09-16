@@ -31,6 +31,7 @@
  */
 import { TypedEmitter } from '@livetap/core';
 import { installVaultBridge } from '@livetap/capacitor-live-stream';
+import { BondMonitor } from '@livetap/bond/browser';
 import type {
   AspectRatio,
   CameraLayer,
@@ -120,6 +121,17 @@ export class MobileEngine implements MediaEngine {
   /** nativeId -> destinationId. One-to-one for direct outputs; see `destinationsFor` for relayed. */
   private nativeIds = new Map<string, string>();
   private relay: MobileRelaySession | null = null;
+  /*
+   * Bond's decision layer, on the one path this device is publishing over.
+   *
+   * A phone genuinely has two radios and could one day bond them; today it publishes over whichever
+   * one the OS chose, and the value here is the same as on web -- one model, one definition of
+   * "degraded", one place that decides the encoder should come down. The inputs differ because the
+   * measurements differ, and `observePublish` is explicit about which ones this surface can honestly
+   * supply.
+   */
+  private readonly bond = new BondMonitor();
+  private lastDroppedFrames = 0;
   private subscriptions: Subscription[] = [];
 
   private previewing = false;
@@ -436,6 +448,10 @@ export class MobileEngine implements MediaEngine {
     }
     this.sessions.clear();
     this.nativeIds.clear();
+    // Between broadcasts, not during one. A new broadcast must not inherit the last one's capacity
+    // estimate or the hysteresis that would hold it in the previous decision.
+    this.bond.reset();
+    this.lastDroppedFrames = 0;
 
     if (this.recordingActive) {
       await this.stopRecording();
@@ -603,6 +619,7 @@ export class MobileEngine implements MediaEngine {
 
     if (event.bitrateKbps !== undefined) session.bitrateKbps = event.bitrateKbps;
     if (event.droppedFrames !== undefined) session.droppedFrames = event.droppedFrames;
+    if (event.bitrateKbps !== undefined) this.observePublish(event);
 
     switch (event.state) {
       case 'connecting':
@@ -668,10 +685,60 @@ export class MobileEngine implements MediaEngine {
     this.emitMetrics();
   }
 
+  /**
+   * Hand Bond one measurement of the path this device is publishing over.
+   *
+   * WHAT THIS SURFACE CAN HONESTLY MEASURE, and what it cannot. The native encoder reports the
+   * bitrate it is actually achieving and the frames it had to drop because the socket could not
+   * keep up. It does NOT report round trip, jitter or RTP loss, so those are left at zero rather
+   * than being derived from something that does not mean the same thing -- a dropped-frame count
+   * is backpressure, not packet loss, and feeding it in as loss would make the state machine
+   * demote a path for a reason it did not have.
+   *
+   * What Bond therefore does here is the thing that actually matters on a phone: the encoder is
+   * asked for 4500 kbps, the radio delivers 1200, and the capacity estimate falls until `decide`
+   * says `insufficient` and names a bitrate the network can carry.
+   */
+  private observePublish(event: StreamStateEvent): void {
+    const at = this.now();
+    const deliveredBps = (event.bitrateKbps ?? 0) * 1000;
+    const offeredBps = this.targetKbps * 1000;
+    const total = event.droppedFrames ?? this.lastDroppedFrames;
+    const newlyDropped = Math.max(0, total - this.lastDroppedFrames);
+    this.lastDroppedFrames = total;
+
+    this.bond.observe(
+      'radio',
+      {
+        at,
+        throughputBps: deliveredBps,
+        rttMs: 0,
+        jitterMs: 0,
+        loss: 0,
+        retransmitRate: 0,
+        // Frames dropped since the last sample mean the socket is behind, which is exactly what
+        // "this path is being asked for everything it has" means on a native encoder.
+        atCapacity: newlyDropped > 0 || (offeredBps > 0 && deliveredBps < offeredBps * 0.95),
+      },
+      { transport: 'cellular', label: 'Mobile network', metered: 'unknown' },
+      offeredBps,
+    );
+  }
+
   private emitMetrics(): void {
     const sessions = Array.from(this.sessions.values());
     const kbps = sessions.reduce((sum, s) => sum + s.bitrateKbps, 0);
     const dropped = sessions.reduce((max, s) => Math.max(max, s.droppedFrames), 0);
+    /*
+     * Thermal pressure is a real Bond input that only a phone has, and it belongs in the decision
+     * rather than in a separate warning: a device that is throttling cannot sustain the bitrate it
+     * managed a minute ago, and the encoder should be told before the OS decides for it.
+     */
+    const bonded = this.bond.paths().length > 0
+      ? this.bond.decide(this.targetKbps * 1000, this.now(), {
+          thermalPressure: this.thermalLevel === 'serious' || this.thermalLevel === 'critical',
+        })
+      : null;
     this.emitter.emit('metrics', {
       encodedKbps: kbps,
       targetKbps: this.targetKbps,
@@ -681,6 +748,7 @@ export class MobileEngine implements MediaEngine {
       networkDroppedPct: dropped > 0 && this.targetFps > 0 ? Math.min(100, dropped) : 0,
       renderFps: this.targetFps,
       targetFps: this.targetFps,
+      ...(bonded ? { connectionHealth: bonded.health, recommendedKbps: Math.round(bonded.encoderCeilingBps / 1000) } : {}),
       updatedAt: this.now(),
     });
   }

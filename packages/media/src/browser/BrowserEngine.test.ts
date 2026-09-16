@@ -808,6 +808,91 @@ describe('BrowserEngine metrics', () => {
     expect(last.encodedKbps).toBeCloseTo(4000, 0);
   });
 
+  /**
+   * BOND IS NOW A PARTICIPANT ON THE WEB, not a package with tests.
+   *
+   * A browser cannot bond — it cannot bind a socket to an interface and never will. What it can do
+   * is be measured and decided about by the same model every other surface uses, so "degraded"
+   * means one thing across the product instead of three sets of constants that happen to share a
+   * word. These assert on what reaches `EngineMetrics`, because that is what a creator sees.
+   */
+  it('reports connection health and a recommended bitrate once something is publishing', async () => {
+    const h = harness();
+    await h.engine.startPreview(cameraMoment(), '16:9');
+    await h.engine.start(request([output('whip', 'whip')]));
+    const pc = FakePeerConnection.instances[0]!;
+    pc.simulateConnected();
+
+    pc.setStats({
+      v: { type: 'outbound-rtp', kind: 'video', bytesSent: 0, packetsSent: 0 },
+      r: { type: 'remote-inbound-rtp', packetsLost: 0, roundTripTime: 0.03, jitter: 0.004 },
+    });
+    await h.clock.advance(2000);
+    pc.setStats({
+      v: { type: 'outbound-rtp', kind: 'video', bytesSent: 2_000_000, packetsSent: 10_000 },
+      r: { type: 'remote-inbound-rtp', packetsLost: 0, roundTripTime: 0.03, jitter: 0.004 },
+    });
+    await h.clock.advance(2000);
+
+    const last = h.metrics[h.metrics.length - 1]!;
+    expect(last.connectionHealth, 'Bond never saw the connection').toBeDefined();
+    expect(last.connectionHealth).not.toBe('offline');
+    expect(last.recommendedKbps).toBeGreaterThan(0);
+  });
+
+  /**
+   * A preview that is working perfectly must not read 'offline'. A monitor with no paths correctly
+   * answers offline about the BOND, and showing that as the product's state would be a lie.
+   */
+  it('says nothing about connection health while nothing is being published', async () => {
+    const h = harness();
+    await h.engine.startPreview(cameraMoment(), '16:9');
+    h.engine.emitMetrics();
+
+    const last = h.metrics[h.metrics.length - 1]!;
+    expect(last.connectionHealth).toBeUndefined();
+    expect(last.recommendedKbps).toBeUndefined();
+  });
+
+  it('calls the connection unhealthy when the path is losing a fifth of the packets', async () => {
+    const h = harness();
+    await h.engine.startPreview(cameraMoment(), '16:9');
+    await h.engine.start(request([output('whip', 'whip')]));
+    const pc = FakePeerConnection.instances[0]!;
+    pc.simulateConnected();
+
+    pc.setStats({
+      v: { type: 'outbound-rtp', kind: 'video', bytesSent: 0, packetsSent: 0 },
+      r: { type: 'remote-inbound-rtp', packetsLost: 0, roundTripTime: 0.03 },
+    });
+    await h.clock.advance(2000);
+    pc.setStats({
+      v: { type: 'outbound-rtp', kind: 'video', bytesSent: 200_000, packetsSent: 8_000 },
+      r: { type: 'remote-inbound-rtp', packetsLost: 2_000, roundTripTime: 0.4 },
+    });
+    await h.clock.advance(2000);
+
+    const last = h.metrics[h.metrics.length - 1]!;
+    expect(['degraded', 'insufficient', 'offline']).toContain(last.connectionHealth);
+  });
+
+  it('does not let one broadcast inherit the previous one health', async () => {
+    const h = harness();
+    await h.engine.startPreview(cameraMoment(), '16:9');
+    await h.engine.start(request([output('whip', 'whip')]));
+    FakePeerConnection.instances[0]!.simulateConnected();
+    FakePeerConnection.instances[0]!.setStats({
+      v: { type: 'outbound-rtp', kind: 'video', bytesSent: 2_000_000, packetsSent: 10_000 },
+      r: { type: 'remote-inbound-rtp', packetsLost: 0, roundTripTime: 0.03 },
+    });
+    await h.clock.advance(2000);
+
+    await h.engine.stop();
+    h.engine.emitMetrics();
+
+    expect(h.metrics[h.metrics.length - 1]!.connectionHealth).toBeUndefined();
+  });
+
   it('degrades an output above 3% packet loss and recovers it afterwards', async () => {
     const h = harness();
     await h.engine.startPreview(cameraMoment(), '16:9');

@@ -32,6 +32,7 @@ import type { MomentCompositor } from '../compositor/MomentCompositor.js';
 import { KEYFRAME_INTERVAL_MS } from '../desktop/diagnostics.js';
 import { LocalSources } from '../sources/LocalSources.js';
 import { WhipClient, WhipError } from '../whip/WhipClient.js';
+import { BondMonitor } from '@livetap/bond/browser';
 import {
   pickRecordingMime,
   probablySupportsDisplayAudio,
@@ -43,6 +44,18 @@ import {
 } from './deps.js';
 
 const RTMP_HINT = 'Browser cannot publish RTMP; use the desktop app or a WHIP relay';
+
+/**
+ * The one network path a browser has.
+ *
+ * A browser cannot bind a socket to an interface, so it can never bond. It can still be measured
+ * and decided about, and doing that through Bond rather than through constants invented here is
+ * what keeps one definition of "unhealthy" across web, desktop and Android. The transport is
+ * genuinely unknown to a page — Wi-Fi and Ethernet look identical from inside a tab — and saying
+ * 'other' is the honest answer rather than guessing at a radio the product would then name in UI.
+ */
+const BROWSER_PATH = 'connection';
+const BROWSER_PATH_IDENTITY = { transport: 'other', label: 'Connection', independence: 'unknown' } as const;
 const DEFAULT_STATS_MS = 2000;
 const DEFAULT_METRICS_MS = 1000;
 const LOSS_DEGRADE_PCT = 3;
@@ -56,6 +69,10 @@ interface StatsSample {
   framesSent: number;
   framesDropped: number;
   qualityLimitationReason?: string;
+  /** Round trip to the relay, seconds as WebRTC reports it. Bond needs it to judge saturation. */
+  rttSeconds?: number;
+  /** Inter-arrival variation, seconds as WebRTC reports it. */
+  jitterSeconds?: number;
 }
 
 interface OutputSession {
@@ -111,6 +128,14 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
 
   private readonly sessions = new Map<string, OutputSession>();
   private readonly relays = new Map<AspectRatio, RelaySession>();
+  /*
+   * Bond's decision layer, running on one path.
+   *
+   * Not a bonded connection and never will be; it is the same health model every other surface
+   * uses, so a creator reading "degraded" on the web and on the phone is reading the same judgment
+   * rather than two sets of thresholds that happen to share a word.
+   */
+  private readonly bond = new BondMonitor();
   private statsTimer: unknown = null;
   private metricsTimer: unknown = null;
 
@@ -398,6 +423,9 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       await relay.client.close('production stopped').catch(() => undefined);
     }
     this.relays.clear();
+    // Between broadcasts, not during one: a new broadcast must not inherit the last one's health,
+    // its capacity estimate, or the hysteresis that would hold it in the previous decision.
+    this.bond.reset();
     if (this.recorder) await this.stopRecording().catch(() => undefined);
   }
 
@@ -617,6 +645,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
   /** Poll every WHIP sender and flag degradation / recovery per output. */
   async pollStats(): Promise<void> {
     const now = this.deps.now();
+    let observed = false;
     for (const session of Array.from(this.sessions.values())) {
       const client = session.mode === 'relay' && session.relayAspect ? this.relays.get(session.relayAspect)?.client : session.client;
       if (!client || session.state === 'stopped' || session.state === 'lost') continue;
@@ -640,6 +669,17 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
 
       const format = this.formatFor(session.output.aspectRatio);
       const targetKbps = format.videoKbps + format.audioKbps;
+      /*
+       * One connection, measured once. Relayed destinations share a single WHIP session, so the
+       * first of them carries the path measurement and the rest would only repeat it. Direct WHIP
+       * destinations each have their own session, and the last one wins -- which is a limitation
+       * worth naming rather than hiding: Bond models ONE path here, and a browser with two
+       * simultaneous direct WHIP outputs is the one case where that is an approximation.
+       */
+      if (!observed) {
+        observed = true;
+        this.observeConnection(sample, (session.kbps || 0) * 1000, targetKbps * 1000, session.lossPct / 100);
+      }
       const starved = session.kbps > 0 && session.kbps < targetKbps * BITRATE_DEGRADE_RATIO;
       const lossy = session.lossPct > LOSS_DEGRADE_PCT;
       const limited = sample.qualityLimitationReason === 'bandwidth' || sample.qualityLimitationReason === 'cpu';
@@ -658,6 +698,39 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
     }
   }
 
+  /**
+   * Hand Bond one measurement of the path to the relay.
+   *
+   * ONE SAMPLE FOR THE WHOLE CONNECTION, not one per destination. With the relay fanning out
+   * server-side there is a single media session on the wire, so the sender's own view of loss and
+   * round trip describes that one path — summing it per destination would multiply one network
+   * problem by the number of places the relay happens to be forwarding to.
+   */
+  private observeConnection(sample: StatsSample, deliveredBps: number, offeredBps: number, lossFraction: number): void {
+    this.bond.observe(
+      BROWSER_PATH,
+      {
+        at: sample.at,
+        throughputBps: deliveredBps,
+        // WebRTC reports seconds; Bond works in milliseconds. A path with no remote report yet has
+        // no round trip to offer, and 0 would read as a perfect link rather than an unknown one.
+        rttMs: sample.rttSeconds === undefined ? 0 : sample.rttSeconds * 1000,
+        jitterMs: sample.jitterSeconds === undefined ? 0 : sample.jitterSeconds * 1000,
+        loss: lossFraction,
+        // A browser does not retransmit at a layer it can see; RTP loss already covers it.
+        retransmitRate: 0,
+        /*
+         * The encoder is asked for a fixed bitrate and WebRTC delivers what the path allows, so a
+         * sample is "at capacity" only once delivery has actually fallen short of what was offered.
+         * Claiming otherwise is how a bonding engine talks itself into believing capacity vanished.
+         */
+        atCapacity: offeredBps > 0 && deliveredBps < offeredBps * 0.95,
+      },
+      BROWSER_PATH_IDENTITY,
+      offeredBps,
+    );
+  }
+
   /** Emit one EngineMetrics sample. Public so the UI/tests can force a read. */
   emitMetrics(): void {
     const now = this.deps.now();
@@ -668,6 +741,15 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
     let encodedKbps = live.reduce((max, s) => Math.max(max, s.kbps), 0);
     if (encodedKbps === 0) encodedKbps = this.recorderKbps(now);
 
+    /*
+     * Only judged while something is actually being published. Before that there is no path, and a
+     * monitor with no paths correctly answers 'offline' -- which is true of the bond and would be
+     * a lie about the product if it were shown on a preview screen that is working perfectly.
+     */
+    const bonded = this.bond.paths().length > 0
+      ? this.bond.decide(targetKbps * 1000, now)
+      : null;
+
     this.emit('metrics', {
       encodedKbps: round1(encodedKbps),
       targetKbps,
@@ -675,6 +757,7 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       networkDroppedPct: round1(live.reduce((max, s) => Math.max(max, s.lossPct), 0)),
       renderFps: this.renderer.renderFps,
       targetFps: format.fps,
+      ...(bonded ? { connectionHealth: bonded.health, recommendedKbps: Math.round(bonded.encoderCeilingBps / 1000) } : {}),
       updatedAt: now,
     });
   }
@@ -853,6 +936,9 @@ export function readOutboundSample(report: unknown, at: number): StatsSample {
     }
     if (type === 'remote-inbound-rtp') {
       sample.packetsLost += num(stat.packetsLost);
+      // The receiver's view of the path, which is the only round trip a sender can actually see.
+      if (typeof stat.roundTripTime === 'number') sample.rttSeconds = num(stat.roundTripTime);
+      if (typeof stat.jitter === 'number') sample.jitterSeconds = num(stat.jitter);
     }
     if (type === 'outbound-rtp' && typeof stat.packetsLost === 'number') {
       sample.packetsLost += num(stat.packetsLost);

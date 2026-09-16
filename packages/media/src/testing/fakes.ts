@@ -175,6 +175,9 @@ export interface FakeStatEntry {
   framesSent?: number;
   framesDropped?: number;
   qualityLimitationReason?: string;
+  /** On `remote-inbound-rtp`. Seconds, as WebRTC reports them; Bond converts to milliseconds. */
+  roundTripTime?: number;
+  jitter?: number;
 }
 
 /** A minimal RTCPeerConnection that never touches the network. */
