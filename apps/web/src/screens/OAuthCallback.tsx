@@ -83,7 +83,15 @@ export function OAuthCallback(): ReactElement {
        * comes back with the channel name and picture. That answer is what the card shows, and it
        * is why this screen waits for it rather than declaring success on the exchange alone.
        */
-      const snapshot = await connectPlatform(outcome.platform);
+      /*
+       * Created with the connection the SIGN-IN used, carried across the redirect in the pending
+       * record. A fresh id here would address a vault entry the exchange never wrote.
+       */
+      const snapshot = await connectPlatform(
+        outcome.platform,
+        undefined,
+        outcome.kind === 'connected' ? outcome.connectionId : undefined,
+      );
       if (cancelled) return;
 
       const profile = PLATFORM_PROFILES[outcome.platform];

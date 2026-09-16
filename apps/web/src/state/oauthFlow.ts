@@ -27,7 +27,7 @@ import { buildAuthorizeUrl, generatePkce, generateState, PLATFORM_OAUTH } from '
 import type { AccountSummary, PlatformId } from '@livetap/core';
 import { brokerBaseUrl, configuredPlatformIds } from './mockMode.js';
 import type { OAuthConfigResponse } from './mockMode.js';
-import { credentialFor, saveTokens, type StoredTokens } from './tokens.js';
+import { credentialFor, saveTokens, type StoredTokens, type TokenTarget } from './tokens.js';
 
 /** Where the PKCE verifier and the state live between opening the platform's page and coming back. */
 export const PKCE_SESSION_KEY = 'livetap.oauth.pending';
@@ -37,6 +37,18 @@ export interface PendingAuth {
   state: string;
   codeVerifier?: string;
   redirectUri: string;
+  /**
+   * WHICH CONNECTION THIS SIGN-IN IS FOR, so the token lands on the right one.
+   *
+   * A creator connecting their second YouTube channel leaves this page, authorizes at Google, and
+   * comes back. Without this the exchange had nothing to say WHICH channel it had just been given,
+   * so it wrote to `oauth:youtube` — and the second sign-in overwrote the first. Storage and the
+   * destination model were both per-account by then; this was the seam where it collapsed again.
+   *
+   * It lives in the pending record rather than in a closure because the web flow is a redirect:
+   * the function that starts it and the function that finishes it are separated by a page load.
+   */
+  connectionId?: string;
 }
 
 /** The slice of `window.livetap.oauth` this module needs. Declared structurally so it is fakeable. */
@@ -53,6 +65,15 @@ export interface DesktopOAuthBridge {
 export type SessionStorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export interface OAuthDeps {
+  /**
+   * The connection being authorized. Not a dependency — an input — but it travels with these
+   * because every entry point already threads this object through, and a fourth positional
+   * argument on `beginAuth` would be silently droppable at a call site.
+   *
+   * Absent means the legacy single connection for the platform, which is what an older caller and
+   * an already-signed-in creator both get.
+   */
+  connectionId?: string;
   fetchImpl?: typeof fetch;
   storage?: SessionStorageLike | null;
   /** How the web surface leaves for the platform. Injected so a test never navigates. */
@@ -66,7 +87,19 @@ export interface OAuthDeps {
 
 export type AuthOutcome =
   /** Desktop and mobile: the whole flow finished in place and the account is stored. */
-  | { kind: 'connected'; platform: PlatformId; account: AccountSummary }
+  | {
+      kind: 'connected';
+      platform: PlatformId;
+      account: AccountSummary;
+      /**
+       * The connection the token was stored under, handed back so the caller creates the
+       * destination with the SAME id. Without it the caller mints a fresh one, the destination
+       * looks for `oauth:youtube:<new id>`, finds nothing, and falls through to the legacy
+       * platform entry — which is the collapse this whole change exists to remove, arriving one
+       * function later than before.
+       */
+      connectionId?: string;
+    }
   /** Web: the page is on its way to the platform. Nothing more happens here. */
   | { kind: 'redirected'; platform: PlatformId }
   /** This deployment has no credentials for this platform, or the platform has no usable OAuth. */
@@ -188,6 +221,13 @@ export async function beginAuth(platform: PlatformId, deps: OAuthDeps = {}): Pro
         state: loopback.state,
         redirectUri: loopback.redirectUri,
         ...(pkce ? { codeVerifier: pkce.codeVerifier } : {}),
+        /*
+         * The desktop flow never leaves the process, so this record is built here rather than
+         * read back from storage — which is exactly why the connection has to be put INTO it.
+         * Forget it here and the loopback path silently keeps writing one token per platform
+         * while the web path writes one per account.
+         */
+        ...(deps.connectionId === undefined ? {} : { connectionId: deps.connectionId }),
       });
     } catch {
       return failure(
@@ -205,6 +245,7 @@ export async function beginAuth(platform: PlatformId, deps: OAuthDeps = {}): Pro
     state,
     redirectUri,
     ...(pkce ? { codeVerifier: pkce.codeVerifier } : {}),
+    ...(deps.connectionId === undefined ? {} : { connectionId: deps.connectionId }),
   });
   const url = buildAuthorizeUrl(platform, {
     clientId,
@@ -220,7 +261,14 @@ export async function beginAuth(platform: PlatformId, deps: OAuthDeps = {}): Pro
 }
 
 export type CallbackOutcome =
-  | { kind: 'ok'; platform: PlatformId; code: string; codeVerifier?: string; redirectUri: string }
+  | {
+      kind: 'ok';
+      platform: PlatformId;
+      code: string;
+      codeVerifier?: string;
+      redirectUri: string;
+      connectionId?: string;
+    }
   | { kind: 'denied'; reason: string }
   | { kind: 'mismatch' }
   | { kind: 'missing' };
@@ -243,6 +291,7 @@ export function resolveCallback(url: string, pending: PendingAuth | null): Callb
   const outcome: CallbackOutcome = {
     kind: 'ok',
     platform: pending.platform,
+    ...(pending.connectionId === undefined ? {} : { connectionId: pending.connectionId }),
     code: parsed.code,
     redirectUri: pending.redirectUri,
   };
@@ -339,14 +388,32 @@ export async function completeAuth(
   };
   if (tokens.refreshToken) stored.refreshToken = tokens.refreshToken;
   if (tokens.expiresIn !== undefined) stored.expiresAt = now() + tokens.expiresIn * 1000;
-  await saveTokens(outcome.platform, stored);
+  /*
+   * THE TOKEN GOES TO THE CONNECTION THAT ASKED FOR IT.
+   *
+   * This was `saveTokens(outcome.platform, ...)`, which under one-account-per-platform was the
+   * only address there was. With several it is the point where every layer below — per-connection
+   * vault keys, per-connection credentials, per-connection revoke — gets handed one platform key
+   * and quietly collapses back to a single account. A creator signing in to their second YouTube
+   * channel would have overwritten the first, exactly as before the rekey.
+   */
+  const target: TokenTarget =
+    outcome.connectionId === undefined
+      ? outcome.platform
+      : { connectionId: outcome.connectionId, platform: outcome.platform };
+  await saveTokens(target, stored);
 
-  const credential = credentialFor(outcome.platform, stored);
+  const credential = credentialFor(target, stored);
   const account: AccountSummary = { scopes: [...stored.scopes] };
   if (stored.expiresAt !== undefined) account.expiresAt = stored.expiresAt;
   if (credential.accountId) account.accountId = credential.accountId;
   if (credential.accountLabel) account.accountLabel = credential.accountLabel;
-  return { kind: 'connected', platform: outcome.platform, account };
+  return {
+    kind: 'connected',
+    platform: outcome.platform,
+    account,
+    ...(outcome.connectionId === undefined ? {} : { connectionId: outcome.connectionId }),
+  };
 }
 
 /**

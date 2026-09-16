@@ -148,7 +148,16 @@ export interface AppState {
   finishOnboarding(): Promise<void>;
   restartOnboarding(): void;
 
-  connectPlatform(platform: PlatformId, label?: string): Promise<DestinationSnapshot | undefined>;
+  /**
+   * @param connectionId The connection the sign-in was performed under, when there was one. The
+   * destination is created with this id so it addresses the token the OAuth exchange just wrote.
+   * Omitted in mock mode and on the paste-key path, where a fresh id is minted.
+   */
+  connectPlatform(
+    platform: PlatformId,
+    label?: string,
+    connectionId?: string,
+  ): Promise<DestinationSnapshot | undefined>;
   addCustomDestination(input: {
     label: string;
     url: string;
@@ -280,6 +289,18 @@ let seq = 0;
 function uid(prefix: string): string {
   seq += 1;
   return `${prefix}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Name a connection BEFORE authorizing it.
+ *
+ * The identity has to exist before `beginAuth`, because the token is written during the exchange
+ * and has to be written somewhere. The same value then becomes the destination's id, so the row a
+ * creator sees and the vault entry behind it are the same thing rather than two things that agree
+ * by convention.
+ */
+export function newConnectionId(platform: PlatformId): string {
+  return uid(platform);
 }
 
 /**
@@ -802,6 +823,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       async connectPlatform(
         platform: PlatformId,
         label?: string,
+        connectionId?: string,
       ): Promise<DestinationSnapshot | undefined> {
         const r = runtime;
         if (!r) return undefined;
@@ -822,7 +844,15 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
          * knows which account this will turn out to be until the platform says. It happens below,
          * against the provider's own identity.
          */
-        const destinationId = uid(platform);
+        /*
+         * The id the SIGN-IN used, when there was one.
+         *
+         * `oauthFlow` has already written the token to `oauth:<platform>:<connectionId>` by the
+         * time this runs. Minting a fresh id here would create a destination that looks for a
+         * vault entry nobody wrote, find nothing, and fall back to the legacy platform key —
+         * putting every account back on one token one function later than before.
+         */
+        const destinationId = connectionId ?? uid(platform);
         const config: DestinationConfig = {
           id: destinationId,
           platform,

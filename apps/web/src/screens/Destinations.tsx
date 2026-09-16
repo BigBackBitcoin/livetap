@@ -10,7 +10,7 @@ import { ProDestinationLine, ProPlatformNotes } from './pro/ProDestinationLine.j
 import { COPY } from '../lib/copy.js';
 import { PLATFORM_ORDER, platformStatus } from '../lib/platformStatus.js';
 import { beginAuth, missingScopes } from '../state/oauthFlow.js';
-import { useAppStore } from '../state/store.js';
+import { newConnectionId, useAppStore } from '../state/store.js';
 
 /**
  * Where the promise's first sentence is kept.
@@ -69,9 +69,18 @@ export function Destinations(): ReactElement {
     }
     setBusy(true);
     try {
-      const outcome = await beginAuth(platform);
+      /*
+       * The connection is named before the sign-in, not after it.
+       *
+       * The exchange stores the token under this id, and the destination is then created with the
+       * same one — so a creator's second YouTube channel gets its own vault entry instead of
+       * overwriting the first. Minting it afterwards would leave the destination looking for an
+       * entry nobody wrote.
+       */
+      const connectionId = newConnectionId(platform);
+      const outcome = await beginAuth(platform, { connectionId });
       if (outcome.kind === 'connected') {
-        await connectPlatform(platform);
+        await connectPlatform(platform, undefined, outcome.connectionId ?? connectionId);
         return;
       }
       // 'redirected' means this page is on its way to the platform; there is nothing left to do
