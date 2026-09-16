@@ -62,37 +62,59 @@ function vault(): VaultBridge | undefined {
 }
 
 /**
- * One entry per platform.
+ * ONE ENTRY PER AUTHORIZED ACCOUNT, NOT PER PLATFORM.
  *
- * Per-platform rather than per-account because the product is one account per platform: the
- * Destinations screen offers "YouTube" once, and a creator with two channels picks which one at
+ * This file used to say the opposite, and said why: "the product is one account per platform: the
+ * Destinations screen offers YouTube once, and a creator with two channels picks which one at
  * sign-in time. If that ever becomes two rows, this key grows an account id and nothing else here
- * changes.
+ * changes." That is now the product — a creator may connect Carter Gaming, Carter Live and Carter
+ * Clips and go live to all three at once — and this is that key growing.
+ *
+ * WHY THE KEY IS A CONNECTION ID AND NOT THE PROVIDER'S ACCOUNT ID, which is the obvious choice
+ * and is wrong: at the moment tokens are stored, nobody knows which account they belong to. The
+ * OAuth exchange returns an access token and nothing else. The channel id, the title and the
+ * avatar arrive later, from the adapter's own validate() against the platform's "who am I"
+ * endpoint. Keying on an identity that does not exist yet means either a second write to move the
+ * entry, or a window in which two concurrent sign-ins collide on the same placeholder.
+ *
+ * So LIVETAP mints the identity itself, when the flow starts, and the provider's account id is
+ * stored INSIDE the record once it is known — where it is what duplicate detection READS, rather
+ * than what addresses the vault.
+ *
+ * A bare PlatformId is still accepted everywhere a ConnectionRef is, and means the legacy single
+ * connection for that platform: `oauth:youtube`, which is the key every already-signed-in creator
+ * has in their vault right now. Upgrading must not sign anybody out.
  */
-function vaultKey(platform: PlatformId): string {
-  return `oauth:${platform}`;
+export interface ConnectionRef {
+  /** The LIVETAP id for ONE authorized account. Stable for the life of the connection. */
+  connectionId: string;
+  platform: PlatformId;
 }
 
-/** Web only. Cleared by a reload, deliberately. */
-const memory = new Map<PlatformId, StoredTokens>();
+/** Either addressing form. A bare platform is the legacy single connection. */
+export type TokenTarget = PlatformId | ConnectionRef;
 
-export async function saveTokens(platform: PlatformId, tokens: StoredTokens): Promise<void> {
+function vaultKey(target: TokenTarget): string {
+  return typeof target === 'string'
+    ? `oauth:${target}`
+    : `oauth:${target.platform}:${target.connectionId}`;
+}
+
+/** Web only. Cleared by a reload, deliberately. Keyed by the vault key, so both forms agree. */
+const memory = new Map<string, StoredTokens>();
+
+export async function saveTokens(target: TokenTarget, tokens: StoredTokens): Promise<void> {
   const store = vault();
+  const key = vaultKey(target);
   // A refused write is not a write. Keeping the session copy means the creator finishes the
   // sign-in they started, on a machine whose keychain is unavailable, instead of watching it
   // succeed and then finding themselves signed out.
-  if (store && wrote(await store.set(vaultKey(platform), JSON.stringify(tokens)))) return;
-  memory.set(platform, tokens);
+  if (store && wrote(await store.set(key, JSON.stringify(tokens)))) return;
+  memory.set(key, tokens);
 }
 
-export async function readTokens(platform: PlatformId): Promise<StoredTokens | undefined> {
-  const store = vault();
-  if (!store) return memory.get(platform);
-  // valueOf() is what makes this work at all on desktop: the Electron preload answers with a
-  // result object, and handing that straight to JSON.parse is why every desktop sign-in used to
-  // read back as no sign-in. See the note in secrets.ts.
-  const raw = valueOf(await store.get(vaultKey(platform))) ?? undefined;
-  if (!raw) return memory.get(platform);
+function parseTokens(raw: string | undefined): StoredTokens | undefined {
+  if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw) as StoredTokens;
     return typeof parsed?.accessToken === 'string' && parsed.accessToken.length > 0 ? parsed : undefined;
@@ -103,15 +125,56 @@ export async function readTokens(platform: PlatformId): Promise<StoredTokens | u
   }
 }
 
-export async function forgetTokens(platform: PlatformId): Promise<void> {
-  const store = vault();
-  if (store) await store.delete(vaultKey(platform));
-  memory.delete(platform);
+/*
+ * THE UPGRADE PATH, and the reason it is a read and never a write.
+ *
+ * A creator who signed in before multi-account shipped has `oauth:youtube` in their vault. Their
+ * first connection under the new model asks for `oauth:youtube:<connectionId>`, finds nothing, and
+ * would sign them out of a channel they are still authorized on. So a connection whose own key is
+ * absent falls back to the platform's legacy entry.
+ *
+ * It does NOT copy the entry forward. Migrating on read would leave one grant under two keys, and
+ * revoking either would leave the other holding a token the platform has already killed — a row
+ * that looks signed in and fails at GO LIVE. The legacy entry stays where it is and dies when the
+ * connection using it is disconnected.
+ */
+function legacyKey(target: TokenTarget): string | null {
+  return typeof target === 'string' ? null : `oauth:${target.platform}`;
 }
 
-/** True when a token for this platform is held somewhere this process can reach. */
-export async function hasTokens(platform: PlatformId): Promise<boolean> {
-  return (await readTokens(platform)) !== undefined;
+export async function readTokens(target: TokenTarget): Promise<StoredTokens | undefined> {
+  const store = vault();
+  const key = vaultKey(target);
+  const legacy = legacyKey(target);
+  if (!store) return memory.get(key) ?? (legacy ? memory.get(legacy) : undefined);
+  // valueOf() is what makes this work at all on desktop: the Electron preload answers with a
+  // result object, and handing that straight to JSON.parse is why every desktop sign-in used to
+  // read back as no sign-in. See the note in secrets.ts.
+  const mine = parseTokens(valueOf(await store.get(key)) ?? undefined) ?? memory.get(key);
+  if (mine) return mine;
+  if (!legacy) return undefined;
+  return parseTokens(valueOf(await store.get(legacy)) ?? undefined) ?? memory.get(legacy);
+}
+
+export async function forgetTokens(target: TokenTarget): Promise<void> {
+  const store = vault();
+  const key = vaultKey(target);
+  if (store) await store.delete(key);
+  memory.delete(key);
+  /*
+   * A connection that was reading the legacy entry has to delete THAT entry too, or the creator
+   * presses Disconnect, is told the account is gone, and the token is still in their keychain.
+   */
+  const legacy = legacyKey(target);
+  if (legacy) {
+    if (store) await store.delete(legacy);
+    memory.delete(legacy);
+  }
+}
+
+/** True when a token for this connection is held somewhere this process can reach. */
+export async function hasTokens(target: TokenTarget): Promise<boolean> {
+  return (await readTokens(target)) !== undefined;
 }
 
 /** The non-secret half, for the destination card. Never contains a token. */
@@ -124,9 +187,15 @@ export function summarize(tokens: StoredTokens): AccountSummary {
   return summary;
 }
 
-/** The credential handle the adapters carry. Holds identity, never a secret. */
-export function credentialFor(platform: PlatformId, tokens: StoredTokens): CredentialRef {
-  const ref: CredentialRef = { id: vaultKey(platform), platform, scopes: [...tokens.scopes] };
+/**
+ * The credential handle the adapters carry. Holds identity, never a secret.
+ *
+ * `id` is the vault key, so two YouTube connections produce two DIFFERENT credential refs and an
+ * adapter can never read the other channel's token by holding the wrong one.
+ */
+export function credentialFor(target: TokenTarget, tokens: StoredTokens): CredentialRef {
+  const platform = typeof target === 'string' ? target : target.platform;
+  const ref: CredentialRef = { id: vaultKey(target), platform, scopes: [...tokens.scopes] };
   if (tokens.accountId) ref.accountId = tokens.accountId;
   if (tokens.accountLabel) ref.accountLabel = tokens.accountLabel;
   if (tokens.avatarUrl) ref.avatarUrl = tokens.avatarUrl;
@@ -174,10 +243,11 @@ export interface TokenProviderOptions {
  * the NEXT refresh fails, the creator is signed out, and the cause looks like nothing at all.
  */
 export async function refreshTokens(
-  platform: PlatformId,
+  target: TokenTarget,
   current: StoredTokens,
   options: TokenProviderOptions = {},
 ): Promise<StoredTokens> {
+  const platform = typeof target === 'string' ? target : target.platform;
   const doFetch = options.fetchImpl ?? (globalThis as { fetch?: FetchLike }).fetch;
   const now = options.now ?? Date.now;
   const config = PLATFORM_OAUTH[platform];
@@ -213,7 +283,13 @@ export async function refreshTokens(
     scopes: body.scope && body.scope.length > 0 ? body.scope : current.scopes,
   };
   if (body.expiresIn !== undefined) next.expiresAt = now() + body.expiresIn * 1000;
-  await saveTokens(platform, next);
+  /*
+   * Written back to THIS connection, never to the platform. A creator with two YouTube channels
+   * refreshing Carter Live must not overwrite Carter Gaming's token with a grant that belongs to
+   * a different channel — the second one would then broadcast to the first one's channel, which
+   * is the worst failure this feature can produce and the reason the key moved.
+   */
+  await saveTokens(target, next);
   return next;
 }
 
@@ -225,17 +301,18 @@ export async function refreshTokens(
  * authorization hitting day seven) and the only signal is the 401 itself.
  */
 export function tokenProviderFor(
-  platform: PlatformId,
+  target: TokenTarget,
   options: TokenProviderOptions = {},
 ): (credential?: CredentialRef) => Promise<string> {
   const now = options.now ?? Date.now;
+  const platform = typeof target === 'string' ? target : target.platform;
   return async (): Promise<string> => {
-    const stored = await readTokens(platform);
+    const stored = await readTokens(target);
     if (!stored) {
       throw new TokenUnavailableError(`LIVETAP is not signed in to ${platform}.`);
     }
     if (stored.expiresAt !== undefined && stored.expiresAt - now() <= REFRESH_MARGIN_MS) {
-      return (await refreshTokens(platform, stored, options)).accessToken;
+      return (await refreshTokens(target, stored, options)).accessToken;
     }
     return stored.accessToken;
   };
@@ -249,9 +326,10 @@ export function tokenProviderFor(
  * The revoke is best effort by design (see `revoke()` in the broker), so the local delete always
  * happens and Disconnect always finishes.
  */
-export async function revokeTokens(platform: PlatformId, options: TokenProviderOptions = {}): Promise<boolean> {
+export async function revokeTokens(target: TokenTarget, options: TokenProviderOptions = {}): Promise<boolean> {
+  const platform = typeof target === 'string' ? target : target.platform;
   const doFetch = options.fetchImpl ?? (globalThis as { fetch?: FetchLike }).fetch;
-  const stored = await readTokens(platform);
+  const stored = await readTokens(target);
   let revoked = false;
   if (stored && doFetch) {
     try {
@@ -273,7 +351,7 @@ export async function revokeTokens(platform: PlatformId, options: TokenProviderO
       // Offline, or no broker on this deployment. The local half below still runs.
     }
   }
-  await forgetTokens(platform);
+  await forgetTokens(target);
   return revoked;
 }
 
@@ -293,10 +371,11 @@ export async function revokeTokens(platform: PlatformId, options: TokenProviderO
  * seam where a credential meets HTTP, so there is exactly one place to get it right.
  */
 export function refreshingFetch(
-  platform: PlatformId,
+  target: TokenTarget,
   doFetch: FetchLike,
   options: TokenProviderOptions = {},
 ): FetchLike {
+  const platform = typeof target === 'string' ? target : target.platform;
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const first = await doFetch(input, init);
     if (first.status !== 401) return first;
