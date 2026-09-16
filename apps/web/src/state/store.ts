@@ -48,7 +48,7 @@ import type { EngineHost } from './engine.js';
 import { createRegistry } from './registry.js';
 import type { RegistryKind } from './registry.js';
 import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
-import { revokeTokens } from './tokens.js';
+import { forgetTokens, revokeTokens } from './tokens.js';
 import { derivePhase, destroySession, isOnAir, type DestroyReport, type SessionPhase } from './session.js';
 import { broadcastReality } from '../components/preflight.js';
 
@@ -809,13 +809,19 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         const status = platformStatus(platform);
         if (status.blocked) return undefined;
 
-        const existing = r.orchestrator.listDestinations().find((d) => d.config.platform === platform);
-        if (existing) {
-          await r.orchestrator.connect(existing.config.id);
-          mirror();
-          return r.orchestrator.getDestination(existing.config.id);
-        }
-
+        /*
+         * EVERY CALL IS A NEW AUTHORIZATION, NOT A RECONNECT OF THE PLATFORM'S ONE ROW.
+         *
+         * This used to begin `listDestinations().find(d => d.config.platform === platform)` and
+         * reconnect whatever it found, which is why a creator with three YouTube channels had
+         * one: the second "Connect YouTube" reconnected the first channel and the third did it
+         * again. Reconnecting an EXISTING connection is a different verb and has its own entry
+         * point — `reconnectDestination(id)`, the button on the card that is already there.
+         *
+         * Duplicate prevention does not belong here either, because here is too early: nobody
+         * knows which account this will turn out to be until the platform says. It happens below,
+         * against the provider's own identity.
+         */
         const destinationId = uid(platform);
         const config: DestinationConfig = {
           id: destinationId,
@@ -829,9 +835,59 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         };
         r.orchestrator.addDestination(config);
         const snap = await r.orchestrator.connect(destinationId);
+
+        /*
+         * NOW the platform has said who this is, so duplicates can be detected honestly.
+         *
+         * The directive's rule: identify the provider account, detect an existing connection,
+         * surface it, and offer reconnect rather than silently creating a second row for the
+         * same channel. Two DIFFERENT channels on one platform are legitimate and common; the
+         * same channel twice is a creator who pressed the button again.
+         */
+        const accountId = snap?.account?.accountId;
+        const twin = accountId
+          ? r.orchestrator
+              .listDestinations()
+              .find(
+                (d) =>
+                  d.config.id !== destinationId &&
+                  d.config.platform === platform &&
+                  d.account?.accountId === accountId,
+              )
+          : undefined;
+
+        if (twin) {
+          /*
+           * Drop the connection just made and hand back the one that already exists. The token
+           * goes with it: leaving it behind would put a second live grant for the same channel in
+           * the vault under a connection id nothing refers to any more, which nothing could ever
+           * revoke.
+           */
+          await r.orchestrator.removeDestination(destinationId);
+          await forgetTokens({ connectionId: destinationId, platform });
+          const reconnected = await r.orchestrator.connect(twin.config.id);
+          mirror();
+          persistDestinations();
+          return reconnected ?? r.orchestrator.getDestination(twin.config.id);
+        }
+
+        /*
+         * Name the row after the ACCOUNT, not the platform.
+         *
+         * Three rows reading "YouTube" are three rows a creator cannot tell apart, and this is
+         * the screen where they choose which channel goes live. `AccountSummary` has carried
+         * `accountLabel` and an avatar since before there was anything to use them for — its own
+         * comment names this exact creator — so the label only stays "YouTube" when the platform
+         * declined to say, and an explicit label the caller passed always wins.
+         */
+        const accountLabel = snap?.account?.accountLabel;
+        if (!label && accountLabel && accountLabel !== config.label) {
+          r.orchestrator.updateDestination(destinationId, { label: accountLabel });
+        }
+
         mirror();
         persistDestinations();
-        return snap;
+        return r.orchestrator.getDestination(destinationId) ?? snap;
       },
 
       async addCustomDestination(input): Promise<DestinationSnapshot | undefined> {
@@ -914,15 +970,23 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
          * the credential behind.
          */
         /*
-         * Only a destination that HAS an account signs one out.
+         * Only a destination that HAS an account signs one out, and only THAT account.
          *
-         * Tokens are keyed per platform (`oauth:youtube`), because the product is one account per
-         * platform. Destinations are not: a creator can have an API-connected YouTube and a
-         * pasted-key YouTube side by side. Revoking on every disconnect would mean removing the
-         * pasted one — which never had a token — signs them out of the connected one.
+         * Two things guard this. A creator can have an API-connected YouTube and a pasted-key
+         * YouTube side by side, and revoking on every disconnect would mean removing the pasted
+         * one — which never had a token — signs them out of the connected one. That is why the
+         * `snap?.account` test is here.
+         *
+         * The second is newer and is acceptance criterion F. This used to pass the PLATFORM, so
+         * disconnecting Carter Gaming revoked the grant at `oauth:youtube` — the only one there
+         * was — and signed the creator out of Carter Live and Carter Clips at the same time,
+         * silently, while their rows went on saying Connected. It passes the CONNECTION now, and
+         * a connection is one account.
          */
         const platform = snap?.config.platform;
-        if (platform && platform !== 'custom' && snap?.account) await revokeTokens(platform);
+        if (platform && platform !== 'custom' && snap?.account) {
+          await revokeTokens({ connectionId: destinationId, platform });
+        }
       },
 
       async removeDestination(destinationId: string): Promise<void> {
