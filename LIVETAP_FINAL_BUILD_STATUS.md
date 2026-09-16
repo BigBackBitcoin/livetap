@@ -50,16 +50,32 @@ asked a question about a boundary rather than about a file.
 Nothing about this is finished by inspection. If a fifth seam exists, it will
 look exactly like the four that did.
 
-The tell is not an error. In every one of these the wrong answer was the
-*comfortable* one: no camera reported "streaming silence", an unreadable store
-reported `clean: true`, a missing `java` reported a machine that could not do the
-job, and a platform-keyed token reported a working sign-in. None of them threw.
-What to watch for is a cheerful answer from something that never looked — an
-error gets investigated, while a confident wrong answer gets believed and built
-on, which is what happened four times here. It is also why the gates caught what
-they caught and missed what they missed: `tsc`, `eslint` and 1837 tests all check
-that code does what it says, and every one of these bugs had code doing exactly
-what it said.
+Three shapes account for every defect found on the last day of this work, and
+they are worth separating because they need different fixes:
+
+- **A cheerful answer from something that never looked.** No camera reported
+  "streaming silence". An unreadable store reported `clean: true`. A missing
+  `java` reported a machine that could not do the job. None of them threw.
+- **A correct answer from something that was never told.** The four seams, each
+  layer right about its own half; and an END take-back that armed correctly from
+  the instant it knew about, never having been told a press was already
+  swallowed.
+- **A correct answer to a question that was asked twice.** One label meaning
+  both "ask me" and "do it", so a repeated press walked through an irreversible
+  confirmation — and the screen's own test performed that double press and
+  asserted it succeeded.
+
+The third is the sharpest, because nothing is missing and no information flow
+fixes it. The product did exactly what was written, and what was written was
+ambiguous.
+
+None of this was caught by the gates, and the reason is the same for all three
+shapes: `tsc`, `eslint` and 1838 tests all check that code does what it says, and
+every one of these bugs had code doing exactly what it said. An error gets
+investigated; a confident wrong answer gets believed and built on. That is why
+four of them were found by one session asking another about a boundary, and one
+by a single failure in a suite that had already passed the same assertion 335
+times.
 
 ## The two things worth knowing before the validation phase
 

@@ -74,7 +74,7 @@ describe('ending a session', () => {
     answerWith(report({ clean: true }));
     const ui = await open();
     await ui.click(/end session and forget me/i);
-    await ui.click(/end session and forget me/i);
+    await ui.click(/yes, forget everything/i);
     expect(ui.text()).toMatch(/Forgotten/);
     expect(ui.text()).not.toMatch(/could not confirm/i);
   });
@@ -87,7 +87,7 @@ describe('ending a session', () => {
     answerWith(report({ clean: false, storageReadable: false }));
     const ui = await open();
     await ui.click(/end session and forget me/i);
-    await ui.click(/end session and forget me/i);
+    await ui.click(/yes, forget everything/i);
     expect(ui.text()).toMatch(/could not confirm/i);
     expect(ui.text()).toMatch(/claimed here that was not observed/i);
     expect(ui.text()).not.toMatch(/Nothing of yours is left/i);
@@ -99,9 +99,33 @@ describe('ending a session', () => {
     );
     const ui = await open();
     await ui.click(/end session and forget me/i);
-    await ui.click(/end session and forget me/i);
+    await ui.click(/yes, forget everything/i);
     expect(ui.text()).toMatch(/mostly forgotten/i);
     expect(ui.text()).toMatch(/livetap\.destinations/);
+  });
+
+  /**
+   * A REPEATED PRESS MUST NOT WALK THROUGH THE CONFIRMATION.
+   *
+   * Both presses used to read "End session and forget me", so the only thing between a double tap
+   * and an irreversible destroy was a paragraph occupying the space in between -- a property of
+   * the layout at one width, not a guarantee. The sibling session found the same class of defect
+   * on END the same day: three fast taps left a broadcast live, because a swallowed press flipped
+   * the parity of a control that guarded the wrong interval.
+   *
+   * Pressing the original label twice must now find nothing to press the second time.
+   */
+  it('cannot be confirmed by pressing the same label twice', async () => {
+    const fake = answerWith(report({}));
+    const ui = await open();
+
+    await ui.click(/end session and forget me/i);
+    await expect(ui.click(/end session and forget me/i)).rejects.toThrow(/No clickable element/);
+    expect(fake, 'a repeated press destroyed the session without a confirmation').not.toHaveBeenCalled();
+
+    // And the deliberate, differently-named press still works.
+    await ui.click(/yes, forget everything/i);
+    expect(fake).toHaveBeenCalled();
   });
 
   it('refuses while live, and explains rather than disappearing', async () => {

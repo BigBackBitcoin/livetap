@@ -74,8 +74,22 @@ export function EndSession(): ReactElement {
               : 'This clears everything saved in this browser. It cannot be undone.'}
           </p>
           <div className="lt-endsession__actions">
+            {/*
+              A DIFFERENT LABEL, and that is the guard rather than a decoration.
+
+              Both presses used to read "End session and forget me", so one phrase meant two
+              different things: "ask me" and "do it". Nothing then stood between a repeated press
+              and an irreversible destroy except a paragraph happening to sit in the way -- the
+              confirmation was defended by LAYOUT, which is not a guarantee at any width, and the
+              screen's own tests pressed the same label twice as the intended flow.
+
+              Deliberately NOT solved with an arming delay. A confirm button that is visibly
+              present and briefly inert is a dead control inside a dialog the person opened on
+              purpose, and it would trade a small risk for a certain annoyance. Naming the action
+              costs nothing and says what actually happens, which is what a confirm button is for.
+            */}
             <Button variant="danger" onClick={() => void run()}>
-              End session and forget me
+              Yes, forget everything
             </Button>
             <Button variant="ghost" onClick={() => setStage('idle')}>
               Keep my setup
