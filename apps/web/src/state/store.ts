@@ -525,8 +525,11 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
     const armRelay = async (): Promise<void> => {
       const r = runtime;
       if (!r || r.mockMode) return;
-      const engine = r.engine as { useRelaySession?: (s: { whipUrl: string; token?: string } | null) => void };
-      // Desktop and mobile engines publish RTMP themselves and have no relay session to arm.
+      const engine = r.engine as {
+        kind?: string;
+        useRelaySession?: (s: Record<string, unknown> | null) => void;
+      };
+      // The desktop engine publishes RTMP itself and has no relay session to arm.
       if (typeof engine.useRelaySession !== 'function') return;
 
       const api = relayConfig;
@@ -534,6 +537,16 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         .listDestinations()
         .filter((d) => d.config.enabled && !d.config.mock && d.config.ingest?.url);
       if (candidates.length === 0) return;
+
+      /*
+       * A PHONE ONLY NEEDS THE RELAY WHEN IT CANNOT DO THE JOB ITSELF.
+       *
+       * A browser always needs it: it has no RTMP socket, so even one destination is unreachable
+       * without it. A handset has one encoder and one RTMP socket, so a single destination is a
+       * direct push -- fewer hops, less latency, and no dependency on a relay being up. The relay
+       * is what makes the SECOND destination possible at all, so that is where it starts.
+       */
+      if (engine.kind === 'native' && candidates.length < 2) return;
       if (!api) {
         notice({
           level: 'warning',
@@ -557,10 +570,31 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           baseUrl: api.baseUrl,
           ...(api.token ? { token: api.token } : {}),
         });
-        engine.useRelaySession({
-          whipUrl: session.whipUrl,
-          ...(session.whipAuthorization ? { token: session.whipAuthorization } : {}),
-        });
+        if (engine.kind === 'native') {
+          if (!session.rtmpUrl) {
+            // An older relay that does not advertise an RTMP ingest. Said plainly rather than
+            // publishing to `undefined`, and the broadcast still proceeds to what it can reach.
+            notice({
+              level: 'warning',
+              message:
+                'This relay does not offer an RTMP ingest, so this device can only reach one destination. Update the relay to broadcast to several at once.',
+            });
+            await closeRelaySession(session.sessionId, {
+              baseUrl: api.baseUrl,
+              ...(api.token ? { token: api.token } : {}),
+            });
+            return;
+          }
+          engine.useRelaySession({
+            rtmpUrl: session.rtmpUrl,
+            ...(session.rtmpAuthorization ? { authorization: session.rtmpAuthorization } : {}),
+          });
+        } else {
+          engine.useRelaySession({
+            whipUrl: session.whipUrl,
+            ...(session.whipAuthorization ? { token: session.whipAuthorization } : {}),
+          });
+        }
         if (runtime) runtime.relaySessionId = session.sessionId;
       } catch (err) {
         // The relay's own sentence is the actionable part and carries no secret; see readErrors().
@@ -584,7 +618,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       if (!r) return;
       const id = r.relaySessionId;
       r.relaySessionId = null;
-      const engine = r.engine as { useRelaySession?: (s: { whipUrl: string; token?: string } | null) => void };
+      const engine = r.engine as { useRelaySession?: (s: Record<string, unknown> | null) => void };
       try {
         engine.useRelaySession?.(null);
       } catch {

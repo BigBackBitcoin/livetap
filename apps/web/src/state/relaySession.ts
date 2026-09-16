@@ -33,6 +33,21 @@ export interface RelaySession {
    * MediaMTX splits on the first colon and rejects a bare password with 401.
    */
   readonly whipAuthorization?: string;
+  /**
+   * The same session, for a publisher that speaks RTMP rather than WHIP — which on this product
+   * means an Android handset, whose native encoder has an RTMP socket and no WHIP client. It is
+   * the same MediaMTX path and the same forward list; only the way in differs.
+   *
+   * This is what lets a phone reach more than one destination at all. The device encodes once,
+   * publishes once, and the relay fans out, instead of the handset attempting an RTMP socket per
+   * destination — which it cannot do, and which is why mobile was capped at one.
+   *
+   * Absent from an older relay that does not advertise it, so a caller must treat it as optional
+   * and say so rather than publishing to `undefined`.
+   */
+  readonly rtmpUrl?: string;
+  /** `<user>:<pass>`, applied through the encoder's own auth. Never embedded in `rtmpUrl`. */
+  readonly rtmpAuthorization?: string;
 }
 
 /** One destination, in the shape `validateIngest()` on the relay accepts. */
@@ -137,6 +152,8 @@ export async function openRelaySession(
     sessionId: body.sessionId,
     whipUrl: body.whipUrl,
     ...(body.whipAuthorization ? { whipAuthorization: body.whipAuthorization } : {}),
+    ...(body.rtmpUrl ? { rtmpUrl: body.rtmpUrl } : {}),
+    ...(body.rtmpAuthorization ? { rtmpAuthorization: body.rtmpAuthorization } : {}),
   };
 }
 

@@ -74,6 +74,13 @@ export function loadConfig(env = process.env) {
     publicHost: required('LIVETAP_RELAY_PUBLIC_HOST'),
     publicWhipPort: env.LIVETAP_RELAY_PUBLIC_WHIP_PORT ?? '18889',
     publicWhipScheme: env.LIVETAP_RELAY_PUBLIC_WHIP_SCHEME ?? 'http',
+    // What a PHONE should be told to publish to. A browser has no RTMP socket and must use WHIP;
+    // an Android handset has the opposite problem — its native encoder speaks RTMP and not WHIP.
+    // MediaMTX already accepts both on the same path, and `runOnAvailable` fires whichever way the
+    // stream arrives, so one session serves either publisher with no second code path in the hook.
+    // This is what lets a phone reach more than one destination at all: the device encodes once,
+    // publishes once, and the relay fans out, instead of the handset trying to run N RTMP sockets.
+    publicRtmpPort: env.LIVETAP_RELAY_PUBLIC_RTMP_PORT ?? '19350',
     // 9:16 re-encode is off unless explicitly enabled: it costs real CPU
     // (~30% of a core per session at 1080x1920, measured — see
     // docs/qa/RELAY_VERIFICATION.md T9) and must be a deliberate choice.
@@ -551,6 +558,12 @@ export function createServer(cfg, mtx = createMtxClient(cfg), log = console) {
         return json(res, 201, {
           sessionId,
           whipUrl: `${cfg.publicWhipScheme}://${cfg.publicHost}:${cfg.publicWhipPort}/live/${sessionId}/whip`,
+          // For native publishers (Android). Credentials are NOT embedded as userinfo here: this
+          // URL is handled by a phone, logged by encoders, and shown in diagnostics, and a
+          // password inside a URL survives all three. The client applies `rtmpAuthorization`
+          // through its encoder's own auth, exactly as the browser does for WHIP.
+          rtmpUrl: `rtmp://${cfg.publicHost}:${cfg.publicRtmpPort}/live/${sessionId}`,
+          rtmpAuthorization: `${cfg.publishUser}:${cfg.publishPassword}`,
           // The browser sends this as `Authorization: Bearer <user>:<pass>` on
           // the WHIP POST. MediaMTX splits on the first colon — a bare password
           // is rejected with 401. Verified, RELAY_VERIFICATION.md T6.

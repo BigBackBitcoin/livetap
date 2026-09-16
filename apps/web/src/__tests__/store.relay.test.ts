@@ -29,7 +29,14 @@ interface Recorded {
 function relayFetch(
   answer: { status: number; body: unknown } = {
     status: 201,
-    body: { sessionId: 'sess-1', whipUrl: 'https://relay.test/live/sess-1/whip', whipAuthorization: 'pub:secretpass' },
+    body: {
+      sessionId: 'sess-1',
+      whipUrl: 'https://relay.test/live/sess-1/whip',
+      whipAuthorization: 'pub:secretpass',
+      // The same session through the door a phone can use: its encoder speaks RTMP, not WHIP.
+      rtmpUrl: 'rtmp://relay.test:19350/live/sess-1',
+      rtmpAuthorization: 'livetap:pub-secret',
+    },
   },
 ): { calls: Recorded[]; impl: typeof fetch } {
   const calls: Recorded[] = [];
@@ -51,16 +58,19 @@ function relayFetch(
 function build(
   mockMode: boolean,
   relay: { baseUrl: string; token?: string } | null = { baseUrl: 'https://relay.test' },
+  kind?: 'native',
 ): {
   store: ReturnType<typeof createAppStore>;
-  endpoints: Array<{ whipUrl: string; token?: string } | null>;
+  endpoints: Array<Record<string, unknown> | null>;
 } {
   const engine = new MockEngine({ connectDelayMs: 1, metricsIntervalMs: 1000 });
-  const endpoints: Array<{ whipUrl: string; token?: string } | null> = [];
+  // A phone reports kind 'native'; the store hands it an RTMP session rather than a WHIP one.
+  if (kind) Object.defineProperty(engine, 'kind', { value: kind, configurable: true });
+  const endpoints: Array<Record<string, unknown> | null> = [];
   // The real BrowserEngine gained `useRelaySession`; MockEngine stands in for it here so these
   // tests stay about the STORE's decisions rather than about WebRTC.
   (engine as unknown as { useRelaySession: unknown }).useRelaySession = (
-    s: { whipUrl: string; token?: string } | null,
+    s: Record<string, unknown> | null,
   ) => {
     endpoints.push(s);
   };
@@ -281,7 +291,7 @@ describe('stream keys on the relay path', () => {
     await store.getState().commitGoLive();
     await store.getState().confirmEnd();
 
-    const SECRETS = ['key-for-gaming', 'key-for-live', 'pub:secretpass'];
+    const SECRETS = ['key-for-gaming', 'key-for-live', 'pub:secretpass', 'livetap:pub-secret'];
 
     // It DID reach the relay — otherwise this test would pass on a broadcast that never happened.
     const body = JSON.stringify(calls.find((c) => c.method === 'POST')!.body);
@@ -300,5 +310,93 @@ describe('stream keys on the relay path', () => {
         expect(text.includes(secret), `a secret reached ${where}`).toBe(false);
       }
     }
+  });
+});
+
+/**
+ * A PHONE REACHING MORE THAN ONE DESTINATION.
+ *
+ * Android has one encoder and one RTMP socket, so the second push was refused with a
+ * CONFIG_INVALID whose own message read "use a relay for more (ADR-009)" -- pointing at a relay
+ * nothing connected. The device now publishes ONCE to the relay and the relay fans out, which is
+ * the same session the browser uses through a different door.
+ */
+describe('a phone going live through the relay', () => {
+  it('hands a native engine the RTMP ingest, not the WHIP one', async () => {
+    const { impl } = relayFetch();
+    vi.stubGlobal('fetch', impl);
+
+    const { store, endpoints } = build(false, { baseUrl: 'https://relay.test' }, 'native');
+    await store.getState().init();
+    await twoYouTubeChannels(store);
+    await store.getState().commitGoLive();
+
+    expect(endpoints).toEqual([
+      { rtmpUrl: 'rtmp://relay.test:19350/live/sess-1', authorization: 'livetap:pub-secret' },
+    ]);
+  });
+
+  /*
+   * A browser always needs the relay: it has no RTMP socket, so even one destination is
+   * unreachable without it. A handset can push one destination itself -- fewer hops, less latency,
+   * no dependency on a relay being up. The relay is what makes the SECOND one possible, so that is
+   * where it starts.
+   */
+  it('does not open a relay session for a single destination on a phone', async () => {
+    const { calls, impl } = relayFetch();
+    vi.stubGlobal('fetch', impl);
+
+    const { store, endpoints } = build(false, { baseUrl: 'https://relay.test' }, 'native');
+    await store.getState().init();
+    await store.getState().addCustomDestination({
+      label: 'Carter Gaming',
+      url: 'rtmp://a.rtmp.youtube.com/live2',
+      streamKey: 'key-for-gaming',
+      aspect: '16:9',
+      platform: 'youtube',
+    });
+    await store.getState().commitGoLive();
+
+    expect(calls).toHaveLength(0);
+    expect(endpoints).toHaveLength(0);
+  });
+
+  /* A browser still relays a single destination, because it has no other way to reach it. */
+  it('still opens a relay session for a single destination in a browser', async () => {
+    const { calls, impl } = relayFetch();
+    vi.stubGlobal('fetch', impl);
+
+    const { store } = build(false);
+    await store.getState().init();
+    await store.getState().addCustomDestination({
+      label: 'Carter Gaming',
+      url: 'rtmp://a.rtmp.youtube.com/live2',
+      streamKey: 'key-for-gaming',
+      aspect: '16:9',
+      platform: 'youtube',
+    });
+    await store.getState().commitGoLive();
+
+    expect(calls.some((c) => c.method === 'POST')).toBe(true);
+  });
+
+  it('says so plainly when the relay is too old to offer an RTMP ingest', async () => {
+    // No rtmpUrl in the answer -- a relay predating the native publish path.
+    const { calls, impl } = relayFetch({
+      status: 201,
+      body: { sessionId: 'sess-1', whipUrl: 'https://relay.test/live/sess-1/whip' },
+    });
+    vi.stubGlobal('fetch', impl);
+
+    const { store, endpoints } = build(false, { baseUrl: 'https://relay.test' }, 'native');
+    await store.getState().init();
+    await twoYouTubeChannels(store);
+    await store.getState().commitGoLive();
+
+    // Not pointed at `undefined`, told the truth, and the useless session cleaned up rather than
+    // left alive on the relay holding this person's stream keys.
+    expect(endpoints).toHaveLength(0);
+    expect(store.getState().notices.map((n) => n.message).join(' ')).toMatch(/only reach one destination/i);
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(true);
   });
 });

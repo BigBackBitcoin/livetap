@@ -318,6 +318,21 @@ class LiveStreamPlugin : Plugin(), ConnectChecker {
             // FGS types are while-in-use, so this can only ever be reached from the GO LIVE tap.
             LiveForegroundService.startLive(context, "LIVETAP is live", "Tap to return to LIVETAP")
 
+            // RTMP credentials, when the ingest demands them. No platform does -- YouTube, Twitch
+            // and Kick all authenticate with the stream key itself -- but the LIVETAP relay does,
+            // and that is what lets this device reach more than one destination: it encodes once
+            // and publishes once to the relay, which fans out, rather than opening an RTMP socket
+            // per destination past what `maxStreams()` allows.
+            //
+            // Applied through the encoder's own auth rather than embedded in the endpoint, because
+            // a password inside a URL survives in encoder logs and diagnostics. Like `streamKey`,
+            // neither value is ever logged or put in an event.
+            val username = call.getString("username")
+            val password = call.getString("password")
+            if (!username.isNullOrBlank()) {
+                s.getStreamClient().setAuthorization(username, password)
+            }
+
             // RootEncoder takes url + "/" + key as one endpoint. Everything from here on must treat
             // `endpoint` as a secret: it is never logged and never put in an event.
             s.startStream(url.trimEnd('/') + "/" + streamKey)

@@ -14,12 +14,17 @@
  * - No multi-format encoding. `maxFormats` is 1: a phone encodes once. Outputs whose aspect ratio
  *   differs from the master are reported as `outputLost` with `CONFIG_INVALID` rather than silently
  *   being sent the wrong shape.
- * - No RTMP fan-out beyond what the device can stand. Past
- *   `capabilities().maxSimultaneousStreams` outputs are refused with `CONFIG_INVALID`; real
- *   multi-destination belongs behind a relay in LIVETAP CLOUD (ADR-009).
+ * - No RTMP fan-out ON THE DEVICE beyond what it can stand. Past
+ *   `capabilities().maxSimultaneousStreams` outputs are refused with `CONFIG_INVALID`. Real
+ *   multi-destination belongs behind a relay (ADR-009), and `useRelaySession` is now how it gets
+ *   there: the device encodes once and publishes once to the relay, which fans out. Without a
+ *   relay session this is still a one-destination engine, and says so.
  *
  * Verification: the mapping logic below is unit-tested against a fake plugin, including the
- * permission gate, the aspect refusal and every event translation. The Android native side behind
+ * permission gate, the aspect refusal, the relay fan-out and every event translation. The native
+ * RTMP auth the relay path depends on (`setAuthorization`, confirmed present in RootEncoder 2.8.1)
+ * is NOT compiled or run here -- this host has no JDK and no Android SDK -- so the relay path is
+ * proven up to the plugin boundary and UNVERIFIED beyond it. The Android native side behind
  * it compiles and ships in the debug APK's dex on this host but has never been RUN (no emulator
  * image, no nested virtualisation, no handset); the iOS side has not been compiled at all. See
  * docs/release/ANDROID_MANUAL_TEST.md.
@@ -51,6 +56,19 @@ import type {
 } from '@livetap/capacitor-live-stream';
 
 export type MobilePlatform = 'ios' | 'android' | 'web';
+
+/**
+ * A relay session this device publishes through, instead of publishing to each destination.
+ *
+ * `rtmpUrl` is the relay's own ingest for this broadcast. It is the same MediaMTX path and the
+ * same forward list the browser's WHIP URL addresses -- only the way in differs, because a phone's
+ * native encoder has an RTMP socket and no WHIP client.
+ */
+export interface MobileRelaySession {
+  readonly rtmpUrl: string;
+  /** `<user>:<pass>`. A credential: never logged, never in an event, never inside the URL. */
+  readonly authorization?: string;
+}
 
 export interface MobileEngineOptions {
   /** Injected for tests; defaults to the registered native plugin. */
@@ -99,8 +117,9 @@ export class MobileEngine implements MediaEngine {
   private caps?: LiveStreamCapabilities;
 
   private sessions = new Map<string, OutputSession>();
-  /** nativeId -> destinationId */
+  /** nativeId -> destinationId. One-to-one for direct outputs; see `destinationsFor` for relayed. */
   private nativeIds = new Map<string, string>();
+  private relay: MobileRelaySession | null = null;
   private subscriptions: Subscription[] = [];
 
   private previewing = false;
@@ -233,6 +252,106 @@ export class MobileEngine implements MediaEngine {
 
   // ---------------------------------------------------------------- outputs
 
+  /**
+   * Publish through a relay instead of publishing to each destination directly.
+   *
+   * THIS IS WHAT LETS A PHONE REACH MORE THAN ONE DESTINATION. `maxSimultaneousStreams` is 1 on
+   * Android: one hardware encoder, one RTMP socket, and a second push is refused with
+   * CONFIG_INVALID whose own message has always said "use a relay for more (ADR-009)". The relay
+   * existed and nothing connected it, so that sentence pointed at nothing. With a session set,
+   * the device encodes once and publishes once, and the relay fans out to every destination.
+   *
+   * Deliberately the SAME NAME AND SHAPE as `BrowserEngine.useRelaySession`, because it is the
+   * same decision made by the same caller at the same moment; only the protocol differs. It throws
+   * while publishing for the same reason too: bytes already on the wire cannot be redirected by
+   * changing a field, so a silent no-op would look like success while still forwarding to the
+   * previous broadcast's destination list.
+   */
+  useRelaySession(session: MobileRelaySession | null): void {
+    if (this.sessions.size > 0) {
+      throw new Error('Cannot change the relay session while an output is publishing.');
+    }
+    this.relay = session;
+  }
+
+  /**
+   * Open the single relay push that carries every destination.
+   *
+   * ASPECT IS NOT REFUSED HERE, and that is a capability gain rather than a missing check. A phone
+   * encodes one format, so a direct 9:16 output alongside a 16:9 master is a genuine refusal. Once
+   * the relay is carrying the broadcast it derives the other formats server-side, and it has
+   * already refused the session outright at `POST /sessions` if it is not configured to -- with a
+   * sentence naming the destination and the setting to change. Refusing again here would reject
+   * broadcasts the relay just accepted.
+   */
+  private async openRelayOutputs(plugin: LiveStreamPlugin, outputs: readonly EngineOutput[]): Promise<void> {
+    const relay = this.relay;
+    if (!relay || outputs.length === 0) return;
+
+    const format = this.formats[this.masterAspect];
+    const fail = (code: ErrorCode, technical: string): void => {
+      for (const output of outputs) {
+        this.emitter.emit('output', { type: 'outputLost', destinationId: output.destinationId, code, technical });
+      }
+    };
+    if (!format) {
+      fail('CONFIG_INVALID', `no encoder format resolved for ${this.masterAspect}`);
+      return;
+    }
+
+    // The native contract is url + "/" + key, so the session path is split off as the key. It is
+    // not a secret -- the relay authenticates the publish with the credential below -- but keeping
+    // the shape identical to a normal ingest means one native code path, not two.
+    const cut = relay.rtmpUrl.lastIndexOf('/');
+    if (cut <= 'rtmp://'.length) {
+      fail('CONFIG_INVALID', 'the relay did not return a usable RTMP publish URL');
+      return;
+    }
+    const [user, ...rest] = (relay.authorization ?? '').split(':');
+    const credentials = relay.authorization ? { username: user!, password: rest.join(':') } : {};
+
+    for (const output of outputs) {
+      this.sessions.set(output.destinationId, {
+        output,
+        state: 'connecting',
+        bitrateKbps: 0,
+        droppedFrames: 0,
+      });
+    }
+
+    try {
+      const { id } = await plugin.startStream({
+        url: relay.rtmpUrl.slice(0, cut),
+        streamKey: relay.rtmpUrl.slice(cut + 1),
+        ...credentials,
+        videoKbps: format.videoKbps,
+        audioKbps: format.audioKbps,
+        width: format.width,
+        height: format.height,
+        fps: format.fps,
+        keyframeSeconds: format.keyframeIntervalSeconds,
+      });
+      // Every destination is bound to the one native stream; `destinationsFor` fans its events out.
+      for (const output of outputs) {
+        const session = this.sessions.get(output.destinationId);
+        if (session) session.nativeId = id;
+      }
+      this.nativeIds.set(id, outputs[0]!.destinationId);
+    } catch (err) {
+      for (const output of outputs) this.sessions.delete(output.destinationId);
+      fail('INGEST_REFUSED', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Every destination carried by one native stream. More than one only when relaying. */
+  private destinationsFor(nativeId: string): string[] {
+    const ids: string[] = [];
+    for (const [destinationId, session] of this.sessions) {
+      if (session.nativeId === nativeId) ids.push(destinationId);
+    }
+    return ids;
+  }
+
   async start(req: EngineStartRequest): Promise<void> {
     const plugin = await this.resolvePlugin();
     await this.subscribe(plugin);
@@ -245,8 +364,12 @@ export class MobileEngine implements MediaEngine {
     this.targetKbps = master ? master.videoKbps : 0;
     this.targetFps = master ? master.fps : 30;
 
-    for (const output of req.outputs) {
-      await this.openOutput(plugin, output);
+    if (this.relay) {
+      await this.openRelayOutputs(plugin, req.outputs);
+    } else {
+      for (const output of req.outputs) {
+        await this.openOutput(plugin, output);
+      }
     }
 
     if (req.recording.enabled) {
@@ -255,6 +378,22 @@ export class MobileEngine implements MediaEngine {
   }
 
   async addOutput(output: EngineOutput): Promise<void> {
+    if (this.relay && this.sessions.size > 0) {
+      /*
+       * A relay session's forward list is fixed when the session is created -- the relay was told
+       * where to send at `POST /sessions` and built one ffmpeg process from that list. A late
+       * destination is therefore not something this device can add by publishing harder; it would
+       * come up green here and receive nothing at the platform. Refused with the reason, which is
+       * also the instruction: end and start again to include it.
+       */
+      this.emitter.emit('output', {
+        type: 'outputLost',
+        destinationId: output.destinationId,
+        code: 'CONFIG_INVALID',
+        technical: 'a destination cannot join a relay broadcast already in progress; end and start again to include it',
+      });
+      return;
+    }
     const plugin = await this.resolvePlugin();
     await this.subscribe(plugin);
     await this.openOutput(plugin, output);
@@ -264,7 +403,9 @@ export class MobileEngine implements MediaEngine {
     const session = this.sessions.get(destinationId);
     if (!session) return;
     this.sessions.delete(destinationId);
-    if (session.nativeId) {
+    // Only tear the native push down once nothing else is riding it. Stopping a shared relay push
+    // because one destination was removed would take every other destination off the air with it.
+    if (session.nativeId && this.destinationsFor(session.nativeId).length === 0) {
       this.nativeIds.delete(session.nativeId);
       const plugin = await this.resolvePlugin();
       try {
@@ -279,8 +420,12 @@ export class MobileEngine implements MediaEngine {
 
   async stop(): Promise<void> {
     const plugin = await this.resolvePlugin();
+    // Stopped once per NATIVE stream, not once per destination: relayed destinations share one
+    // push, and the second stopStream for the same id is an error the native layer would report.
+    const stopped = new Set<string>();
     for (const [destinationId, session] of Array.from(this.sessions.entries())) {
-      if (session.nativeId) {
+      if (session.nativeId && !stopped.has(session.nativeId)) {
+        stopped.add(session.nativeId);
         try {
           await plugin.stopStream({ id: session.nativeId });
         } catch {
@@ -444,8 +589,15 @@ export class MobileEngine implements MediaEngine {
   }
 
   private onStreamState(event: StreamStateEvent): void {
-    const destinationId = this.nativeIds.get(event.id);
-    if (!destinationId) return;
+    // One native stream, possibly many destinations: when relaying, every destination rides the
+    // same push, so a single native event is the news for all of them.
+    for (const destinationId of this.destinationsFor(event.id)) {
+      this.applyStreamState(event, destinationId);
+    }
+    this.emitMetrics();
+  }
+
+  private applyStreamState(event: StreamStateEvent, destinationId: string): void {
     const session = this.sessions.get(destinationId);
     if (!session) return;
 
@@ -487,8 +639,6 @@ export class MobileEngine implements MediaEngine {
         break;
       }
     }
-
-    this.emitMetrics();
   }
 
   private onDeviceLost(event: DeviceLostEvent): void {

@@ -635,3 +635,161 @@ describe('MobileEngine', () => {
     expect(result).toEqual({ path: '/sandbox/livetap-001.mp4' });
   });
 });
+
+/**
+ * A PHONE REACHING MORE THAN ONE DESTINATION.
+ *
+ * `maxSimultaneousStreams` is 1 on real Android hardware: one encoder, one RTMP socket. The second
+ * push has always been refused with a CONFIG_INVALID whose own message reads "use a relay for more
+ * (ADR-009)" — and the relay existed, was tested, and nothing connected it, so that sentence
+ * pointed at nothing. Mobile was a single-destination product by omission rather than by design.
+ *
+ * With a relay session the device encodes once and publishes once; the relay fans out. These tests
+ * are about the mapping, which is the only part a host with no device can honestly prove. The
+ * native side that opens the socket is unverified on hardware — see the header of MobileEngine.ts.
+ */
+describe('MobileEngine publishing through a relay', () => {
+  const RELAY = {
+    rtmpUrl: 'rtmp://relay.example.com:19350/live/abc123def456',
+    authorization: 'livetap:pub-secret',
+  };
+
+  async function relayed(plugin: FakeLiveStream, outputs: EngineOutput[]): Promise<MobileEngine> {
+    const engine = await primed(plugin);
+    engine.useRelaySession(RELAY);
+    await engine.start(startRequest(outputs));
+    return engine;
+  }
+
+  it('publishes ONE native stream for three destinations, past the device cap', async () => {
+    const plugin = new FakeLiveStream();
+    plugin.caps = { ...plugin.caps, maxSimultaneousStreams: 1 };
+
+    await relayed(plugin, [output('yt'), output('twitch'), output('kick')]);
+
+    expect(plugin.started, 'the device opened one socket per destination, which it cannot do').toHaveLength(1);
+  });
+
+  it('splits the relay URL into url + key and passes credentials separately, never in the URL', async () => {
+    const plugin = new FakeLiveStream();
+    await relayed(plugin, [output('yt')]);
+
+    const started = plugin.started[0]!;
+    expect(started.url).toBe('rtmp://relay.example.com:19350/live');
+    expect(started.streamKey).toBe('abc123def456');
+    expect(started.username).toBe('livetap');
+    expect(started.password).toBe('pub-secret');
+    // A password inside a URL survives in encoder logs and diagnostics panels.
+    expect(started.url).not.toContain('pub-secret');
+    expect(started.streamKey).not.toContain('pub-secret');
+  });
+
+  it('brings every destination up from the one native stream', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await relayed(plugin, [output('yt'), output('twitch')]);
+    const seen: EngineOutputEvent[] = [];
+    engine.on('output', (e) => seen.push(e));
+
+    plugin.fire('streamState', { id: plugin.started.length ? 'native-1' : 'native-1', state: 'connected' });
+
+    expect(seen.filter((e) => e.type === 'outputUp').map((e) => e.destinationId).sort()).toEqual([
+      'twitch',
+      'yt',
+    ]);
+  });
+
+  it('takes every destination down together when the one push fails', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await relayed(plugin, [output('yt'), output('twitch')]);
+    const seen: EngineOutputEvent[] = [];
+    engine.on('output', (e) => seen.push(e));
+
+    plugin.fire('streamState', { id: 'native-1', state: 'failed', technical: 'relay refused' });
+
+    expect(seen.filter((e) => e.type === 'outputLost').map((e) => e.destinationId).sort()).toEqual([
+      'twitch',
+      'yt',
+    ]);
+  });
+
+  /**
+   * The relay derives the other formats server-side and has ALREADY refused the session outright
+   * at `POST /sessions` if it is not configured to, naming the destination and the setting. A
+   * phone refusing again here would reject broadcasts the relay just accepted — and vertical plus
+   * horizontal in one broadcast is the thing a phone could never do before.
+   */
+  it('does not refuse a destination whose aspect differs from the master, once relaying', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await primed(plugin, '9:16');
+    engine.useRelaySession(RELAY);
+    const seen: EngineOutputEvent[] = [];
+    engine.on('output', (e) => seen.push(e));
+
+    await engine.start(startRequest([output('tiktok', '9:16'), output('yt', '16:9')], '9:16'));
+
+    expect(seen.filter((e) => e.type === 'outputLost')).toHaveLength(0);
+    expect(plugin.started).toHaveLength(1);
+  });
+
+  it('keeps the shared push alive when one destination is removed, and stops it with the last', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await relayed(plugin, [output('yt'), output('twitch')]);
+
+    await engine.removeOutput('yt');
+    expect(plugin.stopped, 'removing one destination took the others off the air').toHaveLength(0);
+
+    await engine.removeOutput('twitch');
+    expect(plugin.stopped).toEqual(['native-1']);
+  });
+
+  it('stops the native push once, not once per destination', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await relayed(plugin, [output('yt'), output('twitch'), output('kick')]);
+
+    await engine.stop();
+
+    expect(plugin.stopped).toEqual(['native-1']);
+  });
+
+  /**
+   * A relay session's forward list is fixed when the session is created. A destination added
+   * afterwards would come up green on the phone and receive nothing at the platform, which is the
+   * exact failure this product keeps having to design against.
+   */
+  it('refuses a destination that tries to join a relay broadcast in progress', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await relayed(plugin, [output('yt')]);
+    const seen: EngineOutputEvent[] = [];
+    engine.on('output', (e) => seen.push(e));
+
+    await engine.addOutput(output('late'));
+
+    expect(plugin.started).toHaveLength(1);
+    const lost = seen.find((e) => e.type === 'outputLost');
+    expect(lost?.destinationId).toBe('late');
+    expect(lost && 'technical' in lost ? lost.technical : '').toMatch(/end and start again/i);
+  });
+
+  it('refuses to change the relay session while an output is publishing', async () => {
+    const plugin = new FakeLiveStream();
+    const engine = await relayed(plugin, [output('yt')]);
+
+    expect(() => engine.useRelaySession({ rtmpUrl: 'rtmp://other/live/xyz' })).toThrow(
+      /while an output is publishing/,
+    );
+  });
+
+  /** The relay path must not weaken the direct one: with no session, the device cap still holds. */
+  it('still enforces the device cap when there is no relay session', async () => {
+    const plugin = new FakeLiveStream();
+    plugin.caps = { ...plugin.caps, maxSimultaneousStreams: 1 };
+    const engine = await primed(plugin);
+    const seen: EngineOutputEvent[] = [];
+    engine.on('output', (e) => seen.push(e));
+
+    await engine.start(startRequest([output('yt'), output('twitch')]));
+
+    expect(plugin.started).toHaveLength(1);
+    expect(seen.find((e) => e.type === 'outputLost')?.destinationId).toBe('twitch');
+  });
+});

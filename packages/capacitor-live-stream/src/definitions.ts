@@ -102,6 +102,20 @@ export interface StartStreamOptions {
   url: string;
   /** Stream key. Appended to `url` by the native layer. Never logged, never echoed in events. */
   streamKey: string;
+  /**
+   * RTMP credentials, when the ingest demands them.
+   *
+   * No platform does — YouTube, Twitch and Kick all authenticate with the stream key itself, which
+   * is why this did not exist. The LIVETAP relay does, and it is the reason a phone can reach more
+   * than one destination at all: the device encodes once and publishes once to the relay, which
+   * fans out, instead of attempting an RTMP socket per destination past what the hardware allows.
+   *
+   * A CREDENTIAL. Treated exactly as `streamKey` is: never logged, never echoed in an event, never
+   * embedded in a URL — the native layer passes it to the encoder's own auth instead, because a
+   * password inside a URL survives in encoder logs and diagnostics panels.
+   */
+  username?: string;
+  password?: string;
   videoKbps: number;
   audioKbps: number;
   width: number;

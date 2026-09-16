@@ -356,6 +356,23 @@ test('POST /sessions creates a path and returns a WHIP URL', async (t) => {
     assert.equal(body.whipUrl, `http://relay.example.com:18889/live/${body.sessionId}/whip`);
     assert.equal(body.whipAuthorization, 'livetap:pub-secret');
 
+    /*
+     * The same session, reachable by a phone.
+     *
+     * A browser has no RTMP socket and must publish WHIP; an Android handset has the opposite
+     * problem, because its native encoder speaks RTMP and not WHIP. MediaMTX accepts both on the
+     * same path and `runOnAvailable` fires whichever way the stream arrives, so one session serves
+     * either publisher. This is what lets a phone reach more than one destination at all: it
+     * encodes once, publishes once, and the relay fans out -- rather than the handset attempting N
+     * RTMP sockets, which is why mobile was capped at a single destination.
+     */
+    assert.equal(body.rtmpUrl, `rtmp://relay.example.com:19350/live/${body.sessionId}`);
+    assert.equal(body.rtmpAuthorization, 'livetap:pub-secret');
+    assert.ok(
+      !body.rtmpUrl.includes('pub-secret'),
+      'the publish password must never be embedded in a URL: encoders log them and diagnostics show them',
+    );
+
     assert.equal(calls.length, 1);
     assert.equal(calls[0].name, `live/${body.sessionId}`);
     assert.deepEqual(calls[0].conf.forward, [], 'native forward must stay empty');
