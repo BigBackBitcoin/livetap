@@ -89,6 +89,14 @@ unrelated to the question being asked. Now written down permanently in
 `tools/README.md`, because the two of us reaching it separately means a third
 session would too.
 
+**These artifacts do not go stale every time a commit lands.** The installer
+records the commit it was built from and answers "which commit is this?", not
+"is this current?" — the second has no stable answer, because HEAD moves for
+reasons that have nothing to do with the artifact, including the doc commit that
+records its own hashes. It verifies 33/33 today while HEAD has moved past it. A
+rebuild is needed when something the artifact *contains* changes, and the gate is
+what tells you that rather than anyone having to remember.
+
 **Both artifacts were rebuilt from the pushed commit `3fd43a3`, and the first
 pair were thrown away.** The first build of each was made before two commits
 landed that change `apps/web/src` — an END take-back fix and an end-session
