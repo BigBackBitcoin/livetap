@@ -543,6 +543,36 @@ describe('FfmpegEngine.metrics', () => {
     expect(metrics.networkDroppedPct).toBe(0);
   });
 
+  /**
+   * CROSS-SURFACE PARITY, which is the whole reason this is here.
+   *
+   * Web and Android report connection health from Bond. Without this, Windows said nothing, and a
+   * creator who saw "your connection cannot keep up" on a phone and silence on the desktop would
+   * reasonably conclude one of them is broken. Desktop can actually measure MORE than a phone:
+   * ffmpeg reports the bitrate it is really pushing and the fan-out reports genuine packet loss.
+   */
+  it('reports connection health once the encoder is actually pushing', async () => {
+    await engine.start(request());
+    encoderChildren()[0]?.stderr.write(
+      'frame=300\nfps=29.9\nbitrate=4610.5kbits/s\ndrop_frames=0\nspeed=1.0x\nprogress=continue\n',
+    );
+    await flush();
+
+    const metrics = engine.metrics();
+    expect(metrics.connectionHealth, 'Windows reports no connection health while web and Android do').toBeDefined();
+    expect(metrics.connectionHealth).not.toBe('offline');
+    expect(metrics.recommendedKbps).toBeGreaterThan(0);
+  });
+
+  it('says nothing about the connection before anything has been pushed', async () => {
+    await engine.start(request());
+    const metrics = engine.metrics();
+    // No path yet. A monitor with no paths answers 'offline' about the bond, which would be a lie
+    // about a machine sitting happily in preview.
+    expect(metrics.connectionHealth).toBeUndefined();
+    expect(metrics.recommendedKbps).toBeUndefined();
+  });
+
   it('reports zeroes rather than guesses before any progress arrives', async () => {
     await engine.start(request());
     const metrics = engine.metrics();

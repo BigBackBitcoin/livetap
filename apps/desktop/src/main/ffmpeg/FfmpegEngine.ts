@@ -43,7 +43,7 @@ import { ArgvRefusedError, buildEncoderArgv, buildRecordingArgv, buildSenderArgv
 import type { EncoderSource } from './argv.js';
 import { CpuSampler } from './cpu.js';
 import { TsFanout } from './fanout.js';
-import { BondClient, BondSink, importPublicKey, type BondPathSpec } from '@livetap/bond';
+import { BondClient, BondMonitor, BondSink, importPublicKey, type BondPathSpec } from '@livetap/bond';
 import type { HardwareReport } from './hardware.js';
 import { chooseEncoder, probeEncoders } from './hardware.js';
 import { FfmpegStderrParser, classifyStderrLine } from './progress.js';
@@ -156,6 +156,16 @@ export class FfmpegEngine {
   private readonly senders = new Map<string, SenderState>();
   private recorder: RecorderState | null = null;
   private bond: BondState | null = null;
+  /*
+   * Bond's decision layer, on the path this machine is publishing over.
+   *
+   * SEPARATE FROM `bond` ABOVE, which is the wire protocol and only exists when a destination
+   * asked to be bonded. This runs on every broadcast, bonded or not, so a Windows creator gets the
+   * same connection health a phone and a browser already report. Without it the product said
+   * "your connection cannot keep up" on two surfaces and nothing at all on the third, which is the
+   * kind of inconsistency that makes a creator distrust all three.
+   */
+  private readonly bondMonitor = new BondMonitor();
   private hardware: HardwareReport | null = null;
   private request: DesktopStartRequest | null = null;
   private metricsTimer: NodeJS.Timeout | null = null;
@@ -820,6 +830,9 @@ export class FfmpegEngine {
   private stopMetrics(): void {
     if (this.metricsTimer) clearInterval(this.metricsTimer);
     if (this.cpuTimer) clearInterval(this.cpuTimer);
+    // Between broadcasts, not during one: the next one must not inherit this one's capacity
+    // estimate or the hysteresis that would hold it in a decision made about a different network.
+    this.bondMonitor.reset();
     this.metricsTimer = null;
     this.cpuTimer = null;
     this.lastCpuPct = undefined;
@@ -852,13 +865,49 @@ export class FfmpegEngine {
     const dropped = progress?.dropFrames ?? 0;
     const encoderDroppedPct = encoderFrames + dropped > 0 ? (dropped / (encoderFrames + dropped)) * 100 : 0;
 
+    const targetKbps = format ? format.videoKbps + format.audioKbps : 0;
+
+    /*
+     * One sample of the uplink, taken at the metrics cadence.
+     *
+     * Desktop measures more than a phone can: ffmpeg reports the bitrate it is actually pushing,
+     * and the fan-out reports the share of packets it had to drop, which is genuine network loss
+     * rather than a proxy for it. Only sampled while an encoder is actually running -- before that
+     * there is no path, and a monitor with no paths correctly answers 'offline', which would be
+     * true of the bond and a lie about a machine sitting happily in preview.
+     */
+    if (progress && targetKbps > 0) {
+      const deliveredBps = (progress.bitrateKbps ?? 0) * 1000;
+      const offeredBps = targetKbps * 1000;
+      this.bondMonitor.observe(
+        'uplink',
+        {
+          at: this.now(),
+          throughputBps: deliveredBps,
+          // ffmpeg does not report round trip or jitter for an RTMP push, and deriving them from
+          // anything here would be inventing numbers the state machine would then act on.
+          rttMs: 0,
+          jitterMs: 0,
+          loss: worstNetworkDrop / 100,
+          retransmitRate: 0,
+          atCapacity: deliveredBps < offeredBps * 0.95,
+        },
+        { transport: 'ethernet', label: 'Connection', independence: 'unknown' },
+        offeredBps,
+      );
+    }
+    const bonded = this.bondMonitor.paths().length > 0
+      ? this.bondMonitor.decide(targetKbps * 1000, this.now())
+      : null;
+
     const metrics: EngineMetrics = {
       encodedKbps: progress?.bitrateKbps ?? 0,
-      targetKbps: format ? format.videoKbps + format.audioKbps : 0,
+      targetKbps,
       encoderDroppedPct,
       networkDroppedPct: worstNetworkDrop,
       renderFps: progress?.fps ?? 0,
       targetFps: format?.fps ?? 0,
+      ...(bonded ? { connectionHealth: bonded.health, recommendedKbps: Math.round(bonded.encoderCeilingBps / 1000) } : {}),
       updatedAt: this.now(),
     };
     if (this.lastCpuPct !== undefined) metrics.cpuPct = this.lastCpuPct;
