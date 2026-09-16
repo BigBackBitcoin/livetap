@@ -382,7 +382,20 @@ if (existsSync(asarPath)) {
        * 30/30 while the .exe on disk was ninety minutes and several fixes old.
        */
       const installerAt = statSync(installerPath).mtimeMs;
-      const rendererAt = statSync(rendererMode).mtimeMs;
+      /*
+       * Compared against the renderer's OUTPUT, not against its metadata.
+       *
+       * This read `build-mode.json`, which is a description of the build rather than a product of
+       * it — and anything can rewrite a description. A test harness that restored the file with
+       * `cp` after checking a refusal path moved its mtime three minutes past the installer, and
+       * this check reported "the packaging run did not finish; the artifact in release/ is the
+       * previous one" about an installer that was correct and current. Check C, which records
+       * identity rather than inferring it from timestamps, disagreed — and C was right.
+       *
+       * `app.html` is what the packer actually wraps, so an installer older than it really is
+       * stale, which is the failure this check exists for and the one it still catches.
+       */
+      const rendererAt = statSync(join(DESKTOP, 'dist', 'renderer', 'app.html')).mtimeMs;
       check(
         'the INSTALLER is newer than the renderer it is supposed to contain',
         installerAt >= rendererAt,
