@@ -68,11 +68,8 @@ const scripts = existsSync(assetsDir)
   : [];
 check('the bundle has JavaScript assets', scripts.length > 0, `${scripts.length} .js files`);
 
-const comparisons = [];
-for (const file of scripts) {
-  const source = readFileSync(join(assetsDir, file), 'utf8');
-  for (const m of source.matchAll(/return"([^"]*)"!=="false"/g)) comparisons.push(m[1]);
-}
+const bundleSource = scripts.map((f) => readFileSync(join(assetsDir, f), 'utf8')).join(String.fromCharCode(10));
+const comparisons = [...bundleSource.matchAll(/return"([^"]*)"!=="false"/g)].map((m) => m[1]);
 check(
   'demo mode is compiled out (VITE_LIVETAP_MOCK_MODE=false reached the build)',
   comparisons.length > 0 && comparisons.every((v) => v === 'false'),
@@ -81,7 +78,41 @@ check(
     : `folded values: ${[...new Set(comparisons)].map((v) => JSON.stringify(v)).join(', ')}`,
 );
 
-/* 4. Size, as a crude but effective guard against staging an empty or half-copied tree. */
+/* 4. THE REST OF THE PRODUCTION CONFIGURATION, which was never checked and was never passed.
+      `VITE_` variables are compiled in at build time, so "we will configure it later" is not a
+      thing that exists for a packaged app: an APK built without these has them baked in as empty
+      and no amount of later configuration reaches it. Reported always; fatal only when the caller
+      says this build is meant for real use, because a sideloaded demo is a legitimate thing to
+      build and this script must not refuse to make one. */
+const REQUIRE_PRODUCTION = process.env.LIVETAP_REQUIRE_PRODUCTION_CONFIG === '1';
+const relayUrl = (process.env.VITE_LIVETAP_RELAY_URL ?? '').trim();
+const brokerUrl = (process.env.VITE_LIVETAP_BROKER_URL ?? '').trim();
+
+const configured = (label, value, consequence) => {
+  const present = value !== '' && bundleSource.includes(value);
+  if (REQUIRE_PRODUCTION) {
+    check(label, present, present ? value : consequence);
+    return;
+  }
+  results.push({
+    label: `${label}${present ? '' : ' — NOT SET'}`,
+    ok: true,
+    detail: present ? value : `${consequence} (not fatal: this is not a production build)`,
+  });
+};
+
+configured(
+  'a relay is compiled in, so this phone can reach more than one destination',
+  relayUrl,
+  'without it the device is capped at ONE destination: one encoder, one RTMP socket',
+);
+configured(
+  'a token broker origin is compiled in, so connecting an account can work',
+  brokerUrl,
+  'without it /api/oauth/token resolves to the in-APK asset server and OAuth cannot complete',
+);
+
+/* 5. Size, as a crude but effective guard against staging an empty or half-copied tree. */
 const bytes = (dir) =>
   readdirSync(dir, { withFileTypes: true }).reduce(
     (total, d) => total + (d.isDirectory() ? bytes(join(dir, d.name)) : statSync(join(dir, d.name)).size),

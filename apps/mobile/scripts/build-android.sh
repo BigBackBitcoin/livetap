@@ -53,8 +53,41 @@ printf 'sdk.dir=%s\n' "$SDK_FWD" > apps/mobile/android/local.properties
 # LIVETAP_ANDROID_VARIANT=debug is read by capacitor.config.ts to turn on
 # webContentsDebuggingEnabled for this variant only. A sideloaded alpha with a white screen and no
 # inspector cannot be diagnosed.
+# The rest of the production configuration, passed THROUGH to the Vite build.
+#
+# These were not passed at all, which quietly capped the product. `VITE_` variables are read at
+# build time, so an APK built without them has them compiled in as empty:
+#
+#   VITE_LIVETAP_RELAY_URL absent  -> the phone can only ever reach ONE destination. It has one
+#                                     encoder and one RTMP socket; the relay is what makes the
+#                                     second destination possible, and the app cannot be told where
+#                                     the relay is after the fact.
+#   VITE_LIVETAP_BROKER_URL absent -> OAuth is broken. Inside an APK a relative /api/oauth/token
+#                                     resolves to the in-APK asset server, so the token exchange
+#                                     has nowhere to go. apps/web/.env.example has always said this
+#                                     surface needs a real origin; nothing supplied one.
+#
+# Absent is still allowed, because a sideloaded demo build is a legitimate thing to want. What is
+# not allowed is being quiet about it.
+RELAY_URL="${VITE_LIVETAP_RELAY_URL:-}"
+RELAY_TOKEN="${VITE_LIVETAP_RELAY_TOKEN:-}"
+BROKER_URL="${VITE_LIVETAP_BROKER_URL:-}"
+
+if [ -z "$RELAY_URL" ]; then
+  echo "[android] WARNING: VITE_LIVETAP_RELAY_URL is not set."
+  echo "[android]          This APK will reach ONE destination only. Multi-destination needs a relay."
+else
+  echo "[android] relay: $RELAY_URL"
+fi
+if [ -z "$BROKER_URL" ]; then
+  echo "[android] WARNING: VITE_LIVETAP_BROKER_URL is not set."
+  echo "[android]          Connecting a platform account will fail: /api/oauth/token has no origin inside an APK."
+else
+  echo "[android] broker: $BROKER_URL"
+fi
+
 echo "[android] 1/3 building the web application (real adapters, real engine)"
-VITE_LIVETAP_MOCK_MODE=false npm run build -w @livetap/web >/dev/null
+VITE_LIVETAP_MOCK_MODE=false   VITE_LIVETAP_RELAY_URL="$RELAY_URL"   VITE_LIVETAP_RELAY_TOKEN="$RELAY_TOKEN"   VITE_LIVETAP_BROKER_URL="$BROKER_URL"   npm run build -w @livetap/web >/dev/null
 
 echo "[android] 2/3 staging it as the app bundle and syncing Capacitor"
 node apps/mobile/scripts/stage-web.mjs
