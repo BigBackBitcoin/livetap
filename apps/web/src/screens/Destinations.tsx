@@ -114,6 +114,41 @@ export function Destinations(): ReactElement {
   const demo = mockMode ? PLATFORM_ORDER.filter(isDemoRow) : [];
   const real = PLATFORM_ORDER.filter((id) => !demo.includes(id));
 
+  /*
+   * ONE GROUP PER PLATFORM, ONE ROW PER ACCOUNT.
+   *
+   * A creator may hold Carter Gaming, Carter Live and Carter Clips, and this is the screen where
+   * they decide which of them goes live. A flat list of three rows all beginning "YouTube" is a
+   * list they cannot read: the thing that differs is the account, and it was the least prominent
+   * word on the card.
+   *
+   * Grouping is unconditional rather than "when there are two", because a heading that appears
+   * only sometimes teaches nobody where the second account will go. With one account it reads as
+   * a section for that platform; with three it reads as a library, which is what it is.
+   *
+   * `PLATFORM_ORDER` rather than insertion order, so the screen does not reshuffle itself when a
+   * creator adds an account to a platform they already had.
+   */
+  /*
+   * Built from the DESTINATIONS and then ordered, rather than from `PLATFORM_ORDER` and then
+   * filtered. The difference matters: a platform that exists in `PlatformId` but has not been
+   * added to `PLATFORM_ORDER` would silently have no group, and its destinations would vanish
+   * from this screen while still appearing in Studio and still going live. Ordering something
+   * absent is a no-op; filtering by a list is a way to lose a row.
+   *
+   * Unknown platforms sort last, under their own name, rather than being swept into "Other".
+   */
+  const groups = [...new Map(destinations.map((d) => [d.config.platform, true])).keys()]
+    .sort((a, b) => {
+      const ia = PLATFORM_ORDER.indexOf(a);
+      const ib = PLATFORM_ORDER.indexOf(b);
+      return (ia === -1 ? PLATFORM_ORDER.length : ia) - (ib === -1 ? PLATFORM_ORDER.length : ib);
+    })
+    .map((platform) => ({
+      platform,
+      accounts: destinations.filter((d) => d.config.platform === platform),
+    }));
+
   return (
     <div className="lt-screen">
       <header className="lt-screen__head">
@@ -158,8 +193,26 @@ export function Destinations(): ReactElement {
           </Button>
         </Card>
       ) : (
+        groups.map((group) => (
+        <section
+          className="lt-destgroup"
+          key={group.platform}
+          aria-labelledby={`lt-destgroup-${group.platform}`}
+        >
+          <div className="lt-destgroup__head">
+            <h2 className="lt-destgroup__title" id={`lt-destgroup-${group.platform}`}>
+              {PLATFORM_PROFILES[group.platform].displayName}
+            </h2>
+            {/*
+              The count is only worth saying when there is more than one — "1 account" on every
+              heading is noise a reader learns to skip, and then does not notice "3 accounts".
+            */}
+            {group.accounts.length > 1 ? (
+              <span className="lt-destgroup__count">{`${group.accounts.length} accounts`}</span>
+            ) : null}
+          </div>
         <ul className="lt-destlist">
-          {destinations.map((snap) => {
+          {group.accounts.map((snap) => {
             const profile = PLATFORM_PROFILES[snap.config.platform];
             const isLive = snap.state === 'LIVE' || snap.state === 'DEGRADED';
             /*
@@ -297,6 +350,28 @@ export function Destinations(): ReactElement {
             );
           })}
         </ul>
+          {/*
+            THE AFFORDANCE THAT MAKES THIS A LIBRARY RATHER THAN A LIST.
+
+            Without it a creator who wants a second YouTube channel has to find "Add destination"
+            and pick YouTube again — which, before the store was fixed, silently reconnected the
+            channel they already had. Saying it in the platform's own words, next to the accounts
+            it will join, is what makes "I can have more than one of these" discoverable at the
+            moment the thought occurs.
+           */}
+          {group.platform === 'custom' ? null : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="lt-destgroup__add"
+              disabled={busy || live}
+              onClick={() => void connect(group.platform)}
+            >
+              {`Add another ${PLATFORM_PROFILES[group.platform].displayName} account`}
+            </Button>
+          )}
+        </section>
+        ))
       )}
 
       {live ? (

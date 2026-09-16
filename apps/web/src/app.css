@@ -1021,6 +1021,49 @@ body {
   gap: var(--lt-space-3);
 }
 
+/*
+ * ONE SECTION PER PLATFORM, ONE ROW PER ACCOUNT.
+ *
+ * The heading is the platform; the cards under it are the creator's accounts on it. The group is
+ * deliberately NOT a card itself — nesting a card inside a card gives two borders and two
+ * paddings around the same content, and the destination cards are already the thing with edges.
+ */
+.lt-destgroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.lt-destgroup + .lt-destgroup {
+  margin-block-start: var(--lt-space-5);
+}
+
+.lt-destgroup__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lt-space-2);
+}
+
+.lt-destgroup__title {
+  margin: 0;
+  font-size: var(--lt-text-18);
+  line-height: var(--lt-leading-18);
+  letter-spacing: var(--lt-tracking-18);
+  font-weight: var(--lt-weight-semibold);
+  color: var(--lt-text-primary);
+}
+
+.lt-destgroup__count {
+  font-size: var(--lt-text-14);
+  line-height: var(--lt-leading-14);
+  color: var(--lt-text-secondary);
+}
+
+/* Aligned to the start, so it reads as the last item of this platform rather than a page action. */
+.lt-destgroup__add {
+  align-self: flex-start;
+}
+
 .lt-dock__destactions {
   display: flex;
   flex-wrap: wrap;
