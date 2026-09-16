@@ -30,6 +30,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { describeIdentity, identify } from './renderer-identity.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = resolve(here, '..');
 const RELEASE = join(DESKTOP, 'release');
@@ -38,8 +40,30 @@ const UNPACKED = join(RELEASE, 'win-unpacked');
 const version = JSON.parse(readFileSync(join(DESKTOP, 'package.json'), 'utf8')).version;
 const DEFAULT_INSTALLER = join(RELEASE, `LIVETAP-${version}-win-x64.exe`);
 const argv = process.argv.slice(2);
-const flags = argv.filter((a) => a.startsWith('--'));
-const positional = argv.filter((a) => !a.startsWith('--'));
+
+/*
+ * `--expect <sha>` and `--expect=<sha>` both work.
+ *
+ * The first version of this parser split flags from positionals with two filters, which meant the
+ * space form's VALUE fell through into the positionals and was resolved as the installer path:
+ * `--expect db9d89c` looked for an installer called `db9d89c`. It failed loudly rather than
+ * quietly, which is the only reason it was not worse — but the documented invocation did not
+ * work, and a flag that is wrong in its own usage line is a flag nobody trusts.
+ */
+const flags = [];
+const positional = [];
+for (let i = 0; i < argv.length; i += 1) {
+  const arg = argv[i];
+  if (!arg.startsWith('--')) {
+    positional.push(arg);
+    continue;
+  }
+  flags.push(arg);
+  if (arg === '--expect' && argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) {
+    flags.push(argv[i + 1]);
+    i += 1;
+  }
+}
 const installerPath = positional[0] ? resolve(positional[0]) : DEFAULT_INSTALLER;
 
 /*
@@ -60,10 +84,10 @@ const installerPath = positional[0] ? resolve(positional[0]) : DEFAULT_INSTALLER
  * is where that person says so.
  */
 const expectCommit = (() => {
-  const flag = flags.find((f) => f.startsWith('--expect='));
-  if (flag) return flag.slice('--expect='.length);
-  const i = argv.indexOf('--expect');
-  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
+  const pair = flags.find((f) => f.startsWith('--expect='));
+  if (pair) return pair.slice('--expect='.length);
+  const i = flags.indexOf('--expect');
+  return i >= 0 && flags[i + 1] !== undefined ? flags[i + 1] : null;
 })();
 
 /*
@@ -77,21 +101,11 @@ const expectCommit = (() => {
 const unversioned = flags.includes('--unversioned');
 
 /*
- * Paths the BUILD ITSELF writes into the tree, which therefore say nothing about which code is
- * inside the artifact.
- *
- * This list is fail-CLOSED and that polarity is the whole point. Everything tracked is fatal
- * unless it is here. A new generated-and-tracked file that nobody adds makes the gate refuse a
- * correct build — somebody then looks, understands, and adds it deliberately. The opposite
- * polarity, a list of paths that MATTER, silently passes every path anybody forgets, and the set
- * of files that can change an artifact's bytes is unbounded: source, `vite.config.ts`,
- * `electron-builder.yml`, `tsup.config.ts`, `tsconfig*.json`, `package.json`. Annoying when wrong
- * beats quiet when wrong.
+ * The identity rules live in `renderer-identity.mjs` and are asked in TWO places: here, of the
+ * finished artifact, and at prepackage, of the renderer about to be packed. One implementation
+ * because two staleness rules at two pipeline stages is exactly how checks A and B ended up
+ * agreeing with each other about a tree that had moved on.
  */
-const BUILD_WRITES = [
-  // `acquire-ffmpeg` rewrites its `recorded:` timestamp on every packaging run.
-  'apps/desktop/resources/ffmpeg/BUILD_INFO.txt',
-];
 
 /*
  * An installer WITHOUT ffmpeg measured 94 MB on this host (docs/release/DESKTOP_RELEASE.md §2);
@@ -387,38 +401,21 @@ if (existsSync(asarPath)) {
        * tree that had moved on. Three checks, three different failures: repack died, renderer
        * stale, renderer from another tree.
        */
-      const recorded = mode.commit ?? null;
-      const dirty = Array.isArray(mode.dirty) ? mode.dirty : null;
-
-      if (recorded === null) {
-        check(
-          'the renderer records the commit it was built from',
-          unversioned,
-          'build-mode.json has no `commit`. Either it predates this check, or git was unavailable ' +
-            'at build time. Rebuild, or pass --unversioned to record this artifact as ' +
-            'UNIDENTIFIABLE — which is what it is.',
-        );
-      } else {
-        const fatal = (dirty ?? []).filter((path) => !BUILD_WRITES.includes(path));
-        check(
-          'the renderer was not built from uncommitted source',
-          fatal.length === 0,
-          `built with uncommitted changes to ${fatal.join(', ')}. This artifact cannot be ` +
-            'identified by anyone, including whoever built it, because the code inside it exists ' +
-            'in no commit. There is no flag for this: commit first.',
-        );
-        if (expectCommit !== null) {
+      const identity = identify(mode, { unversioned });
+      check(
+        'the renderer inside this installer can be identified',
+        identity.ok,
+        identity.ok ? '' : identity.detail,
+      );
+      if (identity.ok) {
+        if (expectCommit !== null && identity.commit !== null) {
           check(
             `the renderer was built from ${expectCommit}`,
-            recorded.startsWith(expectCommit) || expectCommit.startsWith(recorded),
-            `this artifact is from ${recorded}, and you asked for ${expectCommit}.`,
+            identity.commit.startsWith(expectCommit) || expectCommit.startsWith(identity.commit),
+            `this artifact is from ${identity.commit}, and you asked for ${expectCommit}.`,
           );
         }
-        provenance.push(
-          `built from commit ${recorded}${
-            (dirty ?? []).length > 0 ? ` (with ${dirty.join(', ')} uncommitted)` : ' (clean tree)'
-          }`,
-        );
+        provenance.push(describeIdentity(identity));
       }
     }
   }

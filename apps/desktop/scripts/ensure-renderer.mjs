@@ -25,8 +25,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { describeIdentity, identify } from './renderer-identity.mjs';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -89,6 +90,38 @@ const placeholder = path.join(appDir, 'packaging', 'renderer-placeholder.html');
 
 if (existsSync(target)) {
   process.stdout.write(`renderer present: ${target}\n`);
+
+  /*
+   * EXISTS IS NOT THE SAME QUESTION AS WHICH.
+   *
+   * This used to stop at `existsSync`, so `package:win` shipped whatever renderer happened to be
+   * on disk — from any commit, of any age — and the verifier's staleness checks still passed,
+   * because the `.asar` genuinely matched `dist/renderer`. They agreed with each other about
+   * something stale. One such artifact read 32/33 while carrying pre-commit code, and the only
+   * reason it was caught is that the identity check existed downstream.
+   *
+   * Refusing HERE rather than only at verify buys three things. It fails in two seconds instead
+   * of after six minutes and 230 MB, which is exactly the point at which somebody stops checking.
+   * It closes the path where `verify-installer` is never run at all, since `package:win` would
+   * otherwise produce a shippable file with no gate between the build and the disk. And it is the
+   * same rule in both places, so the two cannot drift apart the way A and B did.
+   *
+   * It is a refusal, never a rebuild: a rebuild hidden inside packaging is a second place the
+   * renderer can be built, and an implicit step makes "which build is this" harder to answer —
+   * which is the question this check exists to make answerable.
+   */
+  const modePath = path.join(appDir, 'dist', 'renderer', 'build-mode.json');
+  const mode = existsSync(modePath) ? JSON.parse(readFileSync(modePath, 'utf8')) : {};
+  const identity = identify(mode, { unversioned: process.argv.includes('--unversioned') });
+  if (!identity.ok) {
+    process.stderr.write(
+      `\nrenderer CANNOT BE IDENTIFIED: ${identity.detail}\n` +
+        'Run: npm run build -w @livetap/desktop\n' +
+        'Packaging refused rather than producing an artifact nobody can trace to a commit.\n',
+    );
+    process.exit(1);
+  }
+  process.stdout.write(`renderer identity: ${describeIdentity(identity)}\n`);
 } else {
   mkdirSync(path.dirname(target), { recursive: true });
   copyFileSync(placeholder, target);
