@@ -19,8 +19,8 @@ Two sessions built this. Lines marked **(2b)** are owned by session
 | **SESSION CLEANUP** | COMPLETE | `destroySession` reports what it actually observed, distinguishes "emptied" from "could not be read", sweeps LIVETAP keys nothing registered, and refuses while on air. |
 | **UX CONSISTENCY** | COMPLETE | Destinations groups unconditionally; the Studio dock names the account always and groups only where a platform has several. Different on purpose — a library teaches where a second account goes, a narrow dock must not repeat a word the row already says (`ded6384` **(2b)**). All three surfaces share one mental model and one definition of connection health. Selection is per account by construction: there is no platform-level enable anywhere to collapse through, asserted end to end. |
 | **PRODUCTION CONFIG** | COMPLETE | Web, staged mobile bundle and finished APK each have a gate proving demo mode is compiled out and that the relay and broker origins reached the build. Each verified in both directions. |
-| **WINDOWS ARTIFACT** | COMPLETE | `LIVETAP-0.1.0-win-x64.exe`, 230,778,945 bytes, sha256 `7340dca6…`, built from current source on this host. 32/32 `verify-installer` checks, including that the installer is newer than the renderer it contains and that both witnesses agree demo mode was compiled out. Ships a verified ffmpeg 9.0.1 that actually runs and speaks rtmps. |
-| **ANDROID ARTIFACT** | COMPLETE | `app-debug.apk`, 10,151,511 bytes, built from current source on this host with the portable JDK 21 + Android SDK. 49/49 checks. Debug-signed: sideloadable, not Play-ready (needs an upload key the repo must never contain). |
+| **WINDOWS ARTIFACT** | COMPLETE | `LIVETAP-0.1.0-win-x64.exe` — **230,779,322 bytes, sha256 `aedeab5acd8b9af3fa406fc1a69c9362f0bbd6ccd601780aa794a5b0a066ed07`**, built from `3fd43a3` in the `LIVETAP-build` worktree. 32/32 `verify-installer` checks, including that both witnesses agree demo mode was compiled out. Ships a verified ffmpeg 9.0.1 that actually runs and speaks rtmps. |
+| **ANDROID ARTIFACT** | COMPLETE | `app-debug.apk` — **10,178,101 bytes, sha256 `2a2c041d2a1c671ac21564501423a3f04eec366e45f50425ee97a37fa1fc6363`**, built from `3fd43a3` in the `LIVETAP-build` worktree with the portable JDK 21 + Android SDK. 49/49 checks, including that the relay and broker origins reached the bundle. Debug-signed: sideloadable, not Play-ready (needs an upload key the repo must never contain). |
 
 ## What is external validation only
 
@@ -89,10 +89,31 @@ unrelated to the question being asked. Now written down permanently in
 `tools/README.md`, because the two of us reaching it separately means a third
 session would too.
 
-**Both artifacts correspond to current HEAD.** They were built after the last
-code change in this branch, not carried over. The installer verifier checks that
-specifically, because a packaging step that fails halfway leaves the previous
-installer in place looking newly built.
+**Both artifacts were rebuilt from the pushed commit `3fd43a3`, and the first
+pair were thrown away.** The first build of each was made before two commits
+landed that change `apps/web/src` — an END take-back fix and an end-session
+confirmation fix — and that source compiles into the desktop renderer and is
+staged into the APK. The APK's hash moved by 26,590 bytes between the two
+builds, so the earlier figures described a file that no longer existed anywhere.
+
+Nothing in the pipeline would have contradicted them. `verify-installer` has two
+freshness checks and both compare the artifact to the renderer **on disk**, which
+catches a packaging step dying halfway and leaves the previous installer in place
+looking newly built — but cannot see the renderer itself being stale. The
+artifacts were internally consistent all the way down and described a tree that
+had moved.
+
+**Hash the artifact in the worktree named below, not the path alone.** There are
+two `app-debug.apk` files on this machine at the same relative path in different
+checkouts, with different hashes. A reader who hashes the wrong one would
+conclude this document is lying, and would be reasonable to.
+
+**The end-session fix is not covered by the E2E run, and that is stated rather
+than glossed.** The 334-test Playwright run validates the END take-back fix; the
+end-session confirmation fix landed after that run started. It is a Settings
+screen with no E2E coverage at all, and it carries 7 unit tests including a
+regression verified by restoring the old label. Bounded and named — not
+described as covered by a suite that never saw it.
 
 **Android multi-destination is compiled, not exercised.** The device encodes
 once and publishes once to the relay, which fans out. `setAuthorization` ships
