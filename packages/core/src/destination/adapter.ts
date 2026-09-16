@@ -18,6 +18,18 @@ export interface CredentialRef {
   /** Opaque id in the secure store. */
   id: string;
   platform: string;
+  /**
+   * WHICH AUTHORIZED ACCOUNT this is, when there can be more than one.
+   *
+   * Adapters are registered per platform — one `YouTubeAdapter` serves every YouTube destination
+   * — so the adapter instance cannot tell Carter Gaming from Carter Live. The credential can, and
+   * every adapter already threads it through to `tokenProvider(credential)`. Without this the
+   * second channel would broadcast using the first channel's token, which is the worst thing
+   * multi-account can do and is invisible until someone checks whose channel went live.
+   *
+   * Absent for a paste-key destination, which has no authorization to tell apart.
+   */
+  connectionId?: string;
   /** Non-secret display data. */
   accountId?: string;
   accountLabel?: string;

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { destroySession } from '../state/session.js';
 import {
   credentialFor,
+  refreshingFetch,
+  tokenProviderFor,
   forgetTokens,
   hasTokens,
   readTokens,
@@ -203,5 +205,67 @@ describe('ending a guest session forgets every account, not every platform', () 
       await hasTokens(live),
       'the SECOND channel token survived a session the guest was told had been forgotten',
     ).toBe(false);
+  });
+});
+
+describe('one adapter, two accounts', () => {
+  /*
+   * ADAPTERS ARE REGISTERED PER PLATFORM. `registerApiAdapter` builds exactly one
+   * `YouTubeAdapter` and every YouTube destination shares it, so the adapter instance cannot tell
+   * Carter Gaming from Carter Live. The credential can, and every adapter already threads it into
+   * `tokenProvider(credential)` — the closure just ignored the argument and answered with
+   * whatever connection it had been bound to at registration.
+   *
+   * The consequence was not a wrong label. It was the second channel broadcasting with the first
+   * channel's token, to the first channel's channel, invisibly.
+   */
+  it('hands each account its own token, from one shared provider', async () => {
+    await saveTokens(gaming, tokensFor('Carter Gaming', 'UC-gaming'));
+    await saveTokens(live, tokensFor('Carter Live', 'UC-live'));
+
+    // Registered once for the platform, exactly as registry.ts does it.
+    const provider = tokenProviderFor('youtube');
+
+    const forGaming = await provider(credentialFor(gaming, tokensFor('Carter Gaming', 'UC-gaming')));
+    const forLive = await provider(credentialFor(live, tokensFor('Carter Live', 'UC-live')));
+
+    expect(forGaming).toBe('token-for-UC-gaming');
+    expect(
+      forLive,
+      'the second channel was handed the first channel token — it would broadcast to the wrong channel',
+    ).toBe('token-for-UC-live');
+  });
+
+  it('renews the account that was refused, not the platform first one', async () => {
+    await saveTokens(gaming, { ...tokensFor('Carter Gaming', 'UC-gaming'), refreshToken: 'r-gaming' });
+    await saveTokens(live, { ...tokensFor('Carter Live', 'UC-live'), refreshToken: 'r-live' });
+
+    const provider = tokenProviderFor('youtube');
+    await provider(credentialFor(live, tokensFor('Carter Live', 'UC-live')));
+
+    const seen: string[] = [];
+    const doFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/oauth/refresh')) {
+        seen.push(JSON.parse(String(init?.body)).refreshToken);
+        return new Response(JSON.stringify({ accessToken: 'renewed-live' }), { status: 200 });
+      }
+      return new Response('', { status: 401 });
+    }) as typeof fetch;
+
+    const wrapped = refreshingFetch('youtube', doFetch);
+    await wrapped('https://example.test/live', {
+      headers: { Authorization: 'Bearer token-for-UC-live' },
+    });
+
+    expect(
+      seen,
+      'a 401 for Carter Live renewed a different channel grant, and rotated a working refresh token',
+    ).toEqual(['r-live']);
+    expect((await readTokens(live))?.accessToken).toBe('renewed-live');
+    expect(
+      (await readTokens(gaming))?.accessToken,
+      'the untouched channel token was overwritten by the other channel refresh',
+    ).toBe('token-for-UC-gaming');
   });
 });

@@ -196,6 +196,7 @@ export function summarize(tokens: StoredTokens): AccountSummary {
 export function credentialFor(target: TokenTarget, tokens: StoredTokens): CredentialRef {
   const platform = typeof target === 'string' ? target : target.platform;
   const ref: CredentialRef = { id: vaultKey(target), platform, scopes: [...tokens.scopes] };
+  if (typeof target !== 'string') ref.connectionId = target.connectionId;
   if (tokens.accountId) ref.accountId = tokens.accountId;
   if (tokens.accountLabel) ref.accountLabel = tokens.accountLabel;
   if (tokens.avatarUrl) ref.avatarUrl = tokens.avatarUrl;
@@ -306,16 +307,60 @@ export function tokenProviderFor(
 ): (credential?: CredentialRef) => Promise<string> {
   const now = options.now ?? Date.now;
   const platform = typeof target === 'string' ? target : target.platform;
-  return async (): Promise<string> => {
-    const stored = await readTokens(target);
+  /*
+   * THE CREDENTIAL DECIDES, NOT THE CLOSURE.
+   *
+   * One adapter serves every destination on a platform — `registerApiAdapter` registers a single
+   * `YouTubeAdapter` — so a provider bound to one connection at registration time would hand
+   * Carter Live's request Carter Gaming's token, and the second channel would broadcast to the
+   * first channel's channel. Every adapter already calls `tokenProvider(credential)`; this
+   * closure simply stopped ignoring the argument.
+   *
+   * `target` remains the fallback for a caller with no credential — the legacy single connection.
+   */
+  return async (credential?: CredentialRef): Promise<string> => {
+    const from: TokenTarget =
+      credential?.connectionId !== undefined
+        ? { connectionId: credential.connectionId, platform: (credential.platform as PlatformId) ?? platform }
+        : target;
+    const stored = await readTokens(from);
     if (!stored) {
       throw new TokenUnavailableError(`LIVETAP is not signed in to ${platform}.`);
     }
-    if (stored.expiresAt !== undefined && stored.expiresAt - now() <= REFRESH_MARGIN_MS) {
-      return (await refreshTokens(target, stored, options)).accessToken;
-    }
-    return stored.accessToken;
+    const fresh =
+      stored.expiresAt !== undefined && stored.expiresAt - now() <= REFRESH_MARGIN_MS
+        ? await refreshTokens(from, stored, options)
+        : stored;
+    rememberIssued(fresh.accessToken, from);
+    return fresh.accessToken;
   };
+}
+
+/*
+ * WHICH CONNECTION OWNS THE TOKEN WE JUST HANDED OUT.
+ *
+ * `refreshingFetch` is also registered once per platform, and unlike the provider it is never
+ * given a credential — it sees a `fetch` call and a 401 and nothing else. So it recovers the
+ * connection from the only identifying thing it does have: the bearer token that was refused,
+ * which this module issued and can therefore attribute.
+ *
+ * Bounded by construction. One entry per connection, replaced whenever that connection issues a
+ * fresher token, so it holds as many entries as the creator has accounts rather than one per
+ * request.
+ */
+const issuedBy = new Map<string, TokenTarget>();
+
+function rememberIssued(accessToken: string, target: TokenTarget): void {
+  const key = vaultKey(target);
+  for (const [token, owner] of issuedBy) {
+    if (vaultKey(owner) === key && token !== accessToken) issuedBy.delete(token);
+  }
+  issuedBy.set(accessToken, target);
+}
+
+/** The connection that was handed this access token, or nothing if we did not issue it. */
+function ownerOf(accessToken: string): TokenTarget | undefined {
+  return issuedBy.get(accessToken);
 }
 
 /**
@@ -375,7 +420,6 @@ export function refreshingFetch(
   doFetch: FetchLike,
   options: TokenProviderOptions = {},
 ): FetchLike {
-  const platform = typeof target === 'string' ? target : target.platform;
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const first = await doFetch(input, init);
     if (first.status !== 401) return first;
@@ -386,7 +430,17 @@ export function refreshingFetch(
     const sent = headers['Authorization'] ?? headers['authorization'];
     if (!sent?.startsWith('Bearer ')) return first;
 
-    const stored = await readTokens(platform);
+    /*
+     * Refresh the connection that was REFUSED, not the platform's first one.
+     *
+     * This read `readTokens(platform)`, which under one-account-per-platform was the only answer
+     * there was. With several it would renew Carter Gaming's grant because Carter Live got a 401,
+     * leave Carter Live still refused, and quietly rotate a refresh token belonging to a channel
+     * that was working — turning one signed-out account into two.
+     */
+    const refused = sent.slice('Bearer '.length);
+    const owner = ownerOf(refused) ?? target;
+    const stored = await readTokens(owner);
     if (!stored?.refreshToken) return first;
 
     let renewed: StoredTokens;
@@ -394,13 +448,14 @@ export function refreshingFetch(
       // The renewal goes through the SAME fetch, so a caller that injected one (a test, or a
       // harness pointing at a local identity provider) does not find half the flow escaping to
       // the real network.
-      renewed = await refreshTokens(platform, stored, { fetchImpl: doFetch, ...options });
+      renewed = await refreshTokens(owner, stored, { fetchImpl: doFetch, ...options });
     } catch {
       // The refresh token is dead too. Hand back the original 401 so the adapter reports the
       // platform's own answer rather than a second, less informative failure of ours.
       return first;
     }
     if (renewed.accessToken === stored.accessToken) return first;
+    rememberIssued(renewed.accessToken, owner);
 
     // Rebuilt rather than spread-over: a lower-case `authorization` left beside the new
     // `Authorization` is two auth headers, one of them the dead one.
