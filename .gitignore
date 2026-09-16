@@ -28,6 +28,11 @@ tools/*
 # thrown away. `tools/acquire-android-toolchain.sh` had never been committed at all, which made
 # BLOCKERS.md B-005a tell the reader to run a command that does not exist in a fresh clone.
 !tools/*.sh
+# And the note explaining what the ignored contents ARE. Two separate autonomous sessions have now
+# checked `java` / `JAVA_HOME`, found nothing, and concluded this machine cannot build Android --
+# reasoning from an absence that exists for a reason unrelated to the question. The toolchain was
+# there the whole time. A tracked README is the cheapest way for the next one to find that out.
+!tools/README.md
 !tools/*.mjs
 scrollcraft/builds/*/lab/
 scrollcraft/builds/*/out/

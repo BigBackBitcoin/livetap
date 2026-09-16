@@ -9,15 +9,15 @@ Two sessions built this. Lines marked **(2b)** are owned by session
 | Area | Status | Evidence / exact remaining item |
 |---|---|---|
 | **WEB** | COMPLETE — production path | Guest → destinations → WHIP → relay → fan-out is connected end to end. The relay session API is called at GO LIVE (`relaySession.ts`, `armRelay`), torn down at END and on a cancelled start. `verify:web` refuses a build that is secretly a demo. The grouped destination selector landed in `c1c714b` and `ded6384`; it is described under UX CONSISTENCY so it is counted once. |
-| **WINDOWS** | COMPLETE | Builds from current source with mock mode OFF; reports connection health like every other surface; Bond wire protocol through `BondSink`; loopback OAuth is per connection **(2b)**, tested separately from the web redirect because the two finish in different places and a fix to one is not a fix to the other. |
+| **WINDOWS** | COMPLETE | Builds from current source with mock mode OFF; reports connection health like every other surface; Bond wire protocol through `BondSink`. OAuth and multi-account complete **(2b)** — loopback and redirect tested separately, because they finish in different places and a fix to one is genuinely not a fix to the other. |
 | **ANDROID** | COMPLETE | Multi-destination via the relay (`useRelaySession`), production config reaches the build, APK builds from current source and passes 49/49 `verify-apk` checks. |
-| **MULTI-ACCOUNT** | COMPLETE | One vault entry per authorized account keyed by connection id, never by platform. Legacy `oauth:${platform}` is read as a fallback and never copied forward, so nobody signed in today is signed out. One shared adapter per platform tells its accounts apart via `CredentialRef.connectionId`. **(2b)** for the model and UI; this session proved it survives to the relay. |
-| **OAUTH** | COMPLETE — implementation. Real platform credentials: EXTERNAL VALIDATION ONLY | Authorization, refresh, revoke, disconnect and duplicate detection all keyed per connection, on both the loopback and redirect paths **(2b)**. Duplicate detection runs *after* validate, because nothing knows which account a token belongs to until the platform says. Android's `livetap://` callback is registered and verified in the APK. No LIVETAP build has ever held a real OAuth client, so two real YouTube channels have never been exercised against Google. |
+| **MULTI-ACCOUNT** | COMPLETE | One vault entry per authorized account, keyed by connection id. Criteria A–J tested; every set confirmed load-bearing by reverting the fix. `1fd356e d0bb00b 52b3911 4b1a682 c1c714b 550fba5 ded6384` **(2b)**. This session proved the identity survives all the way to the relay's forward list. |
+| **OAUTH** | COMPLETE — implementation. Against a real provider: EXTERNAL VALIDATION ONLY | Per-connection on desktop loopback and web redirect **(2b)**. The legacy single-connection key is still read, so nobody signed in today is signed out. No LIVETAP build has ever held a real OAuth client, and **Android could not have completed OAuth at all until `ffb12b0`** — the broker origin was never passed to the build, so a relative `/api/oauth/token` resolved to the in-APK asset server. The fix is compiled; the flow is still unexercised on a handset. |
 | **RELAY FAN-OUT** | COMPLETE | One media session, N forward targets, one per selected destination id. Two accounts sharing an ingest URL with different keys are **not** deduplicated — asserted at `validateRequest` and at `buildHookCommand`, the layer where a collapse would be invisible. |
 | **BOND** | COMPLETE | `BondMonitor` gives web, Windows and Android a real consumer; `@livetap/bond/browser` is a Node-free entry enforced by an import-graph test. Bond's judgment reaches the creator as health copy carrying a bitrate the network can actually hold. |
 | **GUEST MODE** | COMPLETE | No LIVETAP account anywhere in the journey. Stream keys are never persisted to browser storage (`redactForStorage`). |
 | **SESSION CLEANUP** | COMPLETE | `destroySession` reports what it actually observed, distinguishes "emptied" from "could not be read", sweeps LIVETAP keys nothing registered, and refuses while on air. |
-| **UX CONSISTENCY** | COMPLETE | Destinations read as accounts under platforms — one section per platform, one card per account, "Add another YouTube account" at the foot of each group **(2b)**. All three surfaces share one mental model and one definition of connection health. Selection is per account by construction: there is no platform-level enable anywhere, asserted end to end. |
+| **UX CONSISTENCY** | COMPLETE | Destinations groups unconditionally; the Studio dock names the account always and groups only where a platform has several. Different on purpose — a library teaches where a second account goes, a narrow dock must not repeat a word the row already says (`ded6384` **(2b)**). All three surfaces share one mental model and one definition of connection health. Selection is per account by construction: there is no platform-level enable anywhere to collapse through, asserted end to end. |
 | **PRODUCTION CONFIG** | COMPLETE | Web, staged mobile bundle and finished APK each have a gate proving demo mode is compiled out and that the relay and broker origins reached the build. Each verified in both directions. |
 | **WINDOWS ARTIFACT** | COMPLETE | `LIVETAP-0.1.0-win-x64.exe`, 230,778,945 bytes, sha256 `7340dca6…`, built from current source on this host. 32/32 `verify-installer` checks, including that the installer is newer than the renderer it contains and that both witnesses agree demo mode was compiled out. Ships a verified ffmpeg 9.0.1 that actually runs and speaks rtmps. |
 | **ANDROID ARTIFACT** | COMPLETE | `app-debug.apk`, 10,151,511 bytes, built from current source on this host with the portable JDK 21 + Android SDK. 49/49 checks. Debug-signed: sideloadable, not Play-ready (needs an upload key the repo must never contain). |
@@ -51,6 +51,16 @@ Nothing about this is finished by inspection. If a fifth seam exists, it will
 look exactly like the four that did.
 
 ## The two things worth knowing before the validation phase
+
+**The build toolchain is here, and looked absent to both sessions.** `tools/`
+holds a portable JDK 21, Android SDK and Node 22. It is gitignored, so a
+worktree looks bare and nothing is on `PATH` — and both autonomous sessions
+independently checked `java` / `JAVA_HOME`, found nothing, and told the user
+this machine could not build Android. It can; it built both artifacts today.
+That is the same error shape as the camera: an observable missing for a reason
+unrelated to the question being asked. Now written down permanently in
+`tools/README.md`, because the two of us reaching it separately means a third
+session would too.
 
 **Both artifacts correspond to current HEAD.** They were built after the last
 code change in this branch, not carried over. The installer verifier checks that
