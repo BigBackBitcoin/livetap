@@ -297,6 +297,37 @@ test.describe('the end of a broadcast, under abuse', () => {
     ).toHaveCount(0, { timeout: 20_000 });
   });
 
+  /**
+   * The same hammering, at the ONE spacing that used to defeat it.
+   *
+   * `3 fast taps on END still end the broadcast` failed once in a full suite run and then passed
+   * six times in a row on an idle machine, because `page.mouse.click` with no delay is far faster
+   * than a person and far faster than the window. The failure needs the taps to land between about
+   * 275 ms and 550 ms apart — half the take-back's arming window — so the second press is
+   * swallowed while inert and the third arrives armed and cancels the stop. An odd number of
+   * presses, which must always leave the broadcast ending, left it running.
+   *
+   * 400 ms is inside that band and is also simply what tapping a slow phone looks like. The
+   * window is now measured from the LAST press rather than from END, so hammering can never arm
+   * the take-back.
+   */
+  test('three taps at the spacing that used to re-arm the take-back still end it', async ({
+    page,
+  }) => {
+    await studio(page);
+    await goLiveAndWait(page);
+    const box = (await page.locator('[data-lt-stop="end"]').boundingBox())!;
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    for (let i = 0; i < 3; i += 1) {
+      await page.mouse.click(centre.x, centre.y, { delay: 0 });
+      if (i < 2) await page.waitForTimeout(400);
+    }
+    await expect(
+      page.locator('.lt-livebar'),
+      'three taps 400ms apart left the broadcast running: the third landed on an armed take-back',
+    ).toHaveCount(0, { timeout: 20_000 });
+  });
+
   /** Three and five taps, because a frustrated person does not stop at two. */
   for (const taps of [3, 5] as const) {
     test(`${taps} fast taps on END still end the broadcast`, async ({ page }) => {

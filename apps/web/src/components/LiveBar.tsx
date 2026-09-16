@@ -41,7 +41,7 @@ export function LiveBar(): ReactElement | null {
   const onAir = production.state !== 'IDLE' && production.state !== 'PREVIEW';
   const elapsedMs = useElapsed(production.startedAt, onAir);
   const graceLeft = useGrace(endingAt);
-  const undoArmed = useUndoArmed(endingAt);
+  const { armed: undoArmed, pushBack: pushUndoBack } = useUndoArmed(endingAt);
 
   /*
    * The tab title is the one place a backgrounded live stream can still announce itself, and it
@@ -152,7 +152,15 @@ export function LiveBar(): ReactElement | null {
             data-lt-stop="undo"
             aria-disabled={!undoArmed || undefined}
             onClick={() => {
-              if (!undoArmed) return;
+              if (!undoArmed) {
+                /*
+                 * Not merely ignored — the window restarts. Otherwise this swallowed press just
+                 * moves the next one into the armed state, and the tap after an ignored tap
+                 * cancels the stop the creator has now asked for twice.
+                 */
+                pushUndoBack();
+                return;
+              }
               undoEnd();
             }}
           >
@@ -213,14 +221,40 @@ function useElapsed(startedAt: number | undefined, onAir: boolean): number {
 export const UNDO_ARM_MS = 550;
 
 /** False for the first {@link UNDO_ARM_MS} of a scheduled END, true for the rest of the grace. */
-function useUndoArmed(endingAt: number | null): boolean {
+/**
+ * Is the take-back live yet, and how to push it back out again.
+ *
+ * THE WINDOW IS MEASURED FROM THE LAST PRESS, NOT FROM END.
+ *
+ * It used to be measured only from `endingAt`, which guarded a double-tap and let a THIRD tap
+ * through — and a third tap is not a rarer event than a second one, it is what the same frustrated
+ * person does a moment later. Tap one ends the broadcast. Tap two lands on the inert take-back and
+ * is swallowed. Tap three arrives after the window has expired, finds the take-back armed, and
+ * cancels the stop. The swallowed tap flips the parity: an ODD number of presses, which should
+ * always leave the broadcast ending, leaves it running.
+ *
+ * Observed once in a full E2E run — `3 fast taps on END left the broadcast running`, `.lt-livebar`
+ * expected 0, received 1 — and it reproduces only when the taps land between about 275 ms and
+ * 550 ms apart, which is why it passed six times in a row on an idle machine. A creator on a slow
+ * phone taps in exactly that band.
+ *
+ * So every press that lands while the control is inert restarts the window. Hammering can never
+ * arm the take-back: it stays inert for as long as somebody keeps hitting it, and a take-back
+ * still costs one deliberate, separated press, which is what the original comment meant by "a key
+ * that arrives too fast to have been aimed at a button that did not exist yet".
+ */
+function useUndoArmed(endingAt: number | null): { armed: boolean; pushBack: () => void } {
   const [armed, setArmed] = useState(false);
+  /* Bumped on every inert press, so the effect below re-runs and re-arms the timer from now. */
+  const [pushedAt, setPushedAt] = useState<number | null>(null);
+
   useEffect(() => {
     if (endingAt === null) {
       setArmed(false);
       return undefined;
     }
-    const left = UNDO_ARM_MS - (Date.now() - endingAt);
+    const from = pushedAt !== null && pushedAt > endingAt ? pushedAt : endingAt;
+    const left = UNDO_ARM_MS - (Date.now() - from);
     if (left <= 0) {
       setArmed(true);
       return undefined;
@@ -228,8 +262,12 @@ function useUndoArmed(endingAt: number | null): boolean {
     setArmed(false);
     const timer = setTimeout(() => setArmed(true), left);
     return () => clearTimeout(timer);
-  }, [endingAt]);
-  return armed;
+  }, [endingAt, pushedAt]);
+
+  return {
+    armed,
+    pushBack: () => setPushedAt(Date.now()),
+  };
 }
 
 /** 5 → 1, counting down the END grace the store is actually running. */
