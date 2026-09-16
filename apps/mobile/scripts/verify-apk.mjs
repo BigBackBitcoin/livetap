@@ -251,6 +251,36 @@ check(
     : `envMockMode() compares against ${mockComparisons.map((v) => JSON.stringify(v)).join(', ')}`,
 );
 
+/*
+ * The rest of the production configuration, read off the FINISHED artifact.
+ *
+ * Same two values verify-staged-web.mjs checks before packaging, asserted again here because this
+ * is the file that actually goes on a phone and the staging step can be skipped -- `npm run
+ * sync:android` stages whatever happens to be in apps/web/dist. Both are compiled in at build
+ * time, so an APK missing them cannot be fixed by configuring anything afterwards.
+ *
+ * Reported always, fatal only under LIVETAP_REQUIRE_PRODUCTION_CONFIG=1, because a sideloaded demo
+ * APK is a legitimate thing to build and this script must not refuse to verify one.
+ */
+const REQUIRE_PRODUCTION = process.env.LIVETAP_REQUIRE_PRODUCTION_CONFIG === '1';
+for (const [name, value, consequence] of [
+  [
+    'a relay is compiled in, so this phone can reach more than one destination',
+    (process.env.VITE_LIVETAP_RELAY_URL ?? '').trim(),
+    'without it the device is capped at ONE destination: one encoder, one RTMP socket',
+  ],
+  [
+    'a token broker origin is compiled in, so connecting an account can work',
+    (process.env.VITE_LIVETAP_BROKER_URL ?? '').trim(),
+    'without it /api/oauth/token resolves to the in-APK asset server and OAuth cannot complete',
+  ],
+]) {
+  const present = value !== '' && bundle.includes(value);
+  if (REQUIRE_PRODUCTION) check(name, present, present ? value : consequence);
+  else if (present) check(name, true, value);
+  else check(`${name} — NOT SET`, true, `${consequence} (not fatal: this is not a production build)`);
+}
+
 /* --- 6. the merged manifest ------------------------------------------------------ */
 
 const mergedManifestPath = MERGED_MANIFESTS.find((p) => existsSync(p));
