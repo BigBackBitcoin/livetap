@@ -66,6 +66,21 @@ describe('opening a relay session', () => {
     );
   });
 
+  it("reads the relay's actual 400 shape, where the useful half is in `details`", async () => {
+    /*
+     * The relay answers `{ error: 'Invalid destinations.', details: [...] }`. Reading only `error`
+     * showed a creator "Invalid destinations." and threw away the sentence naming which one and
+     * why — and this client was written against an assumed shape, so it did exactly that.
+     */
+    const fetchImpl = ok(
+      { error: 'Invalid destinations.', details: ['destinations[1]: Stream key is required.'] },
+      400,
+    );
+    await expect(openRelaySession([dest], { baseUrl: 'https://relay', fetchImpl })).rejects.toThrow(
+      /destinations\[1\]: Stream key is required\./,
+    );
+  });
+
   it('names the machine that did not answer, rather than saying fetch failed', async () => {
     const fetchImpl = vi.fn(async () => {
       throw new TypeError('Failed to fetch');

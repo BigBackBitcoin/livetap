@@ -86,7 +86,17 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
   readonly kind = 'browser' as const;
 
   private readonly deps: ResolvedDeps;
-  private readonly relay: RelayOptions | undefined;
+  /*
+   * NOT readonly, and the reason is the whole point of session-mode relay.
+   *
+   * A relay SESSION is created per broadcast — `POST /sessions` with this broadcast's destination
+   * list answers with the WHIP URL that forwards to exactly those destinations. That URL cannot
+   * exist when the engine is constructed, because the engine is constructed when the app loads and
+   * the destination list is whatever the person has chosen by the time they press GO LIVE. Holding
+   * `relay` readonly meant the only reachable configuration was a STATIC WHIP URL baked into the
+   * bundle at build time, which is why the relay shipped complete and unreachable.
+   */
+  private relay: RelayOptions | undefined;
   private readonly statsIntervalMs: number;
   private readonly metricsIntervalMs: number;
   private readonly onChunk: ((chunk: Blob, index: number) => void) | undefined;
@@ -192,6 +202,40 @@ export class BrowserEngine extends TypedEmitter<EngineEvents> implements MediaEn
       // A prediction, not a capability: Chromium-only in practice, and even there the audio
       // constraint is a hint. Use it to word the UI ("we will try"), never to promise.
       systemAudioLikely: this.deps.getDisplayMedia !== null && probablySupportsDisplayAudio(),
+    };
+  }
+
+  /**
+   * Point this engine at a relay session created for THIS broadcast.
+   *
+   * The relay's session API answers `POST /sessions` with a WHIP URL that forwards to exactly the
+   * destinations it was given, so the URL is only knowable once a person has chosen where they are
+   * going and pressed GO LIVE. Call this before starting outputs; call it with `null` after the
+   * broadcast ends, so a stale session URL cannot be reused by the next one.
+   *
+   * THROWS while relays are open, rather than quietly doing nothing. Changing the endpoint under a
+   * live WHIP session cannot move the bytes — they are already flowing to the old one — so a
+   * silent no-op here would look exactly like success while broadcasting to the previous
+   * broadcast's destination list. That is the one outcome worth crashing over.
+   *
+   * `token` here is the relay's `whipAuthorization` (`<user>:<pass>`; MediaMTX splits on the first
+   * colon). It is a credential: it is held in memory for the length of the broadcast and is never
+   * logged, never persisted, and never put in an event.
+   */
+  useRelaySession(session: { whipUrl: string; token?: string } | null): void {
+    if (this.relays.size > 0) {
+      throw new Error('Cannot change the relay session while a relay is publishing.');
+    }
+    if (!session) {
+      // Drop the session URL but keep any statically configured base, so an app that was built
+      // with a relay base still reports `relayConfigured` truthfully between broadcasts.
+      this.relay = this.relay?.whipBaseUrl ? { whipBaseUrl: this.relay.whipBaseUrl } : undefined;
+      return;
+    }
+    this.relay = {
+      whipBaseUrl: this.relay?.whipBaseUrl ?? '',
+      whipUrl: session.whipUrl,
+      ...(session.token ? { token: session.token } : {}),
     };
   }
 

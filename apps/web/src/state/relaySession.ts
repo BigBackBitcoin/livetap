@@ -165,10 +165,25 @@ export async function closeRelaySession(
   }
 }
 
+/**
+ * Pull the actionable part out of a refusal.
+ *
+ * The relay's 400 is `{ error: 'Invalid destinations.', details: [...] }` — the summary in
+ * `error` and the part worth reading in `details`, indexed per destination
+ * (`destinations[1]: Stream key is required.`). Reading only `error` would show a creator
+ * "Invalid destinations." and throw away the sentence that says which one and why.
+ *
+ * SAFE TO DISPLAY. The relay describes what is wrong without echoing the value — "Stream key
+ * contains characters that are not allowed", never the key — and addresses destinations by index.
+ * That is what makes it safe to put this text in a notice, which is rendered and kept in the log.
+ * If that ever stops being true on the relay side, this is the line that leaks it.
+ */
 async function readErrors(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as { errors?: unknown; error?: unknown };
-    if (Array.isArray(body.errors)) return body.errors.filter((e) => typeof e === 'string').join('; ');
+    const body = (await response.json()) as { errors?: unknown; details?: unknown; error?: unknown };
+    const list = Array.isArray(body.details) ? body.details : Array.isArray(body.errors) ? body.errors : null;
+    const detail = list ? list.filter((e) => typeof e === 'string').join('; ') : '';
+    if (detail) return detail;
     if (typeof body.error === 'string') return body.error;
   } catch {
     /* A relay that answers non-JSON tells us nothing useful; the status code already did. */

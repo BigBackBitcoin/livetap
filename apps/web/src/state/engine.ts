@@ -71,6 +71,26 @@ export function isMobileHost(): boolean {
  * send anything anywhere. Empty (the default) means the web surface honestly reports RTMP
  * destinations as needing the desktop app, which is what BrowserEngine already does.
  */
+/**
+ * Where the relay's SESSION API lives, and the credential for it.
+ *
+ * `VITE_LIVETAP_RELAY_URL` is the session API base — `infra/relay/README.md` is explicit that the
+ * web app's first step is `POST {VITE_LIVETAP_RELAY_URL}/sessions`. `relayOptions()` below has
+ * always passed the same value to the engine as `whipBaseUrl`, which is a different thing (the
+ * per-aspect WHIP base), and that mismatch is one half of why the relay was never actually
+ * reachable from a browser. The other half was that nothing called `/sessions` at all.
+ *
+ * Returns null when no relay is configured, which is the correct state for a build with no relay:
+ * the engine then refuses RTMP outputs with CONFIG_INVALID and says why, rather than pretending.
+ */
+export function relayApiConfig(): { baseUrl: string; token?: string } | null {
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+  const base = (env.VITE_LIVETAP_RELAY_URL ?? '').trim();
+  if (base === '') return null;
+  const token = (env.VITE_LIVETAP_RELAY_TOKEN ?? '').trim();
+  return { baseUrl: base, ...(token !== '' ? { token } : {}) };
+}
+
 function relayOptions(): { whipBaseUrl: string; whipUrl?: string; token?: string } | undefined {
   const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
   const base = (env.VITE_LIVETAP_RELAY_URL ?? '').trim();

@@ -615,6 +615,60 @@ describe('BrowserEngine outputs', () => {
     expect(h.outputs.filter((e) => e.type === 'outputUp')).toHaveLength(3);
   });
 
+  /**
+   * A relay SESSION is created per broadcast, so its WHIP URL cannot be known when the engine is
+   * constructed. `useRelaySession` is how it arrives, and it is the reason the relay was reachable
+   * in principle and unreachable in practice: `relay` was readonly, so the only configuration a
+   * browser could ever use was a static URL baked into the bundle at build time.
+   */
+  it('publishes to a relay session handed to it at GO LIVE, with no relay configured at build time', async () => {
+    const h = harness();
+    expect(h.engine.describeEnvironment().relayConfigured).toBe(false);
+
+    h.engine.useRelaySession({ whipUrl: 'https://relay.test/live/sess-1/whip', token: 'pub:pass' });
+    expect(h.engine.describeEnvironment().relayConfigured).toBe(true);
+
+    await h.engine.startPreview(cameraMoment(), '16:9');
+    await h.engine.start(request([output('yt', 'rtmps', '16:9'), output('tiktok', 'rtmps', '9:16')]));
+
+    const posts = h.fetch.calls.filter((c) => c.method === 'POST');
+    // ONE session for every destination: the relay derives the other formats server-side, which is
+    // the whole point of telling it the destination list up front.
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.url).toBe('https://relay.test/live/sess-1/whip');
+    expect(posts[0]!.headers.Authorization).toBe('Bearer pub:pass');
+  });
+
+  it('forgets the session endpoint when it is cleared, so the next broadcast cannot reuse it', async () => {
+    const h = harness();
+    h.engine.useRelaySession({ whipUrl: 'https://relay.test/live/sess-1/whip' });
+    h.engine.useRelaySession(null);
+    expect(h.engine.describeEnvironment().relayConfigured).toBe(false);
+
+    await h.engine.startPreview(cameraMoment(), '16:9');
+    await h.engine.start(request([output('yt', 'rtmps', '16:9')]));
+    // No relay, so the RTMP output is refused with a reason rather than published to a stale URL.
+    expect(h.outputs[0]).toMatchObject({ type: 'outputLost', code: 'CONFIG_INVALID' });
+  });
+
+  /**
+   * THROWS rather than quietly doing nothing.
+   *
+   * Bytes already flowing to the old endpoint cannot be moved by changing a field, so a silent
+   * no-op would look exactly like success while still broadcasting to the previous broadcast's
+   * destination list. That is worth crashing over.
+   */
+  it('refuses to change the relay session while a relay is publishing', async () => {
+    const h = harness();
+    h.engine.useRelaySession({ whipUrl: 'https://relay.test/live/sess-1/whip' });
+    await h.engine.startPreview(cameraMoment(), '16:9');
+    await h.engine.start(request([output('yt', 'rtmps', '16:9')]));
+
+    expect(() => h.engine.useRelaySession({ whipUrl: 'https://relay.test/live/sess-2/whip' })).toThrow(
+      /while a relay is publishing/,
+    );
+  });
+
   it('brings a late destination up immediately on an already-connected relay', async () => {
     const h = harness({ relay: { whipBaseUrl: 'https://relay.livetap.test/whip' } });
     await h.engine.startPreview(cameraMoment(), '16:9');

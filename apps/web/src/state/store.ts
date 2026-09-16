@@ -43,8 +43,9 @@ import * as persist from './persist.js';
 import { DEFAULT_SETTINGS } from './persist.js';
 import type { StorageLike } from './persist.js';
 import { envMockMode } from './mockMode.js';
-import { createEngine } from './engine.js';
+import { createEngine, relayApiConfig } from './engine.js';
 import type { EngineHost } from './engine.js';
+import { closeRelaySession, openRelaySession, toRelayDestination } from './relaySession.js';
 import { createRegistry } from './registry.js';
 import type { RegistryKind } from './registry.js';
 import { forgetStreamKey, readStreamKey, saveStreamKey } from './secrets.js';
@@ -242,6 +243,16 @@ export interface StoreDeps {
   registry?: AdapterRegistry;
   engine?: MediaEngine;
   mockMode?: boolean;
+  /**
+   * Where the relay's session API lives, injected rather than read from the environment.
+   *
+   * Defaults to `relayApiConfig()`, which is the real build-time configuration. It is a dependency
+   * for the same reason `engine` and `registry` are: `import.meta.env` is a static object under
+   * the test transform, so a test cannot stub it, and a relay path that can only be exercised by
+   * rebuilding the app is a relay path that stays untested. `null` means no relay, which is a
+   * real configuration and not an absent one.
+   */
+  relay?: { baseUrl: string; token?: string } | null;
   /** Injected so tests can drive the countdown and the END grace without waiting. */
   now?: () => number;
 }
@@ -252,6 +263,14 @@ interface Runtime {
   mockMode: boolean;
   offs: Array<() => void>;
   recordingId: string | null;
+  /**
+   * The relay session this broadcast is publishing through, or null when there is none.
+   *
+   * Held on the runtime rather than in the store because it is not state a screen ever renders —
+   * it exists to be torn down. Keeping it out of the store also keeps it out of anything that
+   * serialises state, which matters because the session id addresses a live forwarding path.
+   */
+  relaySessionId: string | null;
   /**
    * The END grace timer.
    *
@@ -458,6 +477,9 @@ function readBoot(): {
 export function createAppStore(deps: StoreDeps = {}): AppStore {
   let runtime: Runtime | null = null;
   const now = deps.now ?? ((): number => Date.now());
+  // `undefined` means "not specified, use the build's own configuration"; `null` means "no relay",
+  // which is a real answer. `??` keeps those apart where `||` would have collapsed them.
+  const relayConfig = deps.relay === undefined ? relayApiConfig() : deps.relay;
   const boot = readBoot();
 
   return create<AppState>((set, get) => {
@@ -477,6 +499,102 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           log: [...s.log, { at: entry.at, level: entry.level, text: entry.message }].slice(-2000),
         };
       });
+    };
+
+    /**
+     * Create the relay session this broadcast will publish through, and point the engine at it.
+     *
+     * THIS IS THE JOIN THAT WAS MISSING. A browser has no RTMP socket, so every RTMP destination
+     * on the web reaches its platform through the relay, and the relay only knows where to forward
+     * if it is told — once, at GO LIVE, with this broadcast's destination list. The relay's session
+     * API, its WHIP receiver and the engine's WHIP client were all complete and tested; nothing
+     * called `POST /sessions`, so the engine was left reading a static WHIP URL out of the build
+     * environment. That is why a relay could be running, correctly configured, and still receive
+     * nothing.
+     *
+     * NEVER THROWS, and never blocks GO LIVE. A relay that refuses or cannot be reached must not
+     * be able to stop a WHIP-native destination from going live, and the engine already fails each
+     * RTMP output individually with CONFIG_INVALID and a reason. So this reports the relay's own
+     * words once, as a notice, and lets the broadcast proceed to whatever it can still reach.
+     *
+     * ONE ENTRY PER DESTINATION, NOT PER PLATFORM. Destinations are keyed per authorized account,
+     * so two YouTube channels are two entries with two stream keys and two rows in the relay's
+     * forward list. Collapsing by platform would make multi-account look right and broadcast to
+     * one channel.
+     */
+    const armRelay = async (): Promise<void> => {
+      const r = runtime;
+      if (!r || r.mockMode) return;
+      const engine = r.engine as { useRelaySession?: (s: { whipUrl: string; token?: string } | null) => void };
+      // Desktop and mobile engines publish RTMP themselves and have no relay session to arm.
+      if (typeof engine.useRelaySession !== 'function') return;
+
+      const api = relayConfig;
+      const candidates = r.orchestrator
+        .listDestinations()
+        .filter((d) => d.config.enabled && !d.config.mock && d.config.ingest?.url);
+      if (candidates.length === 0) return;
+      if (!api) {
+        notice({
+          level: 'warning',
+          message:
+            'No relay is configured for this site, so destinations that need RTMP cannot be reached from a browser. Use the desktop app, or set a relay URL.',
+        });
+        return;
+      }
+
+      const destinations = [];
+      for (const d of candidates) {
+        // Read the key here and nowhere else on this path. It goes straight into the request body
+        // and is never held in the store, never put in a notice, and never logged.
+        const built = toRelayDestination(d.config, await readStreamKey(d.config.id));
+        if (built) destinations.push(built);
+      }
+      if (destinations.length === 0) return;
+
+      try {
+        const session = await openRelaySession(destinations, {
+          baseUrl: api.baseUrl,
+          ...(api.token ? { token: api.token } : {}),
+        });
+        engine.useRelaySession({
+          whipUrl: session.whipUrl,
+          ...(session.whipAuthorization ? { token: session.whipAuthorization } : {}),
+        });
+        if (runtime) runtime.relaySessionId = session.sessionId;
+      } catch (err) {
+        // The relay's own sentence is the actionable part and carries no secret; see readErrors().
+        notice({
+          level: 'warning',
+          message: err instanceof Error ? err.message : 'The relay could not be reached.',
+        });
+      }
+    };
+
+    /**
+     * Tear the relay session down, and forget the endpoint.
+     *
+     * Runs on every exit from a broadcast, including a cancelled start, because a session that is
+     * created and never deleted leaves a forwarding path alive on the relay holding this person's
+     * stream keys. `closeRelaySession` never throws for the same reason END never blocks: a relay
+     * that has already forgotten the session must not be able to stop someone stopping.
+     */
+    const disarmRelay = async (): Promise<void> => {
+      const r = runtime;
+      if (!r) return;
+      const id = r.relaySessionId;
+      r.relaySessionId = null;
+      const engine = r.engine as { useRelaySession?: (s: { whipUrl: string; token?: string } | null) => void };
+      try {
+        engine.useRelaySession?.(null);
+      } catch {
+        // Only throws while a relay is still publishing, which means the engine has not finished
+        // stopping. The session delete below still happens, and that is the part that matters.
+      }
+      if (!id) return;
+      const api = relayConfig;
+      if (!api) return;
+      await closeRelaySession(id, { baseUrl: api.baseUrl, ...(api.token ? { token: api.token } : {}) });
     };
 
     /** Cancel a scheduled END. Called by anything that makes the scheduled stop wrong. */
@@ -628,6 +746,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           mockMode,
           offs: [],
           recordingId: null,
+          relaySessionId: null,
           graceTimer: null,
           countdownTimer: null,
           startTimer: null,
@@ -1176,7 +1295,22 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           // correct it the moment the orchestrator reports what actually happened.
           if (get().goLive === 'starting') mirror();
         }, START_BUTTON_TIMEOUT_MS);
-        const started = r.orchestrator.goLive();
+        /*
+         * The relay is armed BEFORE the orchestrator, not after: the engine has to know this
+         * broadcast's WHIP URL before any output opens, because `openRelayOutput` reads the
+         * endpoint at the moment it publishes. Arming afterwards is a race the relay usually loses.
+         *
+         * Both steps are one promise, and `r.starting` is assigned SYNCHRONOUSLY, because a start
+         * is cancellable from the instant it begins. Awaiting `armRelay()` here on its own would
+         * leave a window — a network round-trip wide — in which `goLive` reads 'starting', the
+         * button says so, and `cancelStart` finds `r.starting` still null and so has nothing to
+         * cancel. `cancelStart` already handles a start that completes after the stop; what it
+         * cannot handle is a start it cannot see.
+         */
+        const started = (async (): Promise<void> => {
+          await armRelay();
+          await r.orchestrator.goLive();
+        })();
         r.starting = started;
         try {
           await started;
@@ -1215,6 +1349,9 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
             await r.orchestrator.stop();
           }
         } finally {
+          // A cancelled start still created a relay session; leaving it would leave a forwarding
+          // path alive on the relay holding this person's stream keys.
+          await disarmRelay();
           mirror();
           set({ goLive: 'idle' });
         }
@@ -1270,6 +1407,8 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           }
         }
         await r.orchestrator.stop();
+        // After the stop, so the engine's relays are closed and `useRelaySession(null)` is legal.
+        await disarmRelay();
         mirror();
         set({ goLive: 'idle', chat: [] });
       },
