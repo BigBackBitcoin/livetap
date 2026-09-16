@@ -28,7 +28,7 @@
 import type { PlatformId } from '@livetap/core';
 import * as persist from './persist.js';
 import { forgetStreamKey } from './secrets.js';
-import { forgetTokens } from './tokens.js';
+import { forgetTokens, type ConnectionRef } from './tokens.js';
 
 export type SessionPhase =
   | 'starting'
@@ -115,8 +115,22 @@ export function derivePhase(input: PhaseInput): SessionPhase {
 export interface DestroyInput {
   /** Destination ids whose stream keys are held in memory (or a desktop vault) for this session. */
   readonly destinationIds: readonly string[];
-  /** Platforms this session signed in to. Their tokens are dropped locally. */
-  readonly platforms: readonly PlatformId[];
+  /**
+   * The CONNECTIONS this session signed in to — one per authorized account, not one per
+   * platform. Their tokens are dropped locally.
+   *
+   * This was `readonly platforms: readonly PlatformId[]`, and the store built it with
+   * `[...new Set(destinations.map((d) => d.config.platform))]`. That is lossy before it arrives:
+   * a guest with Carter Gaming and Carter Live collapses to one `'youtube'`, so the loop below
+   * forgot ONE token and left the other in the vault. The guest was told their session was
+   * forgotten and a live grant for their second channel survived.
+   *
+   * Worse, the report would have said `clean: true` — truthfully, because `localStorage` really
+   * was empty. The survivor was in the token store, which this function measures nothing about.
+   * A privacy claim that is accurate about the half it looked at is the exact failure this module
+   * exists to prevent.
+   */
+  readonly connections: readonly ConnectionRef[];
   /** Injected in tests. Defaults to the real `localStorage` through `persist`. */
   readonly storage?: Pick<Storage, 'key' | 'removeItem' | 'length'>;
 }
@@ -124,6 +138,7 @@ export interface DestroyInput {
 export interface DestroyReport {
   /** Stream keys dropped, counted rather than named — a name is half a secret. */
   readonly streamKeysForgotten: number;
+  /** One entry per connection actually signed out. Platforms repeat when accounts do. */
   readonly platformsSignedOut: readonly PlatformId[];
   /**
    * `livetap.*` keys still readable AFTER the clear, measured not assumed.
@@ -202,10 +217,10 @@ export async function destroySession(input: DestroyInput): Promise<DestroyReport
   }
 
   const platformsSignedOut: PlatformId[] = [];
-  for (const platform of input.platforms) {
+  for (const connection of input.connections) {
     try {
-      await forgetTokens(platform);
-      platformsSignedOut.push(platform);
+      await forgetTokens(connection);
+      platformsSignedOut.push(connection.platform);
     } catch {
       /* Reported by omission rather than by exception. */
     }

@@ -1380,7 +1380,18 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
 
         const report = await destroySession({
           destinationIds: state.destinations.map((d) => d.config.id),
-          platforms: [...new Set(state.destinations.map((d) => d.config.platform))],
+          /*
+           * One entry per DESTINATION, de-duplicated by nothing.
+           *
+           * This was `[...new Set(destinations.map((d) => d.config.platform))]`, which threw away
+           * exactly the distinction this product now depends on: a guest with two YouTube
+           * channels produced one `'youtube'`, one token was forgotten, and the other survived
+           * the session that was supposed to end.
+           */
+          connections: state.destinations.map((d) => ({
+            connectionId: d.config.id,
+            platform: d.config.platform,
+          })),
         });
 
         /*

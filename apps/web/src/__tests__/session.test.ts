@@ -98,7 +98,7 @@ describe('destroying a guest session', () => {
     });
     const report = await destroySession({
       destinationIds: ['d1', 'd2'],
-      platforms: ['youtube'],
+      connections: [{ connectionId: 'd1', platform: 'youtube' }],
       storage,
     });
     expect(report.clean).toBe(true);
@@ -109,7 +109,7 @@ describe('destroying a guest session', () => {
 
   it('leaves keys belonging to other origins alone', async () => {
     const storage = fakeStorage({ 'livetap.intent': '"x"', 'theme.pref': 'dark' });
-    await destroySession({ destinationIds: [], platforms: [], storage });
+    await destroySession({ destinationIds: [], connections: [], storage });
     expect(storage.length).toBe(1);
     expect(storage.key(0)).toBe('theme.pref');
   });
@@ -118,14 +118,14 @@ describe('destroying a guest session', () => {
     // The failure this exists to catch: a future feature writes `livetap.somethingNew`
     // and forgets to add it to persist.KEYS.
     const storage = fakeStorage({ 'livetap.somethingNobodyRegistered': '1' });
-    const report = await destroySession({ destinationIds: [], platforms: [], storage });
+    const report = await destroySession({ destinationIds: [], connections: [], storage });
     expect(report.clean).toBe(true);
   });
 
   it('TELLS THE TRUTH when it could not clear everything', async () => {
     // A locked or quota-exhausted store. The wrong behaviour is reporting success.
     const storage = fakeStorage({ 'livetap.destinations': '[]' }, { refuseDelete: true });
-    const report = await destroySession({ destinationIds: [], platforms: [], storage });
+    const report = await destroySession({ destinationIds: [], connections: [], storage });
     expect(report.clean).toBe(false);
     expect(report.storageRemaining).toEqual(['livetap.destinations']);
   });
@@ -138,7 +138,7 @@ describe('destroying a guest session', () => {
      * function whose entire job is not to do that.
      */
     const storage = fakeStorage({ 'livetap.destinations': '[]' }, { refuseRead: true });
-    const report = await destroySession({ destinationIds: [], platforms: [], storage });
+    const report = await destroySession({ destinationIds: [], connections: [], storage });
     expect(report.storageReadable).toBe(false);
     expect(report.clean).toBe(false);
     // Empty, but it means "unknown" — which is why `clean` must not be derived from it alone.
@@ -147,7 +147,7 @@ describe('destroying a guest session', () => {
 
   it('reports readable and clean when there is genuinely no storage to write to', async () => {
     // Private mode with localStorage absent is not a failure to observe; there is nothing there.
-    const report = await destroySession({ destinationIds: [], platforms: [], storage: undefined });
+    const report = await destroySession({ destinationIds: [], connections: [], storage: undefined });
     expect(report.storageReadable).toBe(true);
   });
 
@@ -155,7 +155,7 @@ describe('destroying a guest session', () => {
     const { forgetStreamKey } = await import('../state/secrets.js');
     vi.mocked(forgetStreamKey).mockRejectedValueOnce(new Error('vault locked'));
     const storage = fakeStorage({});
-    const report = await destroySession({ destinationIds: ['d1', 'd2'], platforms: [], storage });
+    const report = await destroySession({ destinationIds: ['d1', 'd2'], connections: [], storage });
     expect(report.streamKeysForgotten).toBe(1);
     expect(report.clean).toBe(true);
   });

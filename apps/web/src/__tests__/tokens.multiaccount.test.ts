@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { destroySession } from '../state/session.js';
 import {
   credentialFor,
   forgetTokens,
@@ -173,6 +174,34 @@ describe('the upgrade path for someone already signed in', () => {
     expect(
       vault.entries.has('oauth:youtube'),
       'Disconnect said the account was gone and left its token in the keychain',
+    ).toBe(false);
+  });
+});
+
+describe('ending a guest session forgets every account, not every platform', () => {
+  /*
+   * `DestroyInput` used to take `readonly platforms: PlatformId[]`, and the store built it with
+   * `[...new Set(destinations.map((d) => d.config.platform))]`. Two YouTube channels collapsed to
+   * one `'youtube'`, so one token was forgotten and the other survived the session that ended.
+   *
+   * The cruel part is that the report would have said `clean: true` — truthfully, because
+   * `localStorage` really was empty. The survivor was in the token store, which `destroySession`
+   * measures nothing about. A privacy claim accurate about the half it looked at.
+   */
+  it('leaves no token behind when one platform holds two accounts', async () => {
+    await saveTokens(gaming, tokensFor('Carter Gaming', 'UC-gaming'));
+    await saveTokens(live, tokensFor('Carter Live', 'UC-live'));
+
+    await destroySession({
+      destinationIds: [],
+      connections: [gaming, live],
+      storage: { key: () => null, removeItem: () => undefined, length: 0 },
+    });
+
+    expect(await hasTokens(gaming), 'the first channel token survived the session').toBe(false);
+    expect(
+      await hasTokens(live),
+      'the SECOND channel token survived a session the guest was told had been forgotten',
     ).toBe(false);
   });
 });
