@@ -41,7 +41,12 @@ function installVault(): FakeVault {
     },
     delete: async (key) => entries.delete(key),
   };
-  (globalThis as { window?: Record<string, unknown> }).window = { livetap: { vault } } as never;
+  /*
+   * Through `unknown`: happy-dom already declares a real `Window` here, so TypeScript will not
+   * let a stub be assigned over it directly. The stub is the whole point — these tests are about
+   * what reaches the vault, so the vault has to be one this test can read back.
+   */
+  (globalThis as unknown as { window: unknown }).window = { livetap: { vault } };
   return vault;
 }
 
@@ -60,7 +65,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete (globalThis as { window?: unknown }).window;
+  delete (globalThis as unknown as { window?: unknown }).window;
 });
 
 describe('two accounts on one platform', () => {
