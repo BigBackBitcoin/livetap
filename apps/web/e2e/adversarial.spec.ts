@@ -751,86 +751,18 @@ test.describe('the destinations, under abuse', () => {
 test.describe('the landing page, under abuse', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  /**
-   * "Use my camera" is the exact control the invisible band ate, so it is the control a denial is
-   * tested on: the tap has to reach it, the refusal has to be said in words, and the page has to
-   * be usable afterwards.
-   */
-  test('denying the camera says so, and leaves the button reachable and working', async ({
-    page,
-  }) => {
-    const thrown: string[] = [];
-    page.on('pageerror', (error) => thrown.push(error.message));
-    await page.addInitScript(() => {
-      const api = navigator.mediaDevices;
-      if (!api) return;
-      api.getUserMedia = (): Promise<MediaStream> => {
-        const error = new Error('Permission denied');
-        error.name = 'NotAllowedError';
-        return Promise.reject(error);
-      };
-    });
-    await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
-    await page.waitForTimeout(800);
+/*
+ * TWO CAMERA-BUTTON TESTS WERE HERE, and their subject has gone.
+ *
+ * Both drove `[data-lt-camera-cta]`, the "Use my camera" control on the operable replica of the
+ * product that used to be embedded in the landing page. The landing is now a film, two pictures
+ * and a button, so there is no camera control on it to deny, hammer, or leave reachable.
+ *
+ * The behaviours they guarded are real and still guarded, in the place they actually happen: a
+ * denied camera in the app is covered by the app's own permission tests, and a hammered control
+ * is covered by the END and take-back adversarial tests above, which is where hammering has
+ * consequences. Deleted rather than repointed, because a test aimed at a surface that no longer
+ * exists cannot be made to pass by finding it a new target.
+ */
 
-    const cta = page.locator('[data-lt-camera-cta]').first();
-    await cta.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(400);
-    const owned = await cta.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return {
-        onTop: Boolean(hit && (hit === el || el.contains(hit))),
-        hitBy: hit ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 60)}` : 'nothing',
-      };
-    });
-    expect(owned.onTop, `a tap on "Use my camera" reaches ${owned.hitBy} instead`).toBe(true);
-
-    await cta.click();
-    await expect(page.locator('[data-lt-camera-note]')).toHaveText(
-      'No camera permission, so the sample picture stays. Nothing was recorded.',
-      { timeout: 10_000 },
-    );
-    // And it offers to try again rather than latching into the failure.
-    await expect(page.locator('[data-lt-camera-label]').first()).toHaveText('Use my camera');
-    expect(thrown, 'a denied camera threw').toEqual([]);
-  });
-
-  /** Fifteen taps in a row on the same control, which is what an impatient visitor does. */
-  test('hammering "Use my camera" leaves the page usable', async ({ page }) => {
-    const thrown: string[] = [];
-    page.on('pageerror', (error) => thrown.push(error.message));
-    await page.addInitScript(() => {
-      const api = navigator.mediaDevices;
-      if (!api) return;
-      api.getUserMedia = (): Promise<MediaStream> => {
-        const error = new Error('Permission denied');
-        error.name = 'NotAllowedError';
-        return Promise.reject(error);
-      };
-    });
-    await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
-    await page.waitForTimeout(800);
-
-    const cta = page.locator('[data-lt-camera-cta]').first();
-    await cta.scrollIntoViewIfNeeded();
-    const box = (await cta.boundingBox())!;
-    for (let i = 0; i < 15; i += 1) {
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { delay: 0 });
-    }
-    await page.waitForTimeout(1_500);
-
-    expect(thrown, 'the landing page threw while its camera button was hammered').toEqual([]);
-    expect(
-      await auditInteractionOwnership(page, { step: 48 }),
-      'the page was left with something invisible on top',
-    ).toEqual([]);
-    // The page still scrolls, which is the property the first of the three historical bugs broke.
-    const before = await page.evaluate(() => scrollY);
-    await page.mouse.wheel(0, 600);
-    await page.waitForTimeout(400);
-    expect(await page.evaluate(() => scrollY), 'the page stopped scrolling').not.toBe(before);
-  });
 });

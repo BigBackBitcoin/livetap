@@ -208,37 +208,16 @@ describe('the page copies the product, and cannot drift from it', () => {
   });
 });
 
-describe('the icon set belongs to the app, not to this page', () => {
-  it('uses the same path data as Icons.tsx for every glyph the page draws', () => {
-    const icons = readFileSync(
-      join(ROOT, '..', '..', 'packages', 'ui', 'src', 'components', 'Icons.tsx'),
-      'utf8',
-    );
-    const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-    /* The markup references the chrome's glyphs directly; the Moment and intent glyphs are
-       picked by domain id at runtime, so they are counted by their symbols rather than here. */
-    const used = Array.from(html.matchAll(/href="#(i|m|n)-([a-z-]+)"/g), (m) => m[0]);
-    expect(used.length).toBeGreaterThan(15);
-
-    /* Every `d` attribute inside the page's sprite has to exist verbatim in the component
-       source, so a glyph change in `packages/ui` cannot leave the public page behind. */
-    const spriteStart = html.indexOf('<svg class="ltp-sprite"');
-    const sprite = html.slice(spriteStart, html.indexOf('</svg>', spriteStart));
-    /* The leading whitespace matters: a bare `d="` also matches inside `id="`. */
-    const paths = Array.from(sprite.matchAll(/\sd="([\s\S]+?)"/g), (m) => m[1]!);
-    expect(paths.length).toBeGreaterThan(40);
-    const missing = paths.filter((d) => {
-      const flat = d.replace(/\s+/g, ' ').trim();
-      return !icons.includes(d) && !icons.includes(flat);
-    });
-    /* The mark is DESIGN_SYSTEM §1.2 rather than an icon, so its two arcs are exempt. */
-    const markPaths = [
-      'M15.94 20.91A6 6 0 0 0 15.94 11.09',
-      'M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22',
-    ];
-    expect(missing.filter((d) => !markPaths.includes(d.replace(/\s+/g, ' ').trim()))).toEqual([]);
-  });
-});
+/*
+ * The icon-sprite guard was here, and it no longer has a subject.
+ *
+ * It asserted that every glyph the landing page drew matched `Icons.tsx` verbatim, so a change in
+ * `packages/ui` could not leave the public page behind. The landing embedded the product's whole
+ * chrome at the time. It no longer draws any of the app's glyphs -- the page is a film, two
+ * pictures and a button -- so there is nothing left for the two to disagree about. Deleted rather
+ * than loosened, because a test that can no longer fail is worse than no test: it reads like
+ * coverage.
+ */;
 
 describe('the Scroll Craft engine is vendored, not forked', () => {
   it('carries no project-local edit', () => {

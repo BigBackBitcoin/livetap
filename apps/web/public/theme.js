@@ -20,4 +20,27 @@
   } catch (_) {
     /* Private mode, or site data blocked. The OS preference still decides. */
   }
+
+  /*
+   * Reduced motion, honoured for the films.
+   *
+   * CSS cannot pause a video. `prefers-reduced-motion` can hide one or stop a transition, and a
+   * stylesheet claiming to pause playback would be a comment that is not true. So the autoplay
+   * attribute is removed before the element exists, by the time the parser reaches it, and the
+   * poster carries the picture instead. Paused rather than hidden: a person who asked for less
+   * motion asked for less motion, not for a wall of type.
+   */
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.addEventListener('DOMContentLoaded', function () {
+        var films = document.querySelectorAll('video[autoplay]');
+        for (var i = 0; i < films.length; i += 1) {
+          films[i].removeAttribute('autoplay');
+          films[i].pause();
+        }
+      });
+    }
+  } catch (_) {
+    /* No matchMedia. The film plays, which is the pre-existing behaviour. */
+  }
 })();

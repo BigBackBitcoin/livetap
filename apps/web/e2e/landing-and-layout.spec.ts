@@ -14,55 +14,36 @@ const VIEWPORTS = [
 ] as const;
 
 test.describe('landing', () => {
-  test('is the product running, with the six facts on its face', async ({ page }) => {
-    /*
-     * A full desk. Below 761px of height the chat panel and the Moments strip move into their
-     * own chapters' bands, so the surface's own facts are counted at the width the desk is
-     * composed for rather than at whatever the default device happens to be.
-     */
+  /*
+   * REPLACED THE SIX-FACTS TEST.
+   *
+   * That test asserted the landing was an operable replica of the product: six destinations, six
+   * Moments, three shape buttons, ten scroll acts, seven copy bands. All of it was true, and all
+   * of it was the reason the page carried 1,249 words and could not keep a main thread free. The
+   * page is now a film, two pictures and a button, so these assert what a landing owes a visitor
+   * instead of what a demo owes an inspector.
+   */
+  test('opens on the film, says one thing, and offers one way in', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
+    await page.waitForSelector('.lt-hero__line');
 
-    /*
-     * The heading order is real and the `<h1>` makes no claim: the largest type on the page is
-     * either a number the surface is counting or a sentence the surface is reporting about
-     * itself (LIVETAP_VISUAL_DIRECTION.md §3.2).
-     */
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-      'LIVETAP, go live everywhere without becoming a broadcast engineer',
-    );
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Go live.Be yourself.Anywhere.');
 
-    // Fact 6 is the only one carried by words, and it is six of them.
-    await expect(page.getByText('Free. Open source. Runs on your machine.')).toBeVisible();
-    // The honesty contract, non-dismissible, at first paint.
-    await expect(page.getByText('Demo surface. Nothing is broadcast anywhere.')).toBeVisible();
+    /* The film is the argument, so its absence is a failure rather than a downgrade. */
+    const film = page.locator('.lt-hero__film');
+    await expect(film).toHaveCount(1);
+    await expect(film).toHaveAttribute('poster', '/brand/creator.webp');
 
-    // Facts 1 to 4 are state on a surface: six destinations, six Moments, three shapes, one
-    // dominant action. The shape control exists twice, in the toolbar and in the Shapes band,
-    // and both copies are the same three buttons.
-    await expect(page.locator('[data-lt-dest]')).toHaveCount(6);
-    await expect(page.locator('[data-lt-moment]')).toHaveCount(6);
-    await expect(page.locator('[data-lt-formats]')).toHaveCount(2);
-    await expect(page.locator('.ltp-toolbar [data-lt-format-set]')).toHaveCount(3);
-    await expect(page.locator('[data-lt-golive]')).toBeVisible();
+    /* One dominant action, above the fold, pointing at the real onboarding route. */
+    const cta = page.getByRole('link', { name: 'Try it now' }).first();
+    await expect(cta).toBeVisible();
+    await expect(cta).toHaveAttribute('href', './app/start');
 
-    // The platform honesty nobody else in the category states out loud, in one line.
+    /* The honesty contract, injected at build time, still on the page a visitor reads. */
     await expect(
-      page.getByText('TikTok, Instagram and X publish no live chat API, so nothing from them appears here.'),
+      page.getByText('This hosted build is a demo: every destination is simulated and nothing is broadcast anywhere.'),
     ).toBeVisible();
-
-    // Eight chapters and two declared silences, all real sections with real headings.
-    await expect(page.locator('[data-sc-act]')).toHaveCount(10);
-    /*
-     * Seven of the eight chapters carry their copy in a band inside their own act, and a band
-     * is cued to opacity 0 while its chapter is off screen, so the peak's title is read off the
-     * element rather than looked up by role.
-     */
-    await expect(page.locator('[data-lt-band]')).toHaveCount(7);
-    await expect(page.locator('[data-lt-band="act-break"] .ltp-band__title')).toHaveText(
-      'Break it yourself.',
-    );
 
     await expect(page.getByRole('link', { name: 'GitHub' }).first()).toHaveAttribute(
       'href',
@@ -79,10 +60,15 @@ test.describe('landing', () => {
      * page answers it for them at boot (Talking on a desk, Vertical Live on a phone), so the
      * link already carries an intent before anything is tapped.
      */
-    await page.waitForSelector('html.sc-ready');
-    await expect(page.locator('[data-lt-open]')).toHaveAttribute(
+    await page.waitForSelector('.lt-hero__line');
+    /*
+     * The landing used to pre-answer the app's first question by guessing an intent from the
+     * viewport, and carried a script to do it. A guess that is wrong costs a visitor more than
+     * the tap it saved, so the way in is the onboarding route and the app asks its own question.
+     */
+    await expect(page.getByRole('link', { name: 'Try it now' }).first()).toHaveAttribute(
       'href',
-      './app/start?intent=talking',
+      './app/start',
     );
 
     const hrefs = await page
@@ -96,7 +82,7 @@ test.describe('landing', () => {
           ),
         ),
       );
-    expect(hrefs).toContain('./app/start?intent=talking');
+    expect(hrefs).toContain('./app/start');
     expect(hrefs.length).toBeGreaterThan(4);
 
     for (const href of hrefs) {
@@ -110,7 +96,7 @@ test.describe('landing', () => {
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto('/');
-      await page.waitForSelector('html.sc-ready');
+      await page.waitForSelector('.lt-hero__line');
       await page.waitForTimeout(300);
       expect(await hasHorizontalOverflow(page), `landing overflows at ${viewport.name}`).toBe(false);
     }
@@ -138,7 +124,7 @@ test.describe('landing', () => {
     });
 
     await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
+    await page.waitForSelector('.lt-hero__line');
 
     const scripts = await page.locator('script').evaluateAll((nodes) =>
       nodes.map((node) => ({
@@ -151,7 +137,13 @@ test.describe('landing', () => {
     expect(scripts.every((s) => s.inline === 0)).toBe(true);
     // The theme carrier is a classic script in `<head>`, so a chosen theme never flashes.
     expect(scripts.find((s) => s.src === '/theme.js')?.type).toBe('');
-    expect(scripts.filter((s) => s.type === 'module').length).toBeGreaterThan(0);
+    /*
+     * NO module script at all, which is stricter than the "at least one" this used to assert.
+     * The landing carries one classic script of about 1 KB and nothing else: the moment a bundle
+     * appears here, the page has started becoming the product again.
+     */
+    expect(scripts.filter((s) => s.type === 'module').length).toBe(0);
+    expect(scripts.length).toBe(1);
 
     const raw = Array.from(transferred.values()).reduce((a, b) => a + b, 0);
     /*
@@ -165,23 +157,28 @@ test.describe('landing', () => {
     // No React on the marketing document, and nothing built by a renderer.
     const served = await (await page.request.get('/')).text();
     expect(served).not.toContain('id="root"');
-    expect(served).toContain('What are you making?');
-    expect(served).toContain('Free. Open source. Runs on your machine.');
+    /* The statement and the honesty line, in the served document rather than built by a script. */
+    expect(served).toContain('Go live.');
+    expect(served).toContain('Free and open source. Runs in your browser.');
   });
 
   /**
    * A theme chosen inside the app is honoured on the marketing page too, and the page's own
    * toggle writes the same key.
    */
-  test('carries a theme the visitor chose in the app, and can change it', async ({ page }) => {
+  test('carries the theme the visitor chose in the app', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => window.localStorage.setItem('livetap.theme', 'light'));
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
-    await page.waitForSelector('html.sc-ready');
-    await page.locator('[data-lt-theme]').click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    /*
+     * The toggle lived on the landing when the landing was a replica of the product. It belongs
+     * where someone is actually working, so the page now only CARRIES the choice. That is the
+     * half that matters: a visitor who picked dark in the app must not be flashed white on the
+     * way back.
+     */
+    await page.evaluate(() => window.localStorage.setItem('livetap.theme', 'dark'));
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
@@ -189,6 +186,43 @@ test.describe('landing', () => {
     await page.reload();
     // `system` is stored as a preference, so the attribute is absent and the OS decides.
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
+  });
+
+  /*
+   * CARRIED FORWARD FROM `experience.spec.ts`, which was deleted with the surface it tested.
+   *
+   * That file had 34 tests and every one addressed the operable replica of the product that used
+   * to be embedded here. Two of its properties outlive the replica, and this is the one not
+   * already covered above: a page whose argument is a looping film owes something to a visitor
+   * who has asked their machine for less movement.
+   *
+   * CSS cannot pause a video, so `theme.js` removes `autoplay` and pauses the films. A rule in the
+   * stylesheet claiming to do it would be a comment that is not true.
+   */
+  test('a visitor who asked for less movement gets a still picture, not a wall of type', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.waitForSelector('.lt-hero__line');
+    await page.waitForTimeout(600);
+
+    const films = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('video')).map((v) => ({
+        paused: v.paused,
+        autoplay: v.hasAttribute('autoplay'),
+        poster: v.getAttribute('poster') ?? '',
+      })),
+    );
+    expect(films.length).toBeGreaterThan(0);
+    for (const film of films) {
+      expect(film.paused, 'a film kept playing for a visitor who asked it not to').toBe(true);
+      expect(film.autoplay).toBe(false);
+      /* Paused, not hidden: the poster still carries the picture. */
+      expect(film.poster).not.toBe('');
+    }
+    await context.close();
   });
 
   test('the not-found page names itself, offers the way back, and returns a real 404', async ({
@@ -289,7 +323,7 @@ test.describe('nothing invisible is ever on top', () => {
    */
   test('no transparent element is hit-testable anywhere on the page', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
+    await page.waitForSelector('.lt-hero__line');
     await page.waitForTimeout(1000);
 
     const offenders = await auditInteractionOwnership(page, { step: 48, scrollStep: 100 });
@@ -298,7 +332,7 @@ test.describe('nothing invisible is ever on top', () => {
 
   test('the page has no accidental scroll container to swallow a wheel tick', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
+    await page.waitForSelector('.lt-hero__line');
     await page.waitForTimeout(800);
 
     const containers = await page.evaluate(() =>
@@ -316,15 +350,23 @@ test.describe('nothing invisible is ever on top', () => {
 
   test('a wheel tick over the stage always moves the page', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
+    await page.waitForSelector('.lt-hero__line');
     await page.waitForTimeout(800);
-    await page.evaluate(() => scrollTo({ top: 6400, behavior: 'instant' }));
+    /*
+     * A third of the way down, computed rather than a fixed 6400px. That constant was inside a
+     * 12.6-viewport-height page; on any shorter page it lands past the bottom, where every wheel
+     * tick is correctly dead and the test fails for the one reason it is not looking for.
+     */
+    const room = await page.evaluate(() => document.body.scrollHeight - innerHeight);
+    expect(room, 'the page is too short to test a wheel tick').toBeGreaterThan(400);
+    await page.evaluate((r) => scrollTo({ top: Math.round(r / 3), behavior: 'instant' }), room);
     await page.waitForTimeout(300);
     await page.mouse.move(720, 450);
 
+    const ticks = Math.min(8, Math.floor(room / 3 / 120));
     let dead = 0;
     let previous = await page.evaluate(() => scrollY);
-    for (let i = 0; i < 12; i += 1) {
+    for (let i = 0; i < ticks; i += 1) {
       await page.mouse.wheel(0, 120);
       await page.waitForTimeout(90);
       const now = await page.evaluate(() => scrollY);
@@ -392,50 +434,17 @@ test.describe('hidden means hidden', () => {
   });
 });
 
-/**
- * The offer is made once.
+/*
+ * THE QUICK-TOUR TESTS WERE HERE, and the feature they covered has gone with its subject.
  *
- * "Store the completion/skip state locally" is easy to write and easy to get subtly wrong, and the
- * failure mode is the one the brief is most against: a visitor who has already answered being
- * asked again, forever. Three things have to hold - it appears for someone who has not answered,
- * either answer retires it permanently, and taking the tour by any other route counts as an
- * answer - and none of them is observable without reloading the page, which is exactly why they
- * were worth testing rather than trusting.
+ * The tour was a guided walkthrough of the operable replica of the product that used to be
+ * embedded in the landing page: it pointed at that replica's rail, its destinations and its
+ * Moments. Removing the replica removed everything the tour had to show, so the offer, its two
+ * answers and `public/main.ts` that drove them are all unreferenced now.
+ *
+ * Deleted rather than repointed at the real app. A first-run tour belongs in the product, where
+ * the things it points at are real and a person is actually trying to do something; a tour of a
+ * simulation on a marketing page teaches the simulation. If a tour is wanted in the app it is a
+ * new feature with its own tests, not these ones moved.
  */
-test.describe('the quick-tour offer', () => {
-  test('is offered to a first-time visitor', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.locator('[data-lt-offer]')).toBeVisible();
-  });
 
-  test('Skip retires it, and a reload does not bring it back', async ({ page }) => {
-    await page.goto('/');
-    await page.locator('[data-lt-offer-no]').click();
-    await expect(page.locator('[data-lt-offer]')).toBeHidden();
-
-    await page.reload();
-    await page.waitForTimeout(800);
-    await expect(page.locator('[data-lt-offer]')).toBeHidden();
-  });
-
-  test('taking the tour counts as an answer', async ({ page }) => {
-    await page.goto('/');
-    await page.locator('[data-lt-offer-yes]').click();
-    await expect(page.locator('.ltp-tour')).toBeVisible();
-
-    await page.reload();
-    await page.waitForTimeout(800);
-    await expect(page.locator('[data-lt-offer]')).toBeHidden();
-  });
-
-  test('opening the tour from the rail also retires the offer', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.locator('[data-lt-offer]')).toBeVisible();
-    await page.locator('[data-lt-tour-open]').click();
-    await expect(page.locator('.ltp-tour')).toBeVisible();
-
-    await page.reload();
-    await page.waitForTimeout(800);
-    await expect(page.locator('[data-lt-offer]')).toBeHidden();
-  });
-});

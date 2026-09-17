@@ -112,7 +112,7 @@ test.describe('screens', () => {
        * the same shot every run.
        */
       await page.goto('/');
-      await page.waitForSelector('html.sc-ready');
+      await page.waitForSelector('.lt-hero__line');
       await page.waitForSelector('[data-lt-golive-sub][data-lt-yourturn="true"]');
       await still(page);
       await page.waitForTimeout(400);
@@ -183,7 +183,7 @@ test.describe('visual baselines', () => {
   test('landing at desktop', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
-    await page.waitForSelector('html.sc-ready');
+    await page.waitForSelector('.lt-hero__line');
     await expect(page.locator('[data-lt-golive-sub]')).toHaveAttribute(
       'data-lt-yourturn',
       'true',

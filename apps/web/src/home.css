@@ -1,0 +1,308 @@
+/*
+ * The landing page's stylesheet.
+ *
+ * WHAT THIS REPLACED AND WHY. The previous landing was a ten-act scroll film across 12.6
+ * viewport-heights, with an operable replica of the product embedded in it: 1,249 visible words,
+ * 396 elements, 70 KB of CSS, and a main thread so busy that a script injection could not land
+ * inside five seconds after twenty seconds of settling. It also used two of the eight campaign
+ * assets and none of the films. The owner's verdict was "too much words everywhere, looks tacky",
+ * and the length was pinned by a test, which is why it had never shrunk.
+ *
+ * So the argument moved from the copy to the film. A landing page's job is to make someone tap
+ * through, not to be the product: the real thing is one tap away and needs no preview of itself.
+ *
+ * NO RAW COLOUR IN HERE. `landing-rules.test.ts` fails on a hex, `rgb()` or `hsl()` anywhere in
+ * this file. Every colour is a token or a `color-mix` of tokens, which is also what makes the page
+ * follow the theme a visitor chose inside the app without a second palette existing.
+ */
+/*
+ * TOKENS ONLY, not the whole design system.
+ *
+ * `@livetap/ui/styles.css` also pulls `components.css`, which is 35 KB of button, card, field and
+ * status styles the landing does not use one of: this page is its own small set of classes over
+ * the shared palette. Importing the lot cost more CSS than the entire page. The app keeps using
+ * the full entry, so nothing about the product changes.
+ */
+@import '@livetap/ui/tokens.css';
+
+:root {
+  --ltp-font-display: 'Archivo', 'Segoe UI Variable Display', 'Helvetica Neue', Arial, sans-serif;
+  --ltp-hair: color-mix(in oklab, var(--lt-text-primary) 12%, transparent);
+  --ltp-veil: color-mix(in oklab, var(--lt-bg-0) 72%, transparent);
+  --ltp-veil-deep: color-mix(in oklab, var(--lt-bg-0) 94%, transparent);
+  --ltp-measure: 34ch;
+  --ltp-gutter: clamp(20px, 5vw, 64px);
+}
+
+/* ===================================================================== ground */
+
+body {
+  margin: 0;
+  background: var(--lt-bg-0);
+  color: var(--lt-text-primary);
+  font-family: var(--lt-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.lt-skip-link {
+  position: absolute;
+  left: -9999px;
+}
+.lt-skip-link:focus {
+  left: var(--ltp-gutter);
+  top: var(--lt-space-2);
+  z-index: 3;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-bg-2);
+  color: var(--lt-text-primary);
+}
+
+a {
+  color: inherit;
+}
+
+/* ==================================================================== chrome */
+
+.lt-top {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-3);
+  padding: var(--lt-space-3) var(--ltp-gutter);
+}
+
+.lt-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+  font-family: var(--ltp-font-display);
+  font-weight: var(--lt-weight-semibold);
+  letter-spacing: 0.14em;
+  font-size: 0.82rem;
+}
+
+.lt-mark__glyph {
+  width: 22px;
+  height: 22px;
+}
+
+/* ====================================================================== hero */
+
+/*
+ * The film sits UNDER the words rather than beside them, because the product's promise is the
+ * life in the picture and not a feature beside it. `object-fit: cover` plus a scrim is what keeps
+ * the type legible over a moving image at every aspect a phone or a desktop can present.
+ */
+.lt-hero {
+  position: relative;
+  display: grid;
+  align-items: end;
+  min-height: 92svh;
+  padding: var(--lt-space-6) var(--ltp-gutter) clamp(48px, 9svh, 96px);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.lt-hero__film,
+.lt-hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.lt-hero__film {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lt-hero__scrim {
+  background:
+    linear-gradient(to top, var(--ltp-veil-deep) 12%, transparent 62%),
+    linear-gradient(to right, var(--ltp-veil) 4%, transparent 58%);
+}
+
+.lt-hero__say {
+  max-width: var(--ltp-measure);
+}
+
+.lt-hero__line {
+  margin: 0;
+  font-family: var(--ltp-font-display);
+  font-weight: var(--lt-weight-semibold);
+  font-size: clamp(2.6rem, 9vw, 5.2rem);
+  line-height: 0.96;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.lt-hero__sub {
+  margin: var(--lt-space-3) 0 var(--lt-space-4);
+  font-size: clamp(1rem, 2.4vw, 1.18rem);
+  line-height: var(--lt-leading-14);
+  color: var(--lt-text-secondary);
+}
+
+.lt-hero__note {
+  margin: var(--lt-space-3) 0 0;
+  font-size: 0.82rem;
+  color: var(--lt-text-secondary);
+}
+
+/* ======================================================================== cta */
+
+.lt-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 var(--lt-space-5);
+  border-radius: var(--lt-radius-full);
+  background: var(--lt-accent-live-solid);
+  color: var(--lt-on-live, var(--lt-bg-0));
+  font-weight: var(--lt-weight-semibold);
+  font-size: 1.02rem;
+  text-decoration: none;
+  transition: transform var(--lt-dur-1) var(--lt-ease-standard);
+}
+.lt-cta:hover {
+  transform: translateY(-1px);
+}
+.lt-cta:focus-visible {
+  outline: 2px solid var(--lt-accent-focus);
+  outline-offset: 3px;
+}
+
+.lt-cta--big {
+  min-height: 60px;
+  font-size: 1.12rem;
+}
+
+/* ===================================================================== beats */
+
+.lt-beats {
+  display: grid;
+  gap: clamp(40px, 6vw, 72px);
+  padding: clamp(64px, 11svh, 128px) var(--ltp-gutter);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .lt-beats {
+    /*
+     * Two, not three. There are two films, so a third card repeats a face, and a repeated face
+     * reads as stock photography rather than as a cast. The claim that used to sit in the third
+     * card is already in the hero.
+     */
+    grid-template-columns: repeat(2, 1fr);
+    gap: clamp(48px, 7vw, 96px);
+    align-items: start;
+  }
+}
+
+.lt-beat {
+  display: grid;
+  gap: var(--lt-space-3);
+  align-content: start;
+}
+
+.lt-beat__art {
+  width: 100%;
+  /*
+   * `height: auto` is load-bearing, not tidiness. The `height="360"` attribute on the images is a
+   * presentational hint that wins when no CSS height is declared, so `aspect-ratio` never applied
+   * and the picture cards came out at three different heights with their headings out of line.
+   * The attributes stay, because they are what reserves space before the image arrives.
+   */
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-bg-2);
+}
+
+.lt-beat__head {
+  margin: 0;
+  font-family: var(--ltp-font-display);
+  font-weight: var(--lt-weight-semibold);
+  font-size: clamp(1.28rem, 3vw, 1.6rem);
+  line-height: var(--lt-leading-12);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.lt-beat__say {
+  margin: 0;
+  max-width: 40ch;
+  line-height: var(--lt-leading-14);
+  color: var(--lt-text-secondary);
+}
+
+/* ===================================================================== close */
+
+.lt-close {
+  display: grid;
+  justify-items: center;
+  gap: var(--lt-space-4);
+  padding: clamp(64px, 12svh, 144px) var(--ltp-gutter);
+  border-top: 1px solid var(--ltp-hair);
+  text-align: center;
+}
+
+.lt-close__head {
+  margin: 0;
+  font-family: var(--ltp-font-display);
+  font-weight: var(--lt-weight-semibold);
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+/* ==================================================================== footer */
+
+.lt-foot {
+  display: grid;
+  gap: var(--lt-space-2);
+  padding: var(--lt-space-5) var(--ltp-gutter) var(--lt-space-6);
+  border-top: 1px solid var(--ltp-hair);
+  font-size: 0.82rem;
+  color: var(--lt-text-secondary);
+}
+
+.lt-foot__note {
+  margin: 0;
+}
+
+.lt-foot__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-3);
+}
+
+.lt-foot__nav a {
+  text-decoration: none;
+}
+.lt-foot__nav a:hover {
+  color: var(--lt-text-primary);
+}
+
+/* ============================================================ reduced motion */
+
+/*
+ * A looping film is motion the visitor did not ask for. The films themselves are paused by
+ * `theme.js`, because CSS cannot pause a video and a rule here pretending to would be a comment
+ * that is not true. This half is only what CSS can actually honour.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .lt-cta {
+    transition: none;
+  }
+  .lt-cta:hover {
+    transform: none;
+  }
+}

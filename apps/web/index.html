@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>LIVETAP, go live everywhere without becoming a broadcast engineer</title>
+    <title>LIVETAP, go live everywhere in one tap</title>
     <meta
       name="description"
-      content="A free, open-source live production app for creators. Connect YouTube, Twitch, TikTok and more, say what you are making, tap GO LIVE. One production, every platform, each on its own connection. Break it yourself and watch it recover."
+      content="Go live on every channel you have from one tap. Free, open source, no account, nothing to configure."
     />
     <meta name="theme-color" content="#0A0B0D" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#F4F6F8" media="(prefers-color-scheme: light)" />
@@ -20,7 +20,7 @@
     <meta property="og:title" content="LIVETAP, go live everywhere in one tap" />
     <meta
       property="og:description"
-      content="Break your own live stream and watch it survive. Free and open source."
+      content="Go live on every channel you have from one tap. Free and open source."
     />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/brand/hero-a.webp" />
@@ -41,8 +41,15 @@
       type="font/woff2"
       crossorigin
     />
-    <link rel="stylesheet" href="./src/landing.css" />
-    <link rel="stylesheet" href="./src/public/acts.css" />
+    <link rel="stylesheet" href="./src/home.css" />
+
+    <!--
+      The hero poster, not the hero film.
+
+      The film is 154 KB and the poster is 18 KB, and the poster is what decides whether the
+      first frame is the page or a black rectangle. Preloading the video instead would compete
+      with the font and the stylesheet for the only thing that matters on arrival.
+    -->
     <link rel="preload" href="/brand/creator.webp" as="image" fetchpriority="high" />
 
     <!--
@@ -54,639 +61,104 @@
   </head>
 
   <body id="lt-page" data-lt-demo="true">
-    <a class="lt-skip-link" href="#surface">Skip to the live surface</a>
-    <div class="sc-grain" aria-hidden="true"></div>
+    <a class="lt-skip-link" href="#start">Skip to the demo</a>
 
-    <h1 class="lt-sr-only">LIVETAP, go live everywhere without becoming a broadcast engineer</h1>
-
-    <!--
-      The icon set, once.
-
-      These are the path bodies from `packages/ui/src/components/Icons.tsx`, so a glyph change
-      changes both surfaces. Stroke, cap, join and fill are set in CSS on `.lt-icon`, which are
-      inherited SVG properties and therefore cross into every `<use>` instance: the grid is
-      24x24, the stroke is 1.75, and the colour is always `currentColor`.
-      `src/__tests__/public-data.test.ts` re-extracts them and fails if this copy drifts.
-    -->
-    <svg class="ltp-sprite" aria-hidden="true" focusable="false">
-      <symbol id="i-camera" viewBox="0 0 24 24">
-        <path d="M2.75 7.75a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2Z" />
-        <path d="m14.75 10.5 5.5-3.25v9.5l-5.5-3.25Z" />
-      </symbol>
-      <symbol id="i-mic" viewBox="0 0 24 24">
-        <path d="M12 3.75a3 3 0 0 1 3 3v4.5a3 3 0 0 1-6 0v-4.5a3 3 0 0 1 3-3Z" />
-        <path d="M5.75 11.5a6.25 6.25 0 0 0 12.5 0" />
-        <path d="M12 17.75v2.5" />
-        <path d="M9 20.25h6" />
-      </symbol>
-      <symbol id="i-mic-off" viewBox="0 0 24 24">
-        <path d="M15 7.5v-.75a3 3 0 0 0-5.66-1.4" />
-        <path d="M9 10.5v1.25a3 3 0 0 0 4.9 2.32" />
-        <path d="M5.75 11.5a6.25 6.25 0 0 0 9.6 5.27" />
-        <path d="M18.25 11.5v.25" />
-        <path d="M12 17.75v2.5" />
-        <path d="M9 20.25h6" />
-        <path d="M3.75 3.75 20.25 20.25" />
-      </symbol>
-      <symbol id="i-screen" viewBox="0 0 24 24">
-        <path
-          d="M3.25 5.75a1.5 1.5 0 0 1 1.5-1.5h14.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5Z"
-        />
-        <path d="M12 16.25v3.5" />
-        <path d="M9 19.75h6" />
-      </symbol>
-      <symbol id="i-chat" viewBox="0 0 24 24">
-        <path
-          d="M19.25 13a1.75 1.75 0 0 1-1.75 1.75H9.25L5 18.25V6.5A1.75 1.75 0 0 1 6.75 4.75h10.75A1.75 1.75 0 0 1 19.25 6.5Z"
-        />
-      </symbol>
-      <symbol id="i-chart" viewBox="0 0 24 24">
-        <path d="M3.75 19.5h16.5" />
-        <path d="M6.5 16.75V13M11 16.75V8.5M15.5 16.75v-5M20 16.75V5.5" />
-      </symbol>
-      <symbol id="i-alert" viewBox="0 0 24 24">
-        <path d="M12 4.75 20.5 19.25H3.5Z" />
-        <path d="M12 10v3.75" />
-        <path d="M12 16.5h.01" />
-      </symbol>
-      <symbol id="i-check" viewBox="0 0 24 24">
-        <path d="m5.25 12.5 4.5 4.5 9-9.5" />
-      </symbol>
-      <symbol id="i-x" viewBox="0 0 24 24">
-        <path d="m6.25 6.25 11.5 11.5M17.75 6.25 6.25 17.75" />
-      </symbol>
-      <symbol id="i-refresh" viewBox="0 0 24 24">
-        <path d="M19.25 12a7.25 7.25 0 1 1-2.4-5.4" />
-        <path d="M19.25 4.75V9.5h-4.75" />
-      </symbol>
-      <symbol id="i-play" viewBox="0 0 24 24">
-        <path d="M8.25 5.5 18.75 12 8.25 18.5Z" />
-      </symbol>
-      <symbol id="i-stop" viewBox="0 0 24 24">
-        <path d="M6.75 7.75a1 1 0 0 1 1-1h8.5a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1Z" />
-      </symbol>
-      <symbol id="i-record" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="7.75" />
-        <circle class="lt-ink" cx="12" cy="12" r="3.5" />
-      </symbol>
-      <symbol id="i-users" viewBox="0 0 24 24">
-        <circle cx="10.25" cy="8" r="3.25" />
-        <path d="M15.75 19.25v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4a3.5 3.5 0 0 0-3.5 3.5v1.5" />
-        <path d="M16.75 5.2a3.25 3.25 0 0 1 0 5.6" />
-        <path d="M19.75 19.25v-1.5a3.5 3.5 0 0 0-2.6-3.38" />
-      </symbol>
-      <symbol id="i-tv" viewBox="0 0 24 24">
-        <path
-          d="M3.75 8.5a1.75 1.75 0 0 1 1.75-1.75h13A1.75 1.75 0 0 1 20.25 8.5v8a1.75 1.75 0 0 1-1.75 1.75h-13A1.75 1.75 0 0 1 3.75 16.5Z"
-        />
-        <path d="m8.5 3.75 3.5 3 3.5-3" />
-      </symbol>
-      <symbol id="i-globe" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="8.25" />
-        <path d="M3.75 12h16.5" />
-        <path d="M12 3.75c2.5 2.6 2.5 13.9 0 16.5-2.5-2.6-2.5-13.9 0-16.5Z" />
-      </symbol>
-      <symbol id="i-sliders" viewBox="0 0 24 24">
-        <path d="M4.25 7.5h15.5M4.25 12h15.5M4.25 16.5h15.5" />
-        <circle cx="9" cy="7.5" r="1.75" />
-        <circle cx="15" cy="12" r="1.75" />
-        <circle cx="7.5" cy="16.5" r="1.75" />
-      </symbol>
-      <symbol id="i-chevron" viewBox="0 0 24 24">
-        <path d="m6.5 9.75 5.5 5.5 5.5-5.5" />
-      </symbol>
-      <symbol id="i-external-link" viewBox="0 0 24 24">
-        <path d="M14 4.75h5.25V10" />
-        <path d="M19.25 4.75 11.5 12.5" />
-        <path
-          d="M18 14.5v3.75a1.5 1.5 0 0 1-1.5 1.5H5.75a1.5 1.5 0 0 1-1.5-1.5V7.5A1.5 1.5 0 0 1 5.75 6H9.5"
-        />
-      </symbol>
-      <symbol id="i-spinner" viewBox="0 0 24 24">
-        <path d="M12 3.75a8.25 8.25 0 1 0 8.25 8.25" />
-      </symbol>
-      <symbol id="i-sun" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="3.75" />
-        <path d="M12 3.75v1.5M12 18.75v1.5M3.75 12h1.5M18.75 12h1.5" />
-        <path d="m6.4 6.4 1.05 1.05M16.55 16.55l1.05 1.05M17.6 6.4l-1.05 1.05M7.45 16.55 6.4 17.6" />
-      </symbol>
-      <symbol id="i-moon" viewBox="0 0 24 24">
-        <path d="M20 14.5A8.25 8.25 0 0 1 9.5 4a8.25 8.25 0 1 0 10.5 10.5Z" />
-      </symbol>
-
-      <!-- Moment glyphs. Main Camera, Screen Share and Guest reuse the system drawings. -->
-      <symbol id="m-starting-soon" viewBox="0 0 24 24">
-        <path d="M6.75 3.75h10.5M6.75 20.25h10.5" />
-        <path d="M8.5 3.75v3.6a2 2 0 0 0 .58 1.4L12 12l2.92-3.25a2 2 0 0 0 .58-1.4V3.75" />
-        <path d="M8.5 20.25v-3.6a2 2 0 0 1 .58-1.4L12 12l2.92 3.25a2 2 0 0 1 .58 1.4v3.6" />
-      </symbol>
-      <symbol id="m-break" viewBox="0 0 24 24">
-        <path d="M4.75 6.75h11.5v6a4.5 4.5 0 0 1-4.5 4.5h-2.5a4.5 4.5 0 0 1-4.5-4.5Z" />
-        <path d="M16.25 8.25h1.25a2.5 2.5 0 0 1 0 5h-1.25" />
-        <path d="M3.75 20.25h13.5" />
-      </symbol>
-      <symbol id="m-ending" viewBox="0 0 24 24">
-        <path d="M17.25 11V6.25a1.75 1.75 0 0 0-3.5 0" />
-        <path d="M13.75 10V4.5a1.75 1.75 0 0 0-3.5 0v1.75" />
-        <path d="M10.25 10.25V6.25a1.75 1.75 0 0 0-3.5 0v7.5" />
-        <path
-          d="M17.25 8.25a1.75 1.75 0 0 1 3.5 0v5.5a7 7 0 0 1-7 7h-1.5c-2.1 0-3.6-.8-5-2.2l-2.9-2.9a1.75 1.75 0 0 1 2.5-2.45l1.4 1.3"
-        />
-        <path d="M4.5 5.5 3.25 4.25M4 9.25H2.5" />
-      </symbol>
-
-      <!-- Intent glyphs, one per content type. -->
-      <symbol id="n-talking" viewBox="0 0 24 24">
-        <path
-          d="M3.25 5.25a1.5 1.5 0 0 1 1.5-1.5h14.5a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5Z"
-        />
-        <circle cx="12" cy="10.25" r="2.5" />
-        <path d="M7.75 18.25a4.25 4.25 0 0 1 8.5 0" />
-      </symbol>
-      <symbol id="n-gaming" viewBox="0 0 24 24">
-        <path d="M2.75 13.5a5.25 5.25 0 0 1 5.25-5.25h8a5.25 5.25 0 0 1 0 10.5H8a5.25 5.25 0 0 1-5.25-5.25Z" />
-        <path d="M7.75 11.5v4M5.75 13.5h4" />
-        <path d="M15.25 12h.01M17.5 14.25h.01" />
-      </symbol>
-      <symbol id="n-podcast" viewBox="0 0 24 24">
-        <path d="M8.5 4.75a1.5 1.5 0 0 1 1.5-1.5h4a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5Z" />
-        <path d="M10.5 6.25h3M10.5 8.75h3M10.5 11.25h3" />
-        <path d="M6 11.25v1a6 6 0 0 0 12 0v-1" />
-        <path d="M12 18.25v2.5M9 20.75h6" />
-      </symbol>
-      <symbol id="n-presentation" viewBox="0 0 24 24">
-        <path d="M4.75 15.25V6.25a1.5 1.5 0 0 1 1.5-1.5h11.5a1.5 1.5 0 0 1 1.5 1.5v9" />
-        <path d="M7.75 8.5h8.5M7.75 11.5h5" />
-        <path d="M3.25 15.25h17.5l1.1 2.4a1 1 0 0 1-.9 1.45H3.05a1 1 0 0 1-.9-1.45Z" />
-      </symbol>
-      <symbol id="n-event" viewBox="0 0 24 24">
-        <circle cx="12" cy="5.75" r="2.75" />
-        <path d="M12 8.5v7.75" />
-        <path d="M7.25 20.25 12 16.25l4.75 4" />
-      </symbol>
-      <symbol id="n-vertical" viewBox="0 0 24 24">
-        <path d="M7.25 4.75a2 2 0 0 1 2-2h5.5a2 2 0 0 1 2 2v14.5a2 2 0 0 1-2 2h-5.5a2 2 0 0 1-2-2Z" />
-        <path d="M10.5 5.25h3" />
-        <path d="M11 18.5h2" />
-      </symbol>
-
-      <!-- The mark. Its ripples never animate here. -->
-      <symbol id="i-mark" viewBox="0 0 32 32">
-        <rect x="2.5" y="2.5" width="27" height="27" rx="8.5" stroke-width="2" />
-        <circle class="ltp-mark__dot" cx="12.5" cy="16" r="3" />
-        <path d="M15.94 20.91A6 6 0 0 0 15.94 11.09" stroke-width="2" />
-        <path d="M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22" stroke-width="2" opacity="0.55" />
-      </symbol>
-    </svg>
-
-    <!-- LAYER 7 · FOREGROUND · fixed, outside the act stack, never parallaxed. -->
-    <header class="ltp-rail" role="banner">
-      <a class="ltp-rail__brand" href="/" aria-label="LIVETAP home">
-        <svg class="ltp-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-          <use href="#i-mark" />
+    <header class="lt-top">
+      <span class="lt-mark">
+        <svg class="lt-mark__glyph" viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+          <rect x="2.5" y="2.5" width="27" height="27" rx="8.5" stroke="currentColor" stroke-width="2" />
+          <circle cx="12.5" cy="16" r="3" fill="var(--lt-accent-live-solid)" />
+          <path d="M15.94 20.91A6 6 0 0 0 15.94 11.09" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <path d="M17.95 23.78A9.5 9.5 0 0 0 17.95 8.22" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".55" />
         </svg>
-        <span class="ltp-rail__wordmark">LIVETAP</span>
-      </a>
-
-      <nav class="ltp-rail__nav" aria-label="Sections">
-        <a class="ltp-rail__item" href="#act-hero">
-          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-tv" /></svg>
-          <span>Stage</span>
-        </a>
-        <a class="ltp-rail__item" href="#act-break">
-          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-alert" /></svg>
-          <span>Break it</span>
-        </a>
-        <a class="ltp-rail__item" href="#act-shape">
-          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-chart" /></svg>
-          <span>Shapes</span>
-        </a>
-        <a class="ltp-rail__item" href="#act-outputs">
-          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-globe" /></svg>
-          <span>Outputs</span>
-        </a>
-        <a class="ltp-rail__item" href="#act-versus">
-          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-sliders" /></svg>
-          <span>Versus</span>
-        </a>
-      </nav>
-
-      <div class="ltp-rail__foot">
-        <button
-          class="lt-iconbtn lt-iconbtn--md ltp-rail__theme"
-          type="button"
-          data-lt-theme
-          aria-label="Switch to the light theme"
-        >
-          <svg class="lt-icon lt-icon--24 ltp-rail__sun" aria-hidden="true" focusable="false"><use href="#i-sun" /></svg>
-          <svg class="lt-icon lt-icon--24 ltp-rail__moon" aria-hidden="true" focusable="false"><use href="#i-moon" /></svg>
-        </button>
-        <button class="ltp-rail__item ltp-rail__tour" type="button" data-lt-tour-open aria-expanded="false">
-          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-check" /></svg>
-          <span>Tour</span>
-        </button>
-        <a class="ltp-rail__item" href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener">
-          <svg class="lt-icon lt-icon--24" aria-hidden="true" focusable="false"><use href="#i-external-link" /></svg>
-          <span>GitHub</span>
-        </a>
-      </div>
+        LIVETAP
+      </span>
     </header>
 
-    <div class="ltp-statusbar" role="status" aria-live="off">
-      <span class="lt-badge lt-badge--info ltp-statusbar__demo">Demo surface. Nothing is broadcast anywhere.</span>
-      <span class="ltp-statusbar__readout"><output id="st-dests" data-lt-out="dests">0 destinations</output></span>
-      <span class="ltp-statusbar__readout"><output id="st-formats" data-lt-out="formats">1 format</output></span>
-      <span class="ltp-statusbar__readout">
-        <span class="lt-pill lt-pill--unknown" data-lt-health>
-          <span class="lt-dot" aria-hidden="true"></span>
-          <output id="st-health" data-lt-out="health">Idle</output>
-        </span>
-      </span>
-      <span class="ltp-statusbar__readout ltp-statusbar__clock">
-        <output id="st-clock" class="lt-num" data-lt-out="clock" aria-label="Live for 0 minutes">0:00</output>
-      </span>
-      <span class="ltp-statusbar__free">Free. Open source. Runs on your machine.</span>
-    </div>
+    <main>
+      <!--
+        THE FILM IS THE ARGUMENT.
 
-    <!-- LAYERS 1-6 · the one fixed live surface. Mounted at first paint, never unmounted. -->
-    <section
-      id="surface"
-      class="ltp-surface"
-      data-lt-surface
-      data-lt-source="demo"
-      data-sc-verify-state="16:9|------|0|0|simple"
-      aria-labelledby="surface-h"
-    >
-      <h2 id="surface-h" class="lt-sr-only">The live surface, a demo you can operate</h2>
+        The product's promise is freedom, not software, so the hero shows someone living it
+        rather than someone operating an interface. `playsinline` is what stops iOS taking the
+        video fullscreen and throwing the visitor out of the page on arrival.
+      -->
+      <section class="lt-hero">
+        <video
+          class="lt-hero__film"
+          poster="/brand/creator.webp"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="none"
+          aria-hidden="true"
+          tabindex="-1"
+        >
+          <source src="/brand/creator.webm" type="video/webm" />
+          <source src="/brand/creator.mp4" type="video/mp4" />
+        </video>
+        <div class="lt-hero__scrim"></div>
 
-      <svg class="ltp-signal" data-lt-signal aria-hidden="true" focusable="false">
-        <path data-lt-path="youtube" />
-        <path data-lt-path="twitch" />
-        <path data-lt-path="tiktok" />
-        <path data-lt-path="instagram" />
-        <path data-lt-path="x" />
-        <path data-lt-path="facebook" />
-      </svg>
-
-      <div class="ltp-monitor">
-        <div class="ltp-stagewrap">
-          <div class="ltp-stage" data-lt-stage data-lt-format="16:9" data-lt-active-moment="main-camera">
-            <div class="ltp-stage__frame" data-lt-frame>
-              <div class="ltp-stage__canvas" data-lt-canvas>
-                <div class="ltp-layer" data-lt-layer="color"></div>
-                <div class="ltp-layer" data-lt-layer="screen"></div>
-                <div class="ltp-layer" data-lt-layer="camera"></div>
-                <div class="ltp-layer" data-lt-layer="guest"></div>
-                <p class="ltp-layer ltp-layer--text" data-lt-layer="text"></p>
-                <div class="ltp-guides" data-lt-guides aria-hidden="true">
-                  <span class="ltp-guides__box"></span>
-                  <span class="ltp-guides__zone ltp-guides__zone--bottom">Chat and captions</span>
-                  <span class="ltp-guides__zone ltp-guides__zone--right">Buttons</span>
-                </div>
-                <div class="ltp-stage__badges" aria-hidden="true">
-                  <span class="ltp-stage__live" data-lt-stage-live hidden>
-                    <span class="lt-dot lt-dot--pulse"></span>LIVE
-                  </span>
-                  <span class="ltp-stage__shape lt-num" data-lt-shape>16:9</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!--
-            The picture carries the production and nothing else.
-            A "Use my camera" button and a privacy caption used to sit ON the stage: a duplicate of
-            the control already in the hero above, and a caption over the exact pixels the product
-            exists to show. Controls and captions belong outside the output, so the note moved out
-            here and the duplicate button went away entirely - the hero's button is the one control,
-            and it already becomes "Stop my camera" when the camera is on.
-          -->
-          <p class="ltp-stage__source" data-lt-stage-source>
-            <span class="ltp-stage__sourcenote" data-lt-camera-note>Sample picture.</span>
+        <div class="lt-hero__say">
+          <h1 class="lt-hero__line">Go live.<br />Be yourself.<br />Anywhere.</h1>
+          <p class="lt-hero__sub">
+            Every channel you have, from one tap. No account, nothing to set up.
           </p>
-          <p class="ltp-stage__state" data-lt-stateline>Nothing is connected yet.</p>
-          <p class="ltp-stage__detail" data-lt-statedetail>Tap a destination to open its own connection.</p>
-        </div>
-
-        <ul class="ltp-dests" data-lt-dests>
-          <!-- six tiles, one per destination, built from DESTINATIONS in document order -->
-        </ul>
-      </div>
-
-      <div class="ltp-desk">
-        <div class="ltp-toolbar">
-          <div class="ltp-toolbar__golive">
-            <button class="lt-golive" type="button" data-lt-golive aria-live="off">
-              <span class="lt-golive__label" data-lt-golive-label>GO LIVE (DEMO)</span>
-              <span class="lt-golive__count lt-num" data-lt-golive-count hidden></span>
-              <span class="lt-golive__cancel" data-lt-golive-cancel hidden>Cancel</span>
-            </button>
-            <p class="ltp-toolbar__sub" data-lt-golive-sub data-lt-yourturn="false">No destination is ready</p>
-          </div>
-
-          <div class="ltp-toolbar__formats" role="radiogroup" aria-label="Canvas shape" data-lt-formats>
-            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="true" data-lt-format-set="16:9">16:9</button>
-            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-format-set="9:16">9:16</button>
-            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-format-set="1:1">1:1</button>
-          </div>
-
-          <div class="ltp-toolbar__inputs">
-            <button class="ltp-input lt-touch" type="button" aria-pressed="false" data-lt-input="camera">
-              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-camera" /></svg>
-              <span class="ltp-input__name">Camera</span>
-              <span class="ltp-input__state" data-lt-input-state>Off</span>
-            </button>
-            <button class="ltp-input lt-touch" type="button" aria-pressed="false" data-lt-input="mic">
-              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-mic" /></svg>
-              <span class="ltp-input__name">Microphone</span>
-              <span class="ltp-input__state" data-lt-input-state>Off</span>
-              <span class="lt-meter ltp-input__meter" data-lt-meter>
-                <span class="lt-meter__track">
-                  <span class="lt-meter__fill" data-lt-meter-fill></span>
-                  <span class="lt-meter__peak" data-lt-meter-peak></span>
-                </span>
-              </span>
-            </button>
-            <button class="ltp-input lt-touch" type="button" aria-pressed="false" data-lt-input="screen">
-              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-screen" /></svg>
-              <span class="ltp-input__name">Screen</span>
-              <span class="ltp-input__state" data-lt-input-state>Off</span>
-            </button>
-          </div>
-
-          <div class="ltp-toolbar__mode" role="radiogroup" aria-label="Simple or Pro" data-lt-mode>
-            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="true" data-lt-mode-set="simple">Simple</button>
-            <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-mode-set="pro">Pro</button>
-          </div>
-        </div>
-
-        <div class="ltp-prolayers" data-lt-prolayers hidden>
-          <div class="ltp-prorow" data-lt-prorow="quality"></div>
-          <div class="ltp-prorow" data-lt-prorow="ceiling"></div>
-          <div class="ltp-prorow" data-lt-prorow="audio"></div>
-          <div class="ltp-prorow" data-lt-prorow="log"></div>
-        </div>
-
-        <div class="ltp-desk__row">
-          <div class="ltp-moments" role="group" aria-label="Moments" data-lt-moments>
-            <!-- six Moment cards, built from MOMENTS -->
-          </div>
-
-          <section class="ltp-chat" data-lt-chat aria-labelledby="chat-h">
-            <h3 class="ltp-chat__title" id="chat-h">
-              <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-chat" /></svg>
-              Chat
-            </h3>
-            <ol class="ltp-chat__log" data-lt-chatlog role="log" aria-live="polite" aria-relevant="additions" tabindex="0">
-              <li class="ltp-chat__empty" data-lt-chatempty>Chat arrives once you are live.</li>
-            </ol>
-            <p class="ltp-chat__note">
-              TikTok, Instagram and X publish no live chat API, so nothing from them appears here.
-            </p>
-          </section>
-        </div>
-      </div>
-
-      <!-- LAYER 6 · INTERACTION · populated only while something is happening. -->
-      <div class="ltp-interaction" data-lt-interaction></div>
-
-      <!-- Four live regions, one per concern. A page with ten announces nothing. -->
-      <div class="lt-live-region" aria-live="polite" data-lt-say="dest"></div>
-      <div class="lt-live-region" aria-live="assertive" data-lt-say="broadcast"></div>
-      <div class="lt-live-region" aria-live="polite" data-lt-say="tour"></div>
-    </section>
-
-    <!--
-      The act stack. Eight chapters and two declared silences, 12.9 viewport-heights, seven device
-      families: pin, flow, reveal, pan, count, flow + in, pointer. Each chapter's copy lives in a
-      band INSIDE its own act, in the region the surface leaves free, with a cue that opens as the
-      chapter's travel begins and closes before the chapter leaves: copy is never on screen while
-      a stage slides through a seam, which is what the audit called "narration clipped at the top
-      edge". Between chapters the console alone is on screen, which is the grammar's own beat.
-    -->
-    <main class="ltp-acts">
-      <!-- ACT 1 · HERO · pin 1.3 · the statement over a console already playing a picture -->
-      <section id="act-hero" class="ltp-act ltp-act--hero" data-sc-act="pin" data-sc-span="1.3" aria-labelledby="a1-h">
-        <div data-sc-stage class="ltp-act__stage">
-          <span class="ltp-act__plate" aria-hidden="true"></span>
-          <div class="ltp-band ltp-band--hero" data-lt-band="act-hero" data-sc-cue="0 0.86 0">
-            <h2 id="a1-h" class="ltp-band__title ltp-band__title--hero">
-              Go live everywhere.<br />Without becoming a broadcast engineer.
-            </h2>
-            <p class="ltp-band__lede">
-              LIVETAP is a free, open-source live production app for streamers and creators. Connect
-              YouTube, Twitch, TikTok and more, say what you are making, tap GO LIVE. One production,
-              every platform, each on its own connection.
-            </p>
-            <div class="ltp-band__tools">
-              <button class="lt-btn lt-btn--primary lt-btn--md lt-touch" type="button" data-lt-camera-cta>
-                <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-camera" /></svg>
-                <span data-lt-camera-label>Use my camera</span>
-              </button>
-              <a class="lt-btn lt-btn--secondary lt-btn--md" href="./app/start">Try the web demo</a>
-              <span class="ltp-band__trust">Runs on your machine. Nothing on this page is broadcast.</span>
-            </div>
-            <!--
-              The offer, made once.
-              Inline rather than floating: a fixed panel over the stage would be a second thing
-              owning a region that already has an owner, and this page has an end-to-end test
-              that fails when anything invisible or uninvited sits on top of a control.
-              Hidden by default and revealed by script only for a visitor who has not answered
-              it, so a returning visitor never sees it flash before it is taken away.
-            -->
-            <p class="ltp-offer" data-lt-offer hidden>
-              <span class="ltp-offer__q">New here?</span>
-              <button class="lt-btn lt-btn--secondary lt-btn--sm lt-touch" type="button" data-lt-offer-yes>Quick tour</button>
-              <button class="lt-textlink lt-touch" type="button" data-lt-offer-no>Skip</button>
-            </p>
-          </div>
+          <a class="lt-cta" id="start" href="./app/start">Try it now</a>
+          <p class="lt-hero__note">Free and open source. Runs in your browser.</p>
         </div>
       </section>
 
-      <!-- REST A · flow · the silence before the peak -->
-      <section class="ltp-rest" data-sc-act="flow" data-lt-rest="a" aria-hidden="true"></section>
+      <section class="lt-beats">
+        <article class="lt-beat">
+          <img class="lt-beat__art" src="/brand/still-a.webp" alt="" width="960" height="540" loading="lazy" decoding="async" />
+          <h2 class="lt-beat__head">All of them. At once.</h2>
+          <p class="lt-beat__say">
+            Add the channels you already have. Pick the ones you want tonight. Tap once.
+          </p>
+        </article>
 
-      <!-- ACT 2 · BREAK IT · pin 2.8 · the peak, second on purpose -->
-      <section id="act-break" class="ltp-act ltp-act--peak" data-sc-act="pin" data-sc-span="2.8" aria-labelledby="a2-h" data-lt-peak>
-        <div data-sc-stage class="ltp-act__stage">
-          <span class="ltp-act__plate" aria-hidden="true"></span>
-          <div class="ltp-band ltp-band--lead" data-lt-band="act-break" data-sc-cue="0.02 0.95 0.06 0.12">
-            <h2 id="a2-h" class="ltp-band__title">Break it yourself.</h2>
-            <p class="ltp-band__lede">Drag a live destination off the stage.</p>
-            <div class="ltp-band__tools">
-              <button class="lt-btn lt-btn--primary lt-btn--md lt-touch" type="button" data-lt-break-cta>Go live, then break YouTube</button>
-              <!--
-                A first-use hint, not a caption. It says the one thing a visitor cannot guess, and
-                it leaves the moment they have done it once - the act then shows what happens
-                rather than describing it in advance, which is the whole point of the act.
-                The keyboard route is never hidden: it is the only route for anyone not using a
-                pointer, so it lives in the screen-reader line below and stays there forever.
-              -->
-              <span class="ltp-band__hint" data-lt-break-hint>Or drag any live tile off the stage.</span>
-              <span class="lt-sr-only">To break a destination with the keyboard, focus a live tile and press Delete.</span>
-            </div>
-          </div>
-        </div>
+        <article class="lt-beat">
+          <video
+            class="lt-beat__art"
+            poster="/brand/guest.webp"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="none"
+            aria-hidden="true"
+            tabindex="-1"
+          >
+            <source src="/brand/guest.webm" type="video/webm" />
+            <source src="/brand/guest.mp4" type="video/mp4" />
+          </video>
+          <h2 class="lt-beat__head">One drops. The rest keep going.</h2>
+          <p class="lt-beat__say">
+            Every channel has its own connection, so a bad one reconnects on its own without
+            taking the others down.
+          </p>
+        </article>
       </section>
 
-      <!-- ACT 3 · SHAPES · pin 1.4 · reveal: the legend irises open, the picture re-frames on tap -->
-      <section id="act-shape" class="ltp-act" data-sc-act="pin" data-sc-span="1.4" aria-labelledby="a3-h">
-        <div data-sc-stage class="ltp-act__stage">
-          <span class="ltp-act__plate" aria-hidden="true"></span>
-          <div class="ltp-band ltp-band--trail" data-lt-band="act-shape" data-sc-cue="0.02 0.95 0.06 0.12">
-            <h2 id="a3-h" class="ltp-band__title">One production. Every shape.</h2>
-            <p class="ltp-band__lede">
-              16:9 for YouTube and Twitch, 9:16 for TikTok and Instagram, square for clips. Switch the
-              shape and the picture re-frames, with the space the platform keeps for chat drawn on it.
-            </p>
-            <div class="ltp-band__tools ltp-band__tools--legend" data-sc-reveal="iris" data-sc-reveal-at="0.06 0.42">
-              <div class="ltp-toolbar__formats" role="radiogroup" aria-label="Canvas shape" data-lt-formats>
-                <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="true" data-lt-format-set="16:9">16:9</button>
-                <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-format-set="9:16">9:16</button>
-                <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-format-set="1:1">1:1</button>
-              </div>
-              <span class="ltp-band__hint lt-num" data-lt-formattable></span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ACT 4 · MOMENTS · pan 1.8 · six looks travel sideways, each one a picture -->
-      <section id="act-moments" class="ltp-act ltp-act--pan" data-sc-act="pan" data-sc-span="1.8" aria-labelledby="a4-h">
-        <div data-sc-stage class="ltp-act__stage">
-          <span class="ltp-act__plate" aria-hidden="true"></span>
-          <div class="ltp-band ltp-band--rail" data-lt-band="act-moments" data-sc-cue="0.02 0.95 0.06 0.12">
-            <div class="ltp-lane" data-sc-pan="0.05" data-lt-moment-rail role="group" aria-label="Moments">
-              <div class="ltp-lane__lead">
-                <h2 id="a4-h" class="ltp-band__title">Tap a Moment. The picture changes.</h2>
-                <p class="ltp-band__lede">
-                  Six looks that come with the production, nothing to build first. Camera, microphone
-                  and screen switch on where they are needed.
-                </p>
-              </div>
-              <!-- six Moment cards, built from MOMENTS, each with a live thumbnail of that look -->
-              <div class="ltp-lane__trail">
-                <p class="ltp-band__lede">Every look is the same production, re-composed. Chat sees the switch as a cut, not a reload.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ACT 5 · OUTPUTS · pin 1.4 · count: the visitor's own numbers land, six pictures under them -->
-      <section id="act-outputs" class="ltp-act" data-sc-act="pin" data-sc-span="1.4" aria-labelledby="a5-h">
-        <div data-sc-stage class="ltp-act__stage">
-          <span class="ltp-act__plate" aria-hidden="true"></span>
-          <div class="ltp-band ltp-band--tall" data-lt-band="act-outputs">
-            <div class="ltp-band__inner" data-sc-cue="0.02 0.95 0.06 0.12">
-            <h2 id="a5-h" class="ltp-band__title">One production. Six correct pictures.</h2>
-            <p class="ltp-band__lede" data-lt-countwrap>
-              <span class="ltp-band__counts">
-                <span class="sc-nums lt-num ltp-band__num" data-sc-count="0 0" data-sc-count-at="0.06 0.3" data-lt-count="dests">0</span>
-                destinations,
-                <span class="sc-nums lt-num ltp-band__num" data-sc-count="0 0" data-sc-count-at="0.1 0.34" data-lt-count="formats">0</span>
-                shapes, one production.
-                <span data-lt-outputs-lede>Each platform gets what it accepts.</span>
-              </span>
-              <span class="ltp-band__nocounts">Nothing is picked yet. Pick destinations above and this counts them.</span>
-            </p>
-            <div class="ltp-band__tools ltp-band__tools--wide">
-              <div class="ltp-outputs" data-lt-outputs></div>
-            </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ACT 6 · VERSUS · flow · the lanes arrive staggered, in the page's own scroll -->
-      <section id="act-versus" class="ltp-act ltp-act--flow" data-sc-act="flow" aria-labelledby="a6-h">
-        <div class="ltp-act__flow">
-          <span class="ltp-act__plate" aria-hidden="true"></span>
-          <div class="ltp-band ltp-band--tall" data-lt-band="act-versus">
-            <div class="ltp-band__inner" data-sc-cue="0.08 0.92 0.08 0.1">
-            <h2 id="a6-h" class="ltp-band__title">Instead of OBS.</h2>
-            <p class="ltp-band__lede">
-              OBS is powerful and it works. It also names fourteen concepts before your first stream
-              and cannot multistream without a plugin. LIVETAP asks two questions.
-            </p>
-            <div class="ltp-band__tools ltp-band__tools--wide">
-              <div class="ltp-versus" data-lt-versus data-sc-in data-sc-stagger="90"></div>
-            </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ACT 7 · PRO · pin 1.2 · reveal: the control wipes up, Pro opens underneath -->
-      <section id="act-pro" class="ltp-act" data-sc-act="pin" data-sc-span="1.2" aria-labelledby="a7-h">
-        <div data-sc-stage class="ltp-act__stage">
-          <span class="ltp-act__plate" aria-hidden="true"></span>
-          <div class="ltp-band ltp-band--lead" data-lt-band="act-pro" data-sc-cue="0.02 0.95 0.06 0.12">
-            <h2 id="a7-h" class="ltp-band__title">Simple by default. Pro when you want it.</h2>
-            <p class="ltp-band__lede">
-              The same surface. Switch to Pro and the quality, what each platform accepts, the audio
-              balance and the session log appear above the desk. Nothing you learned moves.
-            </p>
-            <div class="ltp-band__tools" data-sc-reveal="up" data-sc-reveal-at="0.08 0.4">
-              <div class="ltp-toolbar__mode" role="radiogroup" aria-label="Simple or Pro" data-lt-mode>
-                <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="true" data-lt-mode-set="simple">Simple</button>
-                <button class="ltp-seg lt-touch" type="button" role="radio" aria-checked="false" data-lt-mode-set="pro">Pro</button>
-              </div>
-              <span class="ltp-band__hint">Pro is where the numbers live. Simple never shows them.</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- REST B · flow · the silence before the question -->
-      <section class="ltp-rest" data-sc-act="flow" data-lt-rest="b" aria-hidden="true"></section>
-
-      <!-- ACT 8 · MAKE · pin 1.3 · the close: the product's first question, chips that lean to the pointer, and it holds -->
-      <section id="act-make" class="ltp-act ltp-act--close" data-sc-act="pin" data-sc-span="1.3" aria-labelledby="a8-h">
-        <div data-sc-stage class="ltp-act__stage">
-          <div class="ltp-close" data-sc-cue="0.02 1 0 0">
-            <div class="ltp-close__head">
-              <h2 id="a8-h" class="ltp-close__q">What are you making?</h2>
-              <p class="ltp-close__lede">Pick one. The stage, the shape and the destinations change to match.</p>
-            </div>
-
-            <div class="ltp-intents" role="group" aria-labelledby="a8-h" data-lt-intents>
-              <!-- six intent chips, built from INTENTS -->
-            </div>
-
-            <p class="ltp-close__answer" data-lt-intent-answer></p>
-
-            <div class="ltp-close__bar">
-              <a class="lt-btn lt-btn--primary lt-btn--lg" href="./app/start" data-lt-open>Open LIVETAP</a>
-              <a class="lt-btn lt-btn--secondary lt-btn--md" href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener" data-lt-watch>
-                Watch on GitHub for the first build
-              </a>
-              <a class="lt-btn lt-btn--ghost lt-btn--md" href="https://github.com/BigBackBitcoin/livetap" rel="noreferrer noopener">
-                <svg class="lt-icon lt-icon--20" aria-hidden="true" focusable="false"><use href="#i-external-link" /></svg>
-                Code
-              </a>
-            </div>
-
-            <div class="ltp-capture" data-lt-capture></div>
-
-            <footer class="ltp-foot">
-              <svg class="ltp-mark ltp-mark--sm" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><use href="#i-mark" /></svg>
-              <p class="ltp-foot__note">
-                The first Windows build exists and is not published yet: it is unsigned, and publishing it is
-                the next thing. The web demo is real and runs in your browser. Watch the repository
-                and GitHub tells you the day it ships.<!--lt:demo-hero-->
-              </p>
-              <nav class="ltp-foot__nav" aria-label="Footer">
-                <a href="./app">Web demo</a>
-                <a href="/privacy">Privacy</a>
-                <a href="/terms">Terms</a>
-              </nav>
-              <p class="ltp-foot__note">No tracking cookies. Nothing to accept.<!--lt:demo-browser--></p>
-            </footer>
-          </div>
-        </div>
+      <section class="lt-close">
+        <h2 class="lt-close__head">Go live in the next minute.</h2>
+        <a class="lt-cta lt-cta--big" href="./app/start">Try it now</a>
       </section>
     </main>
 
-    <script type="module" src="./src/public/main.ts"></script>
+    <footer class="lt-foot">
+      <p class="lt-foot__note">
+        Free and open source. Nothing on this page is broadcast anywhere.<!--lt:demo-hero-->
+      </p>
+      <nav class="lt-foot__nav" aria-label="Footer">
+        <a href="./app">Demo</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="https://github.com/BigBackBitcoin/livetap">GitHub</a>
+      </nav>
+      <p class="lt-foot__note">No tracking cookies. Nothing to accept.<!--lt:demo-browser--></p>
+    </footer>
   </body>
 </html>

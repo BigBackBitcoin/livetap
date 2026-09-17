@@ -152,85 +152,75 @@ describe('the standing bans hold', () => {
   });
 });
 
-describe('the score is the one the Scroll Craft revision wrote', () => {
-  const acts = Array.from(html.matchAll(/data-sc-act="(\w+)"[^>]*?(?:data-sc-span="([\d.]+)")?/g));
+/*
+ * WHAT REPLACED THE SCROLL SCORE.
+ *
+ * The block that stood here asserted the landing ran ten acts across 12.6 viewport-heights in a
+ * fixed device sequence. It was an accurate description of a page that had 1,249 visible words, a
+ * main thread too busy to accept a script injection inside five seconds, and two of the eight
+ * campaign assets in use. The owner's verdict was "too much words everywhere, looks tacky", and
+ * the test was the reason it never shrank: it pinned the shape in place.
+ *
+ * These assert the properties that were actually wanted instead of the shape that was built.
+ */
+describe('the landing stays a landing', () => {
+  /** Visible copy: comments, scripts, styles and inline SVG removed. */
+  const visibleWords = (): string[] => {
+    const text = html
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<(script|style|svg)[\s\S]*?<\/>/gi, ' ')
+      .replace(/<[^>]*>/g, ' ');
+    return text.split(/\s+/).filter(Boolean);
+  };
 
-  it('runs eight chapters and two declared silences across seven device families', () => {
-    const devices = Array.from(html.matchAll(/data-sc-act="(\w+)"/g), (m) => m[1]!);
-    expect(devices).toEqual(['pin', 'flow', 'pin', 'pin', 'pan', 'pin', 'flow', 'pin', 'flow', 'pin']);
-    expect(acts.length).toBe(10);
-    expect(Array.from(html.matchAll(/data-lt-rest="/g))).toHaveLength(2);
-    const ids = Array.from(html.matchAll(/<section\s+id="(act-[a-z]+)"/g), (m) => m[1]!);
-    expect(ids).toEqual([
-      'act-hero',
-      'act-break',
-      'act-shape',
-      'act-moments',
-      'act-outputs',
-      'act-versus',
-      'act-pro',
-      'act-make',
-    ]);
-    /* The element devices that make the chapters differ: one iris, one up wipe, two real
-       counters, a pan rail, a staggered flow and pointer tilt on the close. */
-    expect(Array.from(html.matchAll(/data-sc-reveal="iris"/g))).toHaveLength(1);
-    expect(Array.from(html.matchAll(/data-sc-reveal="up"/g))).toHaveLength(1);
-    expect(Array.from(html.matchAll(/data-sc-pan="/g))).toHaveLength(1);
-    expect(Array.from(html.matchAll(/data-sc-stagger="/g))).toHaveLength(1);
-    expect(main).toContain("dataset.scTilt = '5'");
+  /*
+   * THE BUDGET IS THE POINT. A landing page's job is to make somebody tap through, and 1,249
+   * words is what it looks like when a page tries to be the product instead. The number is
+   * generous on purpose: this fails on a regression, not on an edit.
+   */
+  it('says what it needs in under 250 visible words', () => {
+    const words = visibleWords();
+    expect(words.length).toBeLessThan(250);
+    expect(words.length, 'the page lost its copy entirely').toBeGreaterThan(80);
   });
 
-  it('spends 12.6 viewport-heights, with the peak the largest span by a visible margin', () => {
-    const spans = Array.from(html.matchAll(/data-sc-span="([\d.]+)"/g), (m) => Number(m[1]));
-    expect(spans).toEqual([1.3, 2.8, 1.4, 1.8, 1.4, 1.2, 1.3]);
-    const pinned = spans.reduce((a, b) => a + b, 0);
-    /* Plus the flow chapter at 0.9 and the two silences at 0.25 each. */
-    expect(pinned + 0.9 + 0.5).toBeCloseTo(12.6, 5);
-    const peak = Math.max(...spans);
-    expect(spans.indexOf(peak)).toBe(1);
-    const next = spans.filter((s) => s !== peak).sort((a, b) => b - a)[0]!;
-    expect(peak / next).toBeGreaterThan(1.5);
+  it('leads with the film rather than describing it', () => {
+    expect(html).toMatch(/<video[^>]*class="lt-hero__film"/);
+    expect(html).toContain('/brand/creator.webm');
+    expect(html).toContain('/brand/creator.mp4');
+    /* A poster is what decides whether the first frame is the page or a black rectangle. */
+    expect(html).toMatch(/class="lt-hero__film"[\s\S]*?poster="\/brand\/creator\.webp"/);
   });
 
-  it('closes every cue but the last, and only the last holds', () => {
-    const cues = Array.from(html.matchAll(/data-sc-cue="([^"]+)"/g), (m) => m[1]!);
-    const holds = cues.filter((c) => c.trim().split(/\s+/).length === 1);
-    expect(holds).toEqual([]);
-    const closing = cues.filter((c) => c.endsWith('1 0 0'));
-    expect(closing).toHaveLength(1);
-    /* The hero greets: full at progress zero, so the landing view has its headline. */
-    expect(cues[0]).toMatch(/^0 /);
-  });
-
-  it('counts only numbers the visitor produced', () => {
-    const counters = Array.from(html.matchAll(/data-sc-count="([^"]+)"/g), (m) => m[1]!);
-    expect(counters).toHaveLength(2);
-    for (const c of counters) expect(c).toBe('0 0');
-  });
-
-  it('keeps every band inside its own act, never in a fixed layer', () => {
-    expect(html).not.toContain('data-lt-bands');
-    const bands = Array.from(html.matchAll(/data-lt-band="(act-[a-z]+)"/g), (m) => m[1]!);
-    expect(bands).toEqual(['act-hero', 'act-break', 'act-shape', 'act-moments', 'act-outputs', 'act-versus', 'act-pro']);
-    for (const id of bands) {
-      const act = html.indexOf(`<section id="${id}"`);
-      const band = html.indexOf(`data-lt-band="${id}"`);
-      const next = html.indexOf('<section', act + 1);
-      expect(band, `${id} band outside its act`).toBeGreaterThan(act);
-      expect(band, `${id} band outside its act`).toBeLessThan(next);
+  /*
+   * An autoplaying video without `muted` never starts, and without `playsinline` iOS takes it
+   * fullscreen and throws the visitor out of the page on arrival. Both are silent failures on the
+   * exact devices least likely to be tested here.
+   */
+  it('never autoplays a film that a phone would refuse or hijack', () => {
+    const films = Array.from(html.matchAll(/<video[\s\S]*?>/g), (m) => m[0]);
+    expect(films.length).toBeGreaterThan(0);
+    for (const film of films.filter((f) => f.includes('autoplay'))) {
+      expect(film, 'an autoplaying film is missing muted').toContain('muted');
+      expect(film, 'an autoplaying film is missing playsinline').toContain('playsinline');
     }
   });
 
-  it('puts the statement, the picture control and the demo link in the hero band', () => {
-    const hero = html.slice(html.indexOf('data-lt-band="act-hero"'), html.indexOf('data-lt-band="act-break"'));
-    expect(hero).toContain('Go live everywhere.');
-    expect(hero).toContain('data-lt-camera-cta');
-    expect(hero).toContain('href="./app/start"');
+  /* A reference to an asset that is not there ships a broken picture, and nothing else notices. */
+  it('references no brand asset that does not exist', () => {
+    const refs = [...new Set(Array.from(html.matchAll(/\/brand\/([\w.-]+)/g), (m) => m[1]!))];
+    expect(refs.length).toBeGreaterThan(3);
+    const missing = refs.filter((f) => !existsSync(join(ROOT, 'public', 'brand', f)));
+    expect(missing).toEqual([]);
   });
 
-  it('never offers a download while there is nothing to download', () => {
-    const text = visibleMarkup().replace(/<[^>]*>/g, ' ');
-    expect(text).not.toMatch(/Download/);
-    expect(html).not.toContain('/releases');
+  /*
+   * The two honesty sentences are injected into these markers at build time by `demoHonesty` in
+   * vite.config.ts. Losing a marker does not break the build; it silently removes the page's only
+   * statement that the hosted build broadcasts nowhere.
+   */
+  it('keeps both markers the demo honesty is injected into', () => {
+    expect(html).toContain('<!--lt:demo-hero-->');
+    expect(html).toContain('<!--lt:demo-browser-->');
   });
 });

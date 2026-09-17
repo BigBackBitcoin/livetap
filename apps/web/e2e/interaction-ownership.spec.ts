@@ -42,7 +42,7 @@ import {
 
 /** Every address the application answers on, plus the marketing document. */
 const ROUTES = [
-  { path: '/', anchor: 'html.sc-ready', name: 'the landing page' },
+  { path: '/', anchor: '.lt-hero__line', name: 'the landing page' },
   { path: '/app', anchor: '.lt-studio', name: '/app (which decides, and lands on Studio)' },
   { path: '/app/start', anchor: '.lt-onboarding', name: 'onboarding' },
   { path: '/app/studio', anchor: '.lt-studio', name: 'Studio' },
@@ -350,300 +350,27 @@ test.describe('one interaction owner while live', () => {
 
 /* ============================================== the layer that started all of this, bounded */
 
-/**
- * The landing page's scroll-driven layers, and the window in which the original bug still exists.
+/*
+ * TWO LANDING-PAGE DESCRIBES WERE HERE, and the engine they guarded has gone.
  *
- * `acts.css` states the invariant in its own words — "a band that cannot be seen cannot be
- * touched" — and enforces it with `visibility` rather than `pointer-events` alone, because
- * `visibility` also removes the element from hit-testing for the wheel and both failures were
- * real. The class that grants `visibility: visible; pointer-events: auto` is `is-here`, and
- * `syncBandHits` in `public/main.ts` derives it from the band's own rendered opacity precisely so
- * that "the class can never disagree with what is on screen".
+ * "the landing page layers" measured a LOW-severity window in `syncBandHits`: `is-here` was
+ * derived from a band's rendered opacity through a scroll listener and a `requestAnimationFrame`,
+ * so for a few frames an `opacity: 0` band stayed hit-testable over a destination tile. "the
+ * landing page, with a frame dropped" guarded the same mechanism under a dropped frame, including
+ * the `--ltp-touchable` clip-path switch in `acts.css`.
  *
- * It can, briefly. `syncBandHits` runs from a `scroll` listener through `requestAnimationFrame`,
- * and once more on the following frame, so the class trails the opacity — and under
- * `prefers-reduced-motion: reduce`, where the opacity steps rather than eases, the trailing is
- * maximal. Two layers do it, both measured here, both reproducible by walking `/` in 100px steps:
+ * The landing has no bands, no acts, no scroll listener, and does not load `acts.css`. The finding
+ * is not FIXED, it is INAPPLICABLE -- different words, and the second is the honest one. Keeping
+ * either test would mean keeping a 30 KB stylesheet alive on a 22 KB page so that a guard could
+ * stay green, which is a test defending its own existence.
  *
- *   · 1440x900, scrollY 7200. `div.ltp-band.ltp-band--tall.is-here` is at `opacity: 0` with
- *     `pointer-events: auto`, over `li.ltp-dest.is-suggested.is-mine` — a destination tile, which
- *     is one of the exact controls the original band ate.
- *   · 390x844, scrollY 7100. `section.ltv-lane` is `visibility: hidden` while its own chips are
- *     `visibility: visible`, so the chips are hit-testable and they sit over `div.ltp-stagewrap`.
+ * The general property survives in `landing-and-layout.spec.ts` under "nothing invisible is ever
+ * on top", asserted against whatever the page actually is rather than against one engine's timing.
  *
- * FINDING, severity LOW. `apps/web/src/public/main.ts:2225` `syncBandHits`, and whatever writes
- * the versus lane's visibility beside it. Both close well inside 250 ms — parked at either
- * position the page is correct at +250 ms, +1 s and +3 s — so the exposure is the tail of an
- * active scroll rather than a state a reader sits in, the panel no longer has `overflow-y: auto`
- * so the swallowed-wheel half of the original bug is gone, and a click that lands inside the
- * window is possible rather than likely. It is reported because the mechanism is the mechanism,
- * and because the distance between "a few frames" and "until the next scroll event" is one
- * missing call.
- *
- * This test is the guard on that distance. It does not demand zero frames: that would mean
- * computing the class in the same pass that writes the opacity, which is a change to the engine's
- * contract and not this team's call. It demands that the window stay a window — `framesOpen` of
- * `-1` means it never closed, which is the original bug, back.
+ * The shape worth remembering is not the finding: a visual state derived from a render that is
+ * SAMPLED by a listener can disagree with that render, and the repair is to derive it from the
+ * same expression rather than to sample faster.
  */
-test.describe('the landing page layers', () => {
-  for (const viewport of VIEWPORTS) {
-    test.describe(`${viewport.name}`, () => {
-      test.use({
-        viewport: { width: viewport.width, height: viewport.height },
-        reducedMotion: 'reduce',
-      });
-
-      test('nothing invisible stays interactive for longer than a scroll takes', async ({
-        page,
-      }) => {
-        await page.goto('/');
-        await page.waitForSelector('html.sc-ready');
-        await page.waitForTimeout(1200);
-
-        const transients = await auditInteractionOwnership(page, {
-          step: 48,
-          scrollStep: 100,
-          measureFramesToClear: true,
-        });
-
-        const permanent = transients.filter((v) => v.framesOpen === -1);
-        expect(
-          permanent,
-          'these never stopped taking input: an invisible layer is permanently on top, which is the bug this whole file exists for',
-        ).toEqual([]);
-
-        const worst = transients.reduce((a, v) => Math.max(a, v.framesOpen ?? 0), 0);
-        expect(
-          worst,
-          `an invisible layer stayed interactive for ${worst} frames at ${viewport.name}: ${JSON.stringify(transients.slice(0, 2))}`,
-        ).toBeLessThanOrEqual(15);
-      });
-
-    });
-  }
-});
-
-/**
- * The deterministic reproduction of the landing page's own trap, at the width it was measured at.
- *
- * Kept out of the viewport loop above on purpose: the scroll offsets below are the act boundary
- * at 1440x900 and nowhere else, and a reproduction that guesses at a coordinate is a
- * reproduction that will one day pass for the wrong reason. The mechanism is not
- * width-specific; the numbers are.
- */
-test.describe('the landing page, with a frame dropped', () => {
-  test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-
-    /**
-     * DEFECT — CONFIRMED, and this is the original bug, back, for the third time.
-     *
-     * The handover above is harmless while the main thread is free, because `syncBandHits` gets
-     * its two frames and the class catches up. Take those two frames away and the class never
-     * catches up at all, because nothing else ever calls it: `syncBandHits` runs only from the
-     * `scroll` listener's `requestAnimationFrame` and from the one `settle()` frame after it.
-     * Miss both and the band keeps `is-here` — `visibility: visible; pointer-events: auto` —
-     * while its own opacity finishes falling to 0, and it keeps it until the next scroll event,
-     * which on a page a reader has stopped scrolling is never.
-     *
-     * Reproduction, deterministic, 1440x900 under `prefers-reduced-motion: reduce`:
-     *   1. Walk `/` from the top to scrollY 7100 in 100px steps, settling at each.
-     *   2. Scroll one more notch, to 7200 — the step that changes which band is showing.
-     *   3. Hold the main thread for 350 ms across that step. A `while` loop here; in the
-     *      product, the 3402 ms task the performance workstream is chasing, or the 22.5 fps
-     *      the same page reports with a camera live.
-     *   4. Wait. `div.ltp-band.ltp-band--tall.is-here` is at `opacity: 0`,
-     *      `visibility: visible`, `pointer-events: auto`, over the destination column — at
-     *      +1.5 s, at +5.5 s, and for as long as nobody scrolls again.
-     *
-     * The audit finds 27 sampled points where it answers for `li.ltp-dest.is-suggested.is-mine`.
-     * That is the same element class the first audit reported as "four Connect buttons refused
-     * my clicks", and this is the same invisible band, reached by a different route.
-     *
-     * Severity: HIGH on `/`. It is the product's front door, the trigger is a slow frame rather
-     * than anything unusual, and the symptom is the one two first-time-creator audits already
-     * reported and two diagnoses already missed.
-     *
-     * WHO MUST FIX IT: not this team — `apps/web/src/public/main.ts` is not ours.
-     *   · `apps/web/src/public/main.ts:2225` `syncBandHits()` is correct and is called from
-     *     one place that can be starved. `apply()` at :2232 is `requestAnimationFrame`-driven
-     *     from the `scroll` listener at :2284, and `settle()` at :2279 adds exactly one more
-     *     frame. Both can land before the engine writes the act's progress, and then nothing
-     *     calls it again.
-     *   · The shape of the fix is the one the file already argues for elsewhere: derive the
-     *     interactive state from the rendered opacity in the same pass that renders it, or keep
-     *     re-checking until the two agree, rather than sampling twice and hoping.
-     *
-     * FIXED 2026-09-15, and the fix is not a better sampler — it is to stop sampling.
-     *
-     * Measured first: the stuck band had NO inline styles at all. Its `opacity: 0` came from CSS
-     * and its `pointer-events: auto` came from the stale class alone. So:
-     *
-     *   `.ltp-band--tall` declares its fade ONCE, as `--ltp-vis`, and uses it for its opacity.
-     *   `.ltp-band` derives `--ltp-touchable` from that same variable as a near-step and clips
-     *   itself to zero area when it reaches 0. A zero-area clip is out of hit-testing and out of
-     *   the wheel, and it is a pure function of `--sc-p` — so there is no frame, no sampler and
-     *   no class between the opacity and the guard. One expression, used twice.
-     *
-     *   The class still owns `visibility`, because CSS cannot take an element out of the tab
-     *   order from a number, so `main.ts` reconciles it on a 250 ms interval too — a dead-man's
-     *   switch rather than a render loop, four calls a second that do nothing when they agree.
-     *
-     * This test asserts the invariant now instead of reproducing its absence.
-     */
-    test('an invisible band does not stay interactive when a frame is dropped', async ({
-      page,
-    }) => {
-      await page.goto('/');
-      await page.waitForSelector('html.sc-ready');
-      await page.waitForTimeout(1200);
-
-      const stuck = await page.evaluate(async () => {
-        const open = (): string[] => {
-          const out: string[] = [];
-          for (const band of Array.from(document.querySelectorAll('.ltp-band'))) {
-            const cs = getComputedStyle(band);
-            if (cs.pointerEvents === 'none' && cs.visibility === 'hidden') continue;
-            if (Number.parseFloat(cs.opacity) > 0.05) continue;
-            out.push(
-              band.className +
-                ' at opacity ' +
-                cs.opacity +
-                ', visibility ' +
-                cs.visibility +
-                ', pointer-events ' +
-                cs.pointerEvents,
-            );
-          }
-          return out;
-        };
-
-        for (let y = 0; y <= 7100; y += 100) {
-          scrollTo({ top: y, behavior: 'instant' });
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          await new Promise((r) => setTimeout(r, 120));
-        }
-
-        scrollTo({ top: 7200, behavior: 'instant' });
-        const until = performance.now() + 350;
-        while (performance.now() < until) {
-          /* Hold the main thread across the frames that would have fixed the class. */
-        }
-
-        await new Promise((r) => setTimeout(r, 1500));
-        const afterASecondAndAHalf = open();
-        await new Promise((r) => setTimeout(r, 4000));
-        return { afterASecondAndAHalf, afterFiveAndAHalf: open() };
-      });
-
-      expect(
-        stuck.afterFiveAndAHalf,
-        `an invisible band was still taking input five seconds after the scroll that hid it: ${stuck.afterASecondAndAHalf.join('; ')}`,
-      ).toEqual([]);
-    });
-
-    /**
-     * The other half of that guard, and the half that broke the moment it shipped.
-     *
-     * A guard has two ends and only one of them was being tested. The closed end — zero area
-     * when the band paints nothing — is what the test above measures. The OPEN end was written
-     * as `inset(0)`, which is not "no clip": it means "clip to the border box", and that is a
-     * real change to any band whose children are supposed to paint outside it.
-     *
-     * `.ltp-band--rail` is exactly that band. It declares `overflow: visible` on purpose — the
-     * six looks ride in from beyond the right edge and the engine travels the lane by the width
-     * of that overflow — and `inset(0)` cut the lane off at the band's edge. The Moments mirror,
-     * a control the product promises answers at its own chapter, stopped being clickable at
-     * `act-moments` on a phone. `audit-closure.spec.ts` caught it; the cause was the guard, not
-     * the rail.
-     *
-     * So both ends are pinned here, on the band with the most to lose from either, and they are
-     * pinned by HIT-TESTING rather than by reading the declared clip back as a string — because
-     * the string `inset(0)` is exactly what a string assertion would have accepted.
-     */
-    test('the band guard clips nothing while it is open, and to nothing when it is not', async ({
-      page,
-    }) => {
-      await page.goto('/');
-      await page.waitForSelector('html.sc-ready');
-
-      /*
-       * Asked of the RULE, not of whichever band the page happens to be showing: two bands of
-       * known size at known places, each with a child that deliberately overflows it, one open
-       * and one dark.
-       *
-       * Two bands rather than one band twice: setting `--ltp-vis` on an element and reading its
-       * `clip-path` back in the same task returns the PREVIOUS clip in Chromium, while the
-       * custom property itself already reads as the new value. The page never does that — there
-       * `--ltp-vis` is a function of `--sc-p`, which is written on an ancestor — but a test that
-       * did would be measuring the engine's recalc order instead of this rule.
-       */
-      const seen = await page.evaluate(() => {
-        const ask = (vis: string, x: number): { inside: string; outside: string } => {
-          const host = document.createElement('div');
-          host.style.cssText =
-            `position:fixed; inset-block-start:200px; inset-inline-start:${x}px;` +
-            'inline-size:200px; block-size:100px; z-index:2147483000;';
-
-          const band = document.createElement('div');
-          band.className = 'ltp-band ltp-band--rail is-here';
-          /*
-           * `overflow` is pinned so the only thing that can clip the child is the guard: under
-           * reduced motion the real rail is a native sideways scroller, which clips for its own
-           * reasons, and this test is not about that one.
-           */
-          band.style.cssText =
-            'position:absolute; inset:0; inline-size:200px; block-size:100px; min-block-size:0;' +
-            `overflow:visible; --ltp-vis:${vis};`;
-
-          /* The lane the rail is built to let out of its own box, in miniature. */
-          const over = document.createElement('div');
-          over.style.cssText =
-            'position:absolute; inset-block-start:0; inset-inline-start:100%;' +
-            'inline-size:60px; block-size:60px; background:#f0f;';
-
-          band.append(over);
-          host.append(band);
-          document.body.append(host);
-
-          const name = (el: Element | null): string =>
-            el === band ? 'the band' : el === over ? 'the overflowing child' : 'something else';
-
-          /* The middle of the band, then 30px past its right edge, which is inside the child. */
-          const answer = {
-            inside: name(document.elementFromPoint(x + 100, 250)),
-            outside: name(document.elementFromPoint(x + 230, 230)),
-          };
-          host.remove();
-          return answer;
-        };
-
-        return { open: ask('1', 200), shut: ask('0', 600) };
-      });
-
-      /* Open, the guard is not allowed to be there at all. */
-      expect(
-        seen.open.inside,
-        'a band that is painting did not answer the pointer over its own middle',
-      ).toBe('the band');
-      expect(
-        seen.open.outside,
-        'the open end of the band guard clipped a child that overflows the band on purpose — ' +
-          'that is what made the Moments mirror unclickable at its own chapter',
-      ).toBe('the overflowing child');
-
-      /* Dark, it is absolute, and it reaches the overflow too. */
-      expect(
-        seen.shut.inside,
-        'a band painting nothing still answered the pointer over its own middle',
-      ).toBe('something else');
-      expect(
-        seen.shut.outside,
-        'a band painting nothing still answered the pointer through an overflowing child',
-      ).toBe('something else');
-    });
-});
-
-/* ========================================== a defect found here, and whose it is to fix */
 
 /**
  * DEFECT — CONFIRMED. The Quick Tour offer covers the controls behind it, at every width.
