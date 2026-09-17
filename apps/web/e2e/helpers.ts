@@ -309,11 +309,12 @@ export interface OwnershipOptions {
    * How long to let the page settle at each scroll position before sampling, in milliseconds.
    *
    * An app route is a document that sits still, and for one of those "settle, then look" is the
-   * whole question. A scroll-driven page is different: on `/` the class that makes a band
-   * interactive is recomputed from the band's own rendered opacity a frame or two AFTER the
-   * scroll that changed it (`syncBandHits` in `public/main.ts`), so a sample taken on the frame
-   * the scroll landed on catches layers in the middle of a handover rather than layers that are
-   * wrong. A wall clock rather than a frame count, because the lag is scheduled by the engine.
+   * whole question. This existed because `/` used to be scroll-driven: a class that made a band
+   * interactive was recomputed from the band's own rendered opacity a frame or two AFTER the
+   * scroll that changed it, so a sample taken on the landing frame caught layers mid-handover
+   * rather than layers that were wrong. That engine is gone and `/` is a static document now, so
+   * this only serves app routes with entrance transitions. A wall clock rather than a frame
+   * count, because the lag is scheduled by whatever is animating.
    */
   settleMs?: number;
   /**

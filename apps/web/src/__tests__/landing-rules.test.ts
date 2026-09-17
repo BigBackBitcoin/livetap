@@ -18,9 +18,7 @@ const ROOT =
   ) ?? process.cwd();
 
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-const css = readFileSync(join(ROOT, 'src', 'landing.css'), 'utf8');
-const main = readFileSync(join(ROOT, 'src', 'public', 'main.ts'), 'utf8');
-const data = readFileSync(join(ROOT, 'src', 'public', 'data.ts'), 'utf8');
+const css = readFileSync(join(ROOT, 'src', 'home.css'), 'utf8');
 
 /** Markup with the comments, the sprite and the script tags taken out: what a visitor meets. */
 function visibleMarkup(): string {
@@ -41,38 +39,29 @@ describe('colour comes from tokens, in both themes', () => {
     expect(offences).toEqual([]);
   });
 
-  it('adds no colour beyond the nine documented derivations and the display face', () => {
+  /*
+   * THIS TEST WAS READING THE WRONG FILE.
+   *
+   * `css` above pointed at `src/landing.css` until the landing was rewritten, so both colour
+   * rules were passing against a stylesheet the page no longer loads: the new `home.css` was never
+   * checked by the guard written to check it. It happened to be clean -- the no-raw-colour rule
+   * passes on the first run against the real file -- but "it happened to be clean" is not what a
+   * guard is for, and a green result about the wrong file is the most expensive kind.
+   *
+   * The list below is now the small set `home.css` actually declares. It is deliberately an
+   * enumeration rather than a count: a new page-local custom property should be a decision
+   * somebody makes on purpose, not something that accretes.
+   */
+  it('adds no colour beyond the documented derivations and the display face', () => {
     const declared = Array.from(css.matchAll(/^\s{2}(--ltp-[a-z-]+):/gm), (m) => m[1]!);
     expect(new Set(declared)).toEqual(
       new Set([
         '--ltp-font-display',
-        '--ltp-edge',
         '--ltp-hair',
-        '--ltp-field',
-        '--ltp-signal-idle',
-        '--ltp-signal-ready',
-        '--ltp-signal-live',
-        '--ltp-signal-strain',
-        '--ltp-atmos',
-        '--ltp-carrier',
-        '--ltp-rail',
-        '--ltp-topbar',
-        '--ltp-status',
-        '--ltp-band',
-        '--ltp-band-hero',
-        '--ltp-desk',
-        '--ltp-desk-pro',
-        '--ltp-col',
-        '--ltp-pad',
-        '--ltp-overlap',
-        '--ltp-z-atmos',
-        '--ltp-z-signal',
-        '--ltp-z-stage',
-        '--ltp-z-dests',
-        '--ltp-z-data',
-        '--ltp-z-interaction',
-        '--ltp-z-acts',
-        '--ltp-z-chrome',
+        '--ltp-veil',
+        '--ltp-veil-deep',
+        '--ltp-measure',
+        '--ltp-gutter',
       ]),
     );
   });
@@ -90,10 +79,13 @@ describe('the standing bans hold', () => {
       markup.matchAll(/(?:aria-label|alt|title|content)="([^"]*)"/gi),
       (m) => m[1] ?? '',
     );
-    const strings = [main, data]
-      .map((src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' '))
-      .flatMap((src) => src.match(/'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g) ?? []);
-    const copy = [markup.replace(/<[^>]*>/g, ' '), ...spoken, ...strings];
+    /*
+     * The markup is now the whole surface. This also scanned the string literals in
+     * `public/main.ts` and `public/data.ts`, because the old page painted most of its copy from
+     * JavaScript at runtime. The new page has no script that writes text, so a sentence a
+     * visitor can read is a sentence in the document.
+     */
+    const copy = [markup.replace(/<[^>]*>/g, ' '), ...spoken];
     expect(copy.filter((line) => line.includes('—'))).toEqual([]);
   });
 
@@ -162,6 +154,29 @@ describe('the standing bans hold', () => {
  * the test was the reason it never shrank: it pinned the shape in place.
  *
  * These assert the properties that were actually wanted instead of the shape that was built.
+ */
+/*
+ * THREE TEST FILES WERE REMOVED WITH THE ENGINE THEY COVERED, recorded here because deleting a
+ * whole file leaves nowhere to say why.
+ *
+ *   public-data.test.ts     asserted that the landing's OWN COPY of product data -- ten
+ *                           destination states, the transition table, the platform profiles, the
+ *                           intent profiles -- matched `@livetap/core` and `@livetap/adapters`.
+ *                           It was a mirror test for a duplicate that no longer exists. The
+ *                           originals keep their own coverage: `stateMachine.test.ts` asserts the
+ *                           transitions directly and `profiles.test.ts` the profiles, so nothing
+ *                           is left unguarded.
+ *
+ *   public-picture.test.ts  tested the landing's picture engine: cover-cropping 16:9 into 9:16,
+ *                           the safe-area band, the placeholder before a frame decodes. The
+ *                           product's compositing lives in `packages/media` and has never been
+ *                           this code.
+ *
+ *   public-versus.test.ts   tested the comparison band, a section of the old page.
+ *
+ * None of the three touched anything that ships. They were kept green for a while by modules with
+ * no consumers, which is its own small failure: a passing suite asserting something true about
+ * code nobody loads.
  */
 describe('the landing stays a landing', () => {
   /** Visible copy: comments, scripts, styles and inline SVG removed. */
