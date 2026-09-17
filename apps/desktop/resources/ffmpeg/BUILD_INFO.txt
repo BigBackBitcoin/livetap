@@ -1,7 +1,7 @@
 FFmpeg binaries bundled with the LIVETAP desktop app
 
 platform-dir : win
-recorded     : 2026-09-16T20:19:12.138Z
+recorded     : 2026-09-17T04:14:55.035Z
 recorded-on  : win32 x64
 
 ffmpeg       : ffmpeg version 9.0.1-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers

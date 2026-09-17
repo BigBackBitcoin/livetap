@@ -8,7 +8,7 @@ Two sessions built this. Lines marked **(2b)** are owned by session
 
 | Area | Status | Evidence / exact remaining item |
 |---|---|---|
-| **WEB** | COMPLETE — production path | Guest → destinations → WHIP → relay → fan-out is connected end to end. The relay session API is called at GO LIVE (`relaySession.ts`, `armRelay`), torn down at END and on a cancelled start. `verify:web` refuses a build that is secretly a demo. The grouped destination selector landed in `c1c714b` and `ded6384`; it is described under UX CONSISTENCY so it is counted once. |
+| **WEB** | COMPLETE | Guest → destinations → WHIP → relay → fan-out is connected end to end. The relay session API is called at GO LIVE (`relaySession.ts`, `armRelay`), torn down at END and on a cancelled start. `verify:web` refuses a build that is secretly a demo. The grouped destination selector landed in `c1c714b` and `ded6384`; it is described under UX CONSISTENCY so it is counted once. |
 | **WINDOWS** | COMPLETE | Builds from current source with mock mode OFF; reports connection health like every other surface; Bond wire protocol through `BondSink`. OAuth and multi-account complete **(2b)** — loopback and redirect tested separately, because they finish in different places and a fix to one is genuinely not a fix to the other. |
 | **ANDROID** | COMPLETE | Multi-destination via the relay (`useRelaySession`), production config reaches the build, APK builds from current source and passes 49/49 `verify-apk` checks. |
 | **MULTI-ACCOUNT** | COMPLETE | One vault entry per authorized account, keyed by connection id. Criteria A–J tested; every set confirmed load-bearing by reverting the fix. `1fd356e d0bb00b 52b3911 4b1a682 c1c714b 550fba5 ded6384` **(2b)**. This session proved the identity survives all the way to the relay's forward list. |
@@ -19,8 +19,8 @@ Two sessions built this. Lines marked **(2b)** are owned by session
 | **SESSION CLEANUP** | COMPLETE | `destroySession` reports what it actually observed, distinguishes "emptied" from "could not be read", sweeps LIVETAP keys nothing registered, and refuses while on air. |
 | **UX CONSISTENCY** | COMPLETE | Destinations groups unconditionally; the Studio dock names the account always and groups only where a platform has several. Different on purpose — a library teaches where a second account goes, a narrow dock must not repeat a word the row already says (`ded6384` **(2b)**). All three surfaces share one mental model and one definition of connection health. Selection is per account by construction: there is no platform-level enable anywhere to collapse through, asserted end to end. |
 | **PRODUCTION CONFIG** | COMPLETE | Web, staged mobile bundle and finished APK each have a gate proving demo mode is compiled out and that the relay and broker origins reached the build. Each verified in both directions. |
-| **WINDOWS ARTIFACT** | COMPLETE | `LIVETAP-0.1.0-win-x64.exe` — **230,779,168 bytes, sha256 `d38560ddb339783d0a19a08131091b900daf4778c30c8874271bad9ecd3f0e96`**, built from `de6c69a` in the `LIVETAP-build` worktree, clean tree. **33/33** `verify-installer` checks, now including the identity gate, which records the commit in the artifact rather than inferring freshness from timestamps. Ships a verified ffmpeg 9.0.1 that actually runs and speaks rtmps. |
-| **ANDROID ARTIFACT** | COMPLETE | `app-debug.apk` — **10,178,101 bytes, sha256 `2a2c041d2a1c671ac21564501423a3f04eec366e45f50425ee97a37fa1fc6363`**, built from `de6c69a` in the `LIVETAP-build` worktree with the portable JDK 21 + Android SDK. 49/49 checks, including that the relay and broker origins reached the bundle. **Byte-identical to the `3fd43a3` build** — the web bundle was rebuilt and re-staged and Gradle found its inputs unchanged, which measures rather than asserts that the commits after `3fd43a3` changed the build gates and not the product. Debug-signed: sideloadable, not Play-ready (needs an upload key the repo must never contain). |
+| **WINDOWS ARTIFACT** | COMPLETE | `LIVETAP-0.1.0-win-x64.exe` — **230,740,192 bytes, sha256 `d050ebbc3bbfeb3c2664a4a03d84d74262a1e6156024f878b56c2a24954174b1`**, built from `252dd32` in the `LIVETAP-build` worktree, clean tree. **33/33** `verify-installer` checks, now including the identity gate, which records the commit in the artifact rather than inferring freshness from timestamps. Ships a verified ffmpeg 9.0.1 that actually runs and speaks rtmps. |
+| **ANDROID ARTIFACT** | COMPLETE | `app-debug.apk` — **10,165,196 bytes, sha256 `22434841fdd08b5f83a32298a33fbea3524183cc63f333c28086c71ce5069dc0`**, built from `252dd32` in the `LIVETAP-build` worktree with the portable JDK 21 + Android SDK. 49/49 checks, including that the relay and broker origins reached the bundle. Rebuilt after the landing rewrite, and the bytes moved: the staged web bundle is part of the APK, so changing the page changed the artifact. That is the gate working rather than noise. Debug-signed: sideloadable, not Play-ready (needs an upload key the repo must never contain). |
 
 ## What is external validation only
 
@@ -88,6 +88,19 @@ That is the same error shape as the camera: an observable missing for a reason
 unrelated to the question being asked. Now written down permanently in
 `tools/README.md`, because the two of us reaching it separately means a third
 session would too.
+
+**The landing is a film, not an explanation.** It carries 173 visible words and
+22 KB of html and css, down from 1,249 words and ~107 KB. The old page was a
+ten-act scroll film with an operable replica of the product embedded in it; its
+length was pinned by a test asserting ten acts, which is why it never shrank.
+The campaign films now lead the page instead of sitting unused in the repository.
+
+**The artifacts were rebuilt because that change reached them.** The desktop app
+packages the landing document alongside the application, and the APK stages the
+same web build, so rewriting the page moved both artifacts' bytes. The release
+gate caught it: once the renderer was rebuilt, `verify-installer` failed with
+"the installer is newer than the renderer it claims to carry" rather than anyone
+having to remember.
 
 **These artifacts do not go stale every time a commit lands.** The installer
 records the commit it was built from and answers "which commit is this?", not
