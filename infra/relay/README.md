@@ -57,6 +57,35 @@ left empty and available for exactly that case.
 
 ---
 
+## Deploy it
+
+One command, to any host you can SSH into with a DNS name pointing at it:
+
+```bash
+bash infra/relay/deploy.sh root@203.0.113.10 relay.yourdomain.com
+```
+
+It installs Docker if the host lacks it, copies this stack, generates the three MediaMTX
+passwords **on the server** (they never reach your machine and are never printed), brings the
+stack up behind Caddy with a real certificate, waits for `/healthz`, and then verifies the result
+before telling you it worked. Re-running it never rotates the secrets of a live relay.
+
+You need only three things, and none of them are in this repository: a host, an A record already
+pointing at it, and ports 80/443 TCP plus **UDP 18189** open in the provider's firewall. That UDP
+port is the one people forget; WebRTC media bypasses Caddy entirely and a relay with it closed
+will complete the WHIP handshake and then carry no video.
+
+To check a relay that is already running:
+
+```bash
+LIVETAP_RELAY_TOKEN=<publish password> node infra/relay/verify-relay.mjs https://relay.yourdomain.com
+```
+
+It asserts the address is public and https, the certificate is valid, `/healthz` answers, a
+session can be created for three destinations (two of them sharing one ingest URL, which is the
+multi-account case), the session can be deleted again, and an unauthenticated request is refused
+so the relay is not an open forwarder. It never logs into a platform and never broadcasts.
+
 ## Run it locally
 
 ```bash
