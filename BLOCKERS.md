@@ -92,13 +92,26 @@ Format per entry: Category | Exact requirement | Why autonomous resolution faile
 - Exact human action: enable B-001 (CI) or run compose on any Linux box.
 - What resumes: PASS label for container packaging.
 
-## B-009 | Growth / infrastructure | Early-access notification endpoint — OPEN, cosmetic
-- Exact requirement: somewhere for a "get notified" signup to go. There is no database, KV, Blob or mail provider configured on this Vercel project, and none will be added silently, so `POST /api/early-access` needs an https URL the owner controls set as `LIVETAP_EARLY_ACCESS_WEBHOOK`.
-- Why autonomous resolution failed: choosing and paying for a third-party form/mail service is a product and billing decision; adding one without asking would violate the "no silent third-party services" constraint.
-- Already completed: `GET /api/early-access` (reports `{ enabled, method }`, never the URL itself), `POST /api/early-access` (validates email/consent/platform, same-origin and rate-limit checks reusing the OAuth broker's helpers, 5-second-timeout forward, 202/400/403/429/502/503 responses, no logging of the email, no storage in the function), and `apps/web/src/public/capture.ts`, which renders only when the endpoint is configured. Privacy policy section 11 documents the data flow.
-- **Status note, 2026-09-14:** the lowest-priority item on this page. It affects one button on a marketing page and nothing about broadcasting.
-- Exact human action: pick an https endpoint that accepts `{ email, platform, consentAt, source }` as JSON and set `LIVETAP_EARLY_ACCESS_WEBHOOK` in Vercel.
-- What resumes: the "Notify me" form appears in place of nothing.
+## B-009 | Growth / infrastructure | Early-access notification endpoint — RETIRED 2026-09-17
+- **Not resolved. Removed, because the product it existed for no longer needs it.**
+- It was built to answer the audit finding "no way to capture interest", at a time when a visitor
+  could not use LIVETAP: there was nothing to download and nothing to try. A waitlist was the only
+  honest thing to offer.
+- Both halves of that premise have gone. The web app runs in the browser now and the Windows
+  installer builds from source, so the page's answer to "can I have this" is "yes, now" rather
+  than "leave your address". And the landing that carried the form was replaced: it makes no
+  future promise for a waitlist to attach to.
+- It also sat against the product's own thesis. LIVETAP asks for no account and forgets the
+  session; an email field would have been the single place on the page that asked a visitor for an
+  identity, to get something they already have.
+- Removed: `apps/web/api/early-access.ts`, `apps/web/src/__tests__/early-access.test.ts`, and the
+  two `docs/OWNER_ACTIONS.md` rows. The form itself (`src/public/capture.ts`) went earlier with
+  the landing rewrite. The shared `_lib/broker.ts` stays -- the five OAuth routes use it, and its
+  same-origin and rate-limit behaviour is covered directly by `broker.test.ts`, not through this
+  endpoint.
+- Anyone wanting to hear about releases has the GitHub link in the footer, which is what
+  `capture.ts` itself named as the fallback.
+- **Net effect on the owner: one fewer third-party service to choose and pay for before shipping.**
 
 ---
 

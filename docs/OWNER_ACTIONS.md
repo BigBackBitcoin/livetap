@@ -360,7 +360,6 @@ should be read alongside this table.
 | `LIVETAP_FACEBOOK_APP_ID` | no | served by `/api/oauth/config` |
 | `LIVETAP_FACEBOOK_APP_SECRET` | **yes** | broker only, for the code and long-lived-token exchanges |
 | `LIVETAP_FACEBOOK_CLIENT_TOKEN` | **yes** | broker only |
-| `LIVETAP_EARLY_ACCESS_WEBHOOK` | **yes** | where the "notify me" form posts. Optional; see BLOCKERS.md B-009 |
 
 **Redirect URIs, per platform, exactly as they must be typed into each console:**
 
@@ -399,4 +398,3 @@ in BLOCKERS.md with what each one unblocks if you ever want it.
 | A GPU host | the libx264 fallback is what the alpha uses | B-007 |
 | A public HTTPS origin for the token broker | desktop and mobile can point at a local `apps/web/api` during development | — |
 | A Docker or Linux host for the relay | the relay is only needed for the browser surface, not for desktop or Android | B-008 |
-| A mailing-list or form provider | only the "notify me" button depends on it | B-009 |
